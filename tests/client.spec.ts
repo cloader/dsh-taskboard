@@ -223,6 +223,54 @@ describe('client half', () => {
     localStorage.clear()
   })
 
+  it('sidebar entry still places itself when the shell exposes no structural anchors at all (#6)', async () => {
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('EventSource', EventSourceMock as unknown as typeof EventSource)
+    const { createClient } = await import('../src/client/api.ts')
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { mountSidebarEntry } = await import('../src/client/sidebar-entry.ts')
+
+    // Worst-case v3.68x desktop shell: the rail keeps NO data-pane attribute,
+    // NO recognizable hashed classes (no sidebarCol/logoRow/newSession), and
+    // the new-session button is buried in anonymous wrappers. Pre-patch code
+    // retried forever here without placing anything (the #6 report).
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+    // Sweep leftovers from earlier cases: placed entries and structural
+    // sidebar columns both change which anchor sidebarRoot() resolves.
+    document.querySelectorAll('[data-dsh-atb-entry], [data-pane="sidebar"], [class*="sidebarCol"]').forEach(el => el.remove())
+    const rail = document.createElement('div')
+    rail.className = 'x7Qp_a_railWrapper'
+    const group = document.createElement('div')
+    group.className = 'x7Qp_a_group'
+    const plus = document.createElement('button')
+    plus.className = 'x7Qp_a_plus'
+    plus.textContent = '+ 新会话'
+    group.append(plus)
+    rail.append(group)
+    // Own mount root: isolates the fallback scan from leftover prior-case DOM
+    // and mirrors where the real shell renders third-party clients.
+    document.getElementById('root')?.remove()
+    const rootMount = document.createElement('div')
+    rootMount.id = 'root'
+    rootMount.append(rail)
+    document.body.append(rootMount)
+
+    try {
+      const controller = new BoardController(createClient())
+      const dispose = mountSidebarEntry(controller)
+      disposers.push(dispose)
+
+      await waitFor(() => document.querySelector('[data-dsh-atb-entry]') !== null)
+      const entry = document.querySelector('[data-dsh-atb-entry]')
+      expect(entry).not.toBeNull()
+      expect(entry!.parentElement).toBe(rail)
+    } finally {
+      warnSpy.mockRestore()
+      infoSpy.mockRestore()
+    }
+  })
+
   it('board columns wear status dots before their labels', async () => {
     vi.stubGlobal('fetch', fetchMock)
     vi.stubGlobal('EventSource', EventSourceMock as unknown as typeof EventSource)

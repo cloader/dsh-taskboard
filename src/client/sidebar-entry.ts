@@ -27,11 +27,48 @@ const ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke
  * (Same as the working family plugins: sidebarCol pane → logoRow owner.)
  */
 function sidebarRoot(): HTMLElement | undefined {
-  const column = document.querySelector<HTMLElement>('[data-pane="sidebar"], [class*="sidebarCol"]')
-  if (column === null) return undefined
-  const logoOwner = column.querySelector<HTMLElement>('[class*="logoRow"]')?.parentElement
-  return logoOwner ?? (column.firstElementChild as HTMLElement | undefined)
+  const column = document.querySelector<HTMLElement>(
+    '[data-pane="sidebar"], [class*="sidebarCol"], [class*="sidebarPane"], [class*="leftCol"]',
+  )
+  if (column !== null) {
+    if (anchorMisses > 0) anchorMisses = 0
+    const logoOwner = column.querySelector<HTMLElement>('[class*="logoRow"]')?.parentElement
+    return logoOwner ?? (column.firstElementChild as HTMLElement | undefined)
+  }
+  const rescued = lastResortRoot()
+  if (rescued === undefined) {
+    anchorMisses += 1
+    if (anchorMisses === 5 || anchorMisses === 30 || anchorMisses % 120 === 0) {
+      console.warn(
+        '[dsh-taskboard] sidebar anchor miss x' + anchorMisses +
+        ': no data-pane=sidebar / sidebarCol / sidebarPane / leftCol / new-session button container. ' +
+        'If persistent, report with a DevTools Elements screenshot of the left rail to cloader/dsh-taskboard#6',
+      )
+    }
+  } else if (anchorMisses > 0) {
+    console.info('[dsh-taskboard] placement recovered via new-session fallback root')
+    anchorMisses = 0
+  }
+  return rescued
 }
+
+/**
+ * The New Session button is the one sidebar element whose user-facing text is
+ * shell-stable, so its container chain is the last-resort root when every
+ * structural class hook is missing. Added after v3.68x desktop shells renamed
+ * their hashed pane classes without leaving any data-pane hook (#6).
+ */
+function lastResortRoot(): HTMLElement | undefined {
+  const candidate = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(
+    button => !button.matches(ENTRY_SELECTOR) && /新会话|新建会话|new session/i.test(button.textContent ?? ''),
+  )
+  // Climb one level above the logo row so the placed entry survives sibling
+  // re-renders of the rail.
+  const parent = candidate?.parentElement as HTMLElement | undefined
+  return (parent?.parentElement ?? parent) as HTMLElement | undefined
+}
+
+let anchorMisses = 0
 
 /**
  * The New Session button: nested in the logo row on current shells, a direct
