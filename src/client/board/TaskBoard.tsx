@@ -34,6 +34,7 @@ export function filterTasks(state: ControllerState, tasks: TaskRecord[]): TaskRe
   if (state.sortBy === 'updated') sorted.sort((a, b) => b.updatedAt - a.updatedAt)
   else if (state.sortBy === 'created') sorted.sort((a, b) => b.createdAt - a.createdAt)
   else if (state.sortBy === 'urgency') sorted.sort((a, b) => URGENCY_RANK[a.urgency] - URGENCY_RANK[b.urgency] || b.updatedAt - a.updatedAt)
+  else if (state.sortBy === 'title') sorted.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }))
   return sorted
 }
 
@@ -128,6 +129,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           <option value="updated">最近更新</option>
           <option value="urgency">按紧急度</option>
           <option value="created">创建时间</option>
+          <option value="title">按标题</option>
         </select>
         {(['urgent', 'normal', 'relaxed'] as const).map(u => (
           <button

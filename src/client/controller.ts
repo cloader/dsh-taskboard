@@ -22,7 +22,7 @@ export interface BoardFilters {
 }
 
 /** Column sort orders. */
-export type SortBy = 'default' | 'updated' | 'urgency' | 'created'
+export type SortBy = 'default' | 'updated' | 'urgency' | 'created' | 'title'
 
 /** localStorage key for persisted view state (filters + sort). */
 const VIEW_KEY = 'dsh-taskboard-view-v1'
@@ -33,7 +33,7 @@ function loadView(): { workspaceId?: string; urgencies: Urgency[]; sortBy: SortB
     const raw = localStorage.getItem(VIEW_KEY)
     if (raw === null) return { urgencies: [], sortBy: 'default' }
     const parsed = JSON.parse(raw) as { workspaceId?: string; urgencies?: Urgency[]; sortBy?: SortBy }
-    const sortBy = parsed.sortBy === 'updated' || parsed.sortBy === 'urgency' || parsed.sortBy === 'created' ? parsed.sortBy : 'default'
+    const sortBy = parsed.sortBy === 'updated' || parsed.sortBy === 'urgency' || parsed.sortBy === 'created' || parsed.sortBy === 'title' ? parsed.sortBy : 'default'
     return {
       workspaceId: typeof parsed.workspaceId === 'string' ? parsed.workspaceId : undefined,
       urgencies: Array.isArray(parsed.urgencies) ? parsed.urgencies.filter(u => u === 'urgent' || u === 'normal' || u === 'relaxed') : [],

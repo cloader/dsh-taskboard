@@ -96,6 +96,16 @@ html[data-dsh-atb-active] .dsh-atb-view { display: flex; flex-direction: column;
   border: 1px solid var(--dsw-border, rgba(128,128,128,.35));
   background: var(--dsw-bg, transparent); color: inherit;
 }
+/* Native <option> popups ignore page styles unless forced, and no theme
+   defines the --dsw-* tokens yet — bind the open list to explicit opaque
+   dark colors (this deployment runs dark skins) plus color-scheme:dark so
+   Chromium paints the popup chrome dark too. Readability beats theming. */
+.dsh-atb-select { color-scheme: dark; }
+.dsh-atb-select option {
+  background-color: #24242a;
+  color: #e8e8ea;
+}
+.dsh-atb-select option:checked { background-color: #3a3a44; }
 .dsh-atb-chip {
   display: inline-flex; align-items: center; gap: 5px;
   font-size: 12px; padding: 3px 9px; border-radius: 999px; cursor: pointer;
