@@ -64,7 +64,10 @@ export function TemplateManager({ controller }: { controller: BoardController })
                           if (e.key === 'Enter') save(t.id, nameOf(t.id, t.name))
                         }}
                       />
-                      <span className="dsh-atb-tplm-meta">
+                      <span
+                        className="dsh-atb-tplm-meta"
+                        title={`${t.builtin === true ? '内置' : '自建'}${t.task.checklist !== undefined && t.task.checklist.length > 0 ? ` · 清单 ${t.task.checklist.length} 项` : ''}${t.task.urgency !== undefined ? ` · ${t.task.urgency}` : ''}`}
+                      >
                         {t.builtin === true ? '内置' : '自建'}
                         {t.task.checklist !== undefined && t.task.checklist.length > 0 ? ` · 清单 ${t.task.checklist.length} 项` : ''}
                         {t.task.urgency !== undefined ? ` · ${t.task.urgency}` : ''}
