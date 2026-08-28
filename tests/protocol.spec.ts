@@ -23,6 +23,7 @@ import {
   normalizeChecklist,
   normalizeExecution,
   normalizeExecutionReport,
+  normalizeModel,
   parseCron,
   summarize,
   validateImportedTask,
@@ -215,6 +216,30 @@ describe('execution report', () => {
     expect(() => normalizeExecutionReport({ summary: 'x', checks: Array.from({ length: 51 }, (_, i) => `c${i}`) })).toThrow('at most 50')
     expect(() => normalizeExecutionReport({ summary: 'x', risk: 'r'.repeat(3000) })).not.toThrow() // risk is sliced, not thrown
     expect(normalizeExecutionReport({ summary: 'x', risk: 'r'.repeat(3000) }).risk).toHaveLength(2000)
+  })
+})
+
+describe('model normalization (reasoning effort support)', () => {
+  it('normalizes provider and model, and preserves reasoningEffort when present', () => {
+    expect(normalizeModel({ provider: ' deepseek ', model: ' deepseek-reasoner ' })).toEqual({
+      provider: 'deepseek',
+      model: 'deepseek-reasoner',
+    })
+    expect(normalizeModel({ provider: 'deepseek', model: 'deepseek-reasoner', reasoningEffort: ' high ' })).toEqual({
+      provider: 'deepseek',
+      model: 'deepseek-reasoner',
+      reasoningEffort: 'high',
+    })
+    expect(normalizeModel({ provider: 'deepseek', model: 'deepseek-reasoner', reasoningEffort: '   ' })).toEqual({
+      provider: 'deepseek',
+      model: 'deepseek-reasoner',
+    })
+  })
+
+  it('rejects non-object or empty provider/model', () => {
+    expect(() => normalizeModel(null)).toThrow('model must be')
+    expect(() => normalizeModel({ provider: '', model: 'gpt-4o' })).toThrow('non-empty')
+    expect(() => normalizeModel({ provider: 'openai', model: '' })).toThrow('non-empty')
   })
 })
 

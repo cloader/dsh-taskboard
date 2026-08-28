@@ -18,6 +18,7 @@ import {
   normalizeBody,
   type ExecutionRecord,
   type IsolationMode,
+  type TaskModel,
   type TaskRecord,
 } from '../shared/protocol.ts'
 import { sanitizeBranchName, worktreePathOf, type GitFace, type SettlementFacts } from './git.ts'
@@ -32,7 +33,7 @@ export interface AgentsFace {
   create(options: {
     sessionId: string
     meta?: { cwd?: string; agentPreset?: string }
-    agentOptions?: { provider?: string; model?: string }
+    agentOptions?: { provider?: string; model?: string; reasoningEffort?: string }
     /** Preset composition callback: mounts tools/persona into the agent's scoped context. */
     setup?: (agentCtx: unknown) => Promise<void> | void
   }): Promise<{
@@ -77,7 +78,7 @@ export interface ExecutionDeps {
   events: EventsFace
   now: () => number
   /** The deployment default model (fills sessions of unpinned tasks). */
-  defaultModel?: () => { provider: string; model: string } | undefined
+  defaultModel?: () => TaskModel | undefined
   /** Mint session ids (injectable for tests). */
   mintSessionId?: () => string
   /** Mint message ids (injectable for tests). */
@@ -404,7 +405,13 @@ export class ExecutionService {
           cwd: workspace.path,
           ...(composition !== undefined ? { agentPreset: composition.agentPreset } : {}),
         },
-        ...(model !== undefined ? { agentOptions: { provider: model.provider, model: model.model } } : {}),
+        ...(model !== undefined ? {
+          agentOptions: {
+            provider: model.provider,
+            model: model.model,
+            ...(model.reasoningEffort !== undefined ? { reasoningEffort: model.reasoningEffort } : {}),
+          },
+        } : {}),
         ...(composition !== undefined ? { setup: composition.setup } : {}),
       })
     } catch (error) {

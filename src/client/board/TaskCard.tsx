@@ -91,7 +91,14 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
         {task.execution.mode === 'scheduled' && (
           <span className="dsh-atb-badge" data-kind="scheduled">⏰ {fmtTime(task.execution.nextRunAt)}</span>
         )}
-        {task.model !== undefined && <span className="dsh-atb-badge">{task.model.model}</span>}
+        {task.model !== undefined && (
+          <span
+            className="dsh-atb-badge"
+            title={`固定模型: ${task.model.provider}/${task.model.model}${task.model.reasoningEffort !== undefined ? ` · 思考强度: ${task.model.reasoningEffort}` : ''}`}
+          >
+            {task.model.model}{task.model.reasoningEffort !== undefined ? ` (${task.model.reasoningEffort})` : ''}
+          </span>
+        )}
         {task.checklist !== undefined && task.checklist.length > 0 && (
           <span
             className="dsh-atb-badge"

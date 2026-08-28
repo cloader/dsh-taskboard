@@ -37,8 +37,8 @@ function duration(startedAt: number | undefined, endedAt: number | undefined): s
 }
 
 /** Small labelled meta chip. */
-function Chip({ icon, children, tone }: { icon?: string; children: ReactNode; tone?: string }) {
-  return <span className="dsh-atb-chip2" data-tone={tone}>{icon !== undefined && <span className="dsh-atb-chip2-icon">{icon}</span>}{children}</span>
+function Chip({ icon, children, tone, title }: { icon?: string; children: ReactNode; tone?: string; title?: string }) {
+  return <span className="dsh-atb-chip2" data-tone={tone} title={title}>{icon !== undefined && <span className="dsh-atb-chip2-icon">{icon}</span>}{children}</span>
 }
 
 /** The most recent execution carrying isolation facts, newest first. */
@@ -408,7 +408,14 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
           <div className="dsh-atb-detail-chips">
             <Chip tone={task.urgency}>● {URGENCY_LABEL[task.urgency] ?? task.urgency}</Chip>
             <Chip icon="📁">{ws?.title ?? shortId(task.workspaceId)}</Chip>
-            {task.model !== undefined && <Chip icon="✦">{task.model.model}</Chip>}
+            {task.model !== undefined && (
+              <Chip
+                icon="✦"
+                title={`固定模型: ${task.model.provider}/${task.model.model}${task.model.reasoningEffort !== undefined ? ` · 思考强度: ${task.model.reasoningEffort}` : ''}`}
+              >
+                {task.model.model}{task.model.reasoningEffort !== undefined ? ` · ${task.model.reasoningEffort}` : ''}
+              </Chip>
+            )}
             {task.presetId !== undefined && <Chip icon="🎛" >{task.presetId}</Chip>}
             {task.execution.mode === 'scheduled' && (
               <Chip icon="⏰">{task.execution.cron} · 下次 {fmtTime(task.execution.nextRunAt)}</Chip>

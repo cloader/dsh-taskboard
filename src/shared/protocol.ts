@@ -378,6 +378,8 @@ export type ExecutionRecord = {
 export type TaskModel = {
   provider: string
   model: string
+  /** Thinking intensity / reasoning effort (optional; e.g. 'low', 'medium', 'high', 'none'). */
+  reasoningEffort?: string
 }
 
 /** One task on the board. */
@@ -638,8 +640,8 @@ export function syncClaim(task: TaskRecord, to: TaskStatus, now: number, holder?
 }
 
 /**
- * Validate and normalize a pinned model: `{ provider, model }`, both
- * non-empty trimmed strings.
+ * Validate and normalize a pinned model: `{ provider, model, reasoningEffort? }`,
+ * provider and model must be non-empty trimmed strings.
  * @param raw - the raw input.
  * @returns the normalized model.
  * @throws when the shape or the fields are invalid.
@@ -648,7 +650,7 @@ export function normalizeModel(raw: unknown): TaskModel {
   if (typeof raw !== 'object' || raw === null) {
     throw new Error('model must be { provider: string, model: string }')
   }
-  const { provider, model } = raw as { provider?: unknown; model?: unknown }
+  const { provider, model, reasoningEffort } = raw as { provider?: unknown; model?: unknown; reasoningEffort?: unknown }
   if (typeof provider !== 'string' || typeof model !== 'string') {
     throw new Error('model must be { provider: string, model: string }')
   }
@@ -657,7 +659,8 @@ export function normalizeModel(raw: unknown): TaskModel {
   if (p.length === 0 || m.length === 0) {
     throw new Error('model.provider and model.model must be non-empty strings')
   }
-  return { provider: p, model: m }
+  const eff = typeof reasoningEffort === 'string' && reasoningEffort.trim().length > 0 ? reasoningEffort.trim() : undefined
+  return { provider: p, model: m, ...(eff !== undefined ? { reasoningEffort: eff } : {}) }
 }
 
 // ---------------------------------------------------------------------------

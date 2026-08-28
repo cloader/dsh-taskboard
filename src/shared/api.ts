@@ -5,9 +5,9 @@
  *
  * @module dsh-taskboard/shared/api
  */
-import type { BoardSettings, TaskLedger, TaskRecord, TaskSummary } from './protocol.ts'
+import type { BoardSettings, TaskLedger, TaskModel, TaskRecord, TaskSummary } from './protocol.ts'
 
-export type { TaskRecord }
+export type { TaskModel, TaskRecord }
 
 /** Route prefix on the shared DSH webserver (same origin as the GUI). */
 export const ROUTE_PREFIX = '/dsh-taskboard'
@@ -51,7 +51,7 @@ export type CreateTaskBody = {
   description?: string
   prompt?: string
   execution?: { mode?: string; cron?: string }
-  model?: { provider: string; model: string }
+  model?: TaskModel
   /** Code isolation for executions ('worktree' | 'none'); omitted = default. */
   isolation?: string
   /** Agent preset for execution sessions; omitted = deployment default. */
@@ -71,7 +71,7 @@ export type UpdateTaskBody = {
   /** Rebind the task to another project (GUI owner surface only). */
   workspaceId?: string
   execution?: { mode?: string; cron?: string }
-  model?: { provider: string; model: string } | null
+  model?: TaskModel | null
   /** Change isolation; locked once the task has execution history. */
   isolation?: string
   /** Change the execution preset (takes effect on the next run). */
@@ -130,7 +130,7 @@ export type TaskTemplateSpec = {
   prompt?: string
   urgency?: string
   execution?: { mode?: string; cron?: string }
-  model?: { provider: string; model: string }
+  model?: TaskModel
   isolation?: string
   presetId?: string
   /** Checklist item texts (host mints ids at create time). */

@@ -16,7 +16,51 @@ import { MAX_CHECKLIST_ITEMS, defaultIsolationOf, nextCronTime, parseCron } from
 import { fmtTime } from './format.ts'
 
 /** One row of the configured model catalog (from llm.models). */
-export interface CatalogModel { provider: string; model: string; name?: string }
+export interface CatalogModel {
+  provider: string
+  model: string
+  name?: string
+  reasoning?: {
+    efforts: Array<{ id: string; name: string; description?: string }>
+    defaultEffort?: string
+  }
+}
+
+/** Local storage key for remembering the last selected model in create mode. */
+export const LAST_MODEL_KEY = 'dsh-taskboard-last-model-v1'
+
+/** Read the remembered model from localStorage. */
+export function loadLastModel(): { provider: string; model: string; reasoningEffort?: string } | undefined {
+  try {
+    const raw = localStorage.getItem(LAST_MODEL_KEY)
+    if (raw === null) return undefined
+    const parsed = JSON.parse(raw) as unknown
+    if (typeof parsed === 'object' && parsed !== null) {
+      const { provider, model, reasoningEffort } = parsed as { provider?: unknown; model?: unknown; reasoningEffort?: unknown }
+      if (typeof provider === 'string' && typeof model === 'string' && provider.trim().length > 0 && model.trim().length > 0) {
+        return {
+          provider: provider.trim(),
+          model: model.trim(),
+          ...(typeof reasoningEffort === 'string' && reasoningEffort.trim().length > 0 ? { reasoningEffort: reasoningEffort.trim() } : {}),
+        }
+      }
+    }
+    return undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Save the remembered model to localStorage. */
+export function saveLastModel(model?: { provider: string; model: string; reasoningEffort?: string }): void {
+  try {
+    if (model === undefined) {
+      localStorage.removeItem(LAST_MODEL_KEY)
+    } else {
+      localStorage.setItem(LAST_MODEL_KEY, JSON.stringify(model))
+    }
+  } catch { /* storage unavailable */ }
+}
 
 /** Urgency segmented options with a one-line hint each. */
 const URGENCY_OPTIONS: ReadonlyArray<{ value: Urgency; label: string; hint: string }> = [
@@ -126,7 +170,12 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
   const [mode, setMode] = useState<'claim' | 'scheduled'>(task?.execution.mode === 'scheduled' || prefill?.execution?.mode === 'scheduled' ? 'scheduled' : 'claim')
   const [cron, setCron] = useState(task?.execution.cron ?? prefill?.execution?.cron ?? '0 9 * * *')
   const [catalog, setCatalog] = useState<CatalogModel[]>([])
-  const [model, setModel] = useState(task?.model !== undefined || prefill?.model !== undefined ? JSON.stringify(task?.model ?? prefill?.model) : '')
+
+  // Model & reasoning effort selection:
+  // In create mode (when not pinned by template), prefill from remembered last choice.
+  const initialModel = task?.model ?? prefill?.model ?? (!editing ? loadLastModel() : undefined)
+  const [model, setModel] = useState(initialModel !== undefined ? JSON.stringify({ provider: initialModel.provider, model: initialModel.model }) : '')
+  const [reasoningEffort, setReasoningEffort] = useState(initialModel?.reasoningEffort ?? '')
   // Preset roster (0.3.3): create mode PRE-SELECTS the deployment default
   // (标准模式 in this deployment); '' = 跟随部署默认 (submit omits the field).
   const initialPreset = task?.presetId ?? prefill?.presetId ?? ''
@@ -215,9 +264,24 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
   /** Checklist rows with non-empty text (blank rows are dropped on submit). */
   const filledRows = (): CheckRow[] => checkRows.map(r => ({ ...r, text: r.text.trim() })).filter(r => r.text.length > 0)
 
+  const parsedModel = model !== '' ? (JSON.parse(model) as { provider: string; model: string }) : undefined
+  const currentCatalogModel = parsedModel !== undefined ? catalog.find(m => m.provider === parsedModel.provider && m.model === parsedModel.model) : undefined
+  const modelReasoning = currentCatalogModel?.reasoning
+
+  const buildPickedModel = (): { provider: string; model: string; reasoningEffort?: string } | undefined => {
+    if (parsedModel === undefined) return undefined
+    const eff = reasoningEffort.trim()
+    return {
+      provider: parsedModel.provider,
+      model: parsedModel.model,
+      ...(eff.length > 0 ? { reasoningEffort: eff } : {}),
+    }
+  }
+
   const submit = (): void => {
     if (!valid || busy) return
-    const picked = model !== '' ? (JSON.parse(model) as { provider: string; model: string }) : undefined
+    const picked = buildPickedModel()
+    if (!editing) saveLastModel(picked)
     const isolationOut = isolationPayload()
     const presetOut = presetPayload()
     const rows = filledRows()
@@ -255,7 +319,8 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
   /** Save the form, then immediately trigger a manual run of the task. */
   const submitAndRun = (): void => {
     if (!valid || runBlocked || busy) return
-    const picked = model !== '' ? (JSON.parse(model) as { provider: string; model: string }) : undefined
+    const picked = buildPickedModel()
+    if (!editing) saveLastModel(picked)
     const isolationOut = isolationPayload()
     const presetOut = presetPayload()
     const rows = filledRows()
@@ -325,7 +390,24 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
           </Field>
 
           <Field label="模型（默认 = 会话默认模型）">
-            <select value={model} onChange={e => setModel(e.target.value)}>
+            <select
+              value={model}
+              onChange={e => {
+                const val = e.target.value
+                setModel(val)
+                if (val === '') {
+                  setReasoningEffort('')
+                } else {
+                  const pm = JSON.parse(val) as { provider: string; model: string }
+                  const cm = catalog.find(m => m.provider === pm.provider && m.model === pm.model)
+                  if (cm?.reasoning?.defaultEffort !== undefined) {
+                    setReasoningEffort(cm.reasoning.defaultEffort)
+                  } else {
+                    setReasoningEffort('')
+                  }
+                }
+              }}
+            >
               <option value="">默认模型</option>
               {catalog.map(m => (
                 <option key={`${m.provider}/${m.model}`} value={JSON.stringify({ provider: m.provider, model: m.model })}>
@@ -334,6 +416,32 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
               ))}
             </select>
           </Field>
+
+          {parsedModel !== undefined && (
+            <Field label="思考强度（Reasoning Effort）">
+              <select
+                value={reasoningEffort}
+                onChange={e => setReasoningEffort(e.target.value)}
+                title="设置模型的思考强度（如 low/medium/high）；默认 = 跟随模型/提供商默认"
+              >
+                <option value="">跟随模型默认{modelReasoning?.defaultEffort !== undefined ? `（当前：${modelReasoning.efforts.find(ef => ef.id === modelReasoning.defaultEffort)?.name ?? modelReasoning.defaultEffort}）` : ''}</option>
+                {modelReasoning !== undefined && modelReasoning.efforts.length > 0 ? (
+                  modelReasoning.efforts.map(eff => (
+                    <option key={eff.id} value={eff.id}>
+                      {eff.name}{eff.description ? ` (${eff.description})` : ''}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="low">低 (low)</option>
+                    <option value="medium">中 (medium)</option>
+                    <option value="high">高 (high)</option>
+                    <option value="none">关闭思考 (none)</option>
+                  </>
+                )}
+              </select>
+            </Field>
+          )}
 
           {presets.length > 0 && (
             <Field label="执行模式（preset）">
@@ -484,7 +592,7 @@ interface TaskRecordLike {
   workspaceId: string
   urgency: Urgency
   execution: { mode: 'claim' | 'scheduled'; cron?: string }
-  model?: { provider: string; model: string }
+  model?: { provider: string; model: string; reasoningEffort?: string }
   isolation?: IsolationMode
   presetId?: string
   checklist?: ChecklistItem[]

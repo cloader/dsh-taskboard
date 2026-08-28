@@ -114,7 +114,15 @@ export class BoardController {
   private sessionJumper: ((sessionId: string) => Promise<SessionJumpResult>) | undefined
   /** Composer catalog faces, installed formally by the client entry (T13). */
   private readonly catalogFaces: {
-    models?: () => Promise<Array<{ provider: string; model: string; name?: string }>>
+    models?: () => Promise<Array<{
+      provider: string
+      model: string
+      name?: string
+      reasoning?: {
+        efforts: Array<{ id: string; name: string; description?: string }>
+        defaultEffort?: string
+      }
+    }>>
     presets?: () => Promise<{ presets: Array<{ id: string; name?: string }>; defaultId?: string }>
   } = {}
 
@@ -278,7 +286,15 @@ export class BoardController {
   }
 
   /** T13: formal installers for the composer catalog faces (was a monkeypatch from the client entry). */
-  installModelCatalog(fn: () => Promise<Array<{ provider: string; model: string; name?: string }>>): void {
+  installModelCatalog(fn: () => Promise<Array<{
+    provider: string
+    model: string
+    name?: string
+    reasoning?: {
+      efforts: Array<{ id: string; name: string; description?: string }>
+      defaultEffort?: string
+    }
+  }>>): void {
     this.catalogFaces.models = fn
   }
 
@@ -288,7 +304,15 @@ export class BoardController {
   }
 
   /** The installed model catalog face, when the runtime provides one. */
-  get modelCatalog(): (() => Promise<Array<{ provider: string; model: string; name?: string }>>) | undefined {
+  get modelCatalog(): (() => Promise<Array<{
+    provider: string
+    model: string
+    name?: string
+    reasoning?: {
+      efforts: Array<{ id: string; name: string; description?: string }>
+      defaultEffort?: string
+    }
+  }>>) | undefined {
     return this.catalogFaces.models
   }
 

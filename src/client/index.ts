@@ -28,7 +28,25 @@ export const inject = ['connection']
 interface ConnectionFace {
   api: {
     llm: {
-      models(payload: Record<string, never>): Promise<{ result: { ok: true; value: { groups: Array<{ id: string; name: string; models: Array<{ id: string; name?: string }> }> } } | { ok: false } }>
+      models(payload: Record<string, never>): Promise<{
+        result: {
+          ok: true
+          value: {
+            groups: Array<{
+              id: string
+              name: string
+              models: Array<{
+                id: string
+                name?: string
+                reasoning?: {
+                  efforts: Array<{ id: string; name: string; description?: string }>
+                  defaultEffort?: string
+                }
+              }>
+            }>
+          }
+        } | { ok: false }
+      }>
     }
     agentPresets?: {
       list(payload: Record<string, never>): Promise<{ result: { ok: true; value: { presets: Array<{ id: string; name?: string; isDefault: boolean }> } } | { ok: false } }>
@@ -43,8 +61,8 @@ interface ClientContextFace {
 }
 
 /**
- * Mount the client half.
- * @param ctx - the client context (connection injected).
+ * Client entry: installs styles, starts the controller, mounts DOM seats.
+ * @param ctx - the cordis client context.
  */
 export function apply(ctx: ClientContextFace): void {
   try {
@@ -57,14 +75,27 @@ export function apply(ctx: ClientContextFace): void {
     // monkeypatched instance properties).
     const connection = ctx.get?.('connection') as ConnectionFace | undefined
     if (connection !== undefined) {
-      type CatalogRow = { provider: string; model: string; name?: string }
+      type CatalogRow = {
+        provider: string
+        model: string
+        name?: string
+        reasoning?: {
+          efforts: Array<{ id: string; name: string; description?: string }>
+          defaultEffort?: string
+        }
+      }
       controller.installModelCatalog(async (): Promise<CatalogRow[]> => {
         const response = await connection.api.llm.models({})
         if (!response.result.ok) return []
         const out: CatalogRow[] = []
         for (const group of response.result.value.groups) {
           for (const model of group.models) {
-            out.push({ provider: group.id, model: model.id, name: model.name })
+            out.push({
+              provider: group.id,
+              model: model.id,
+              name: model.name,
+              ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {}),
+            })
           }
         }
         return out

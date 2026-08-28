@@ -1833,4 +1833,111 @@ describe('client half', () => {
     controller.dispose()
     localStorage.clear()
   })
+
+  it('TaskFormModal: remembers last chosen model and supports reasoningEffort', async () => {
+    localStorage.clear()
+    const React = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { TaskFormModal, LAST_MODEL_KEY, saveLastModel } = await import('../src/client/board/TaskFormModal.tsx')
+
+    // 1. Pre-seed localStorage with last model
+    saveLastModel({ provider: 'deepseek', model: 'deepseek-reasoner', reasoningEffort: 'high' })
+
+    const createdPayloads: unknown[] = []
+    const client = {
+      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [] }),
+      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
+      create: async (body: unknown) => {
+        createdPayloads.push(body)
+        return { id: 't-new', version: 1 }
+      },
+      stream: () => () => {},
+    }
+    const controller = new BoardController(client as never)
+    controller.installModelCatalog(async () => [
+      {
+        provider: 'deepseek',
+        model: 'deepseek-reasoner',
+        name: 'DeepSeek Reasoner',
+        reasoning: {
+          efforts: [
+            { id: 'low', name: '低 (Low)' },
+            { id: 'medium', name: '中 (Medium)' },
+            { id: 'high', name: '高 (High)' },
+          ],
+          defaultEffort: 'medium',
+        },
+      },
+      {
+        provider: 'openai',
+        model: 'gpt-4o',
+        name: 'GPT-4o',
+      },
+    ])
+    controller.start()
+    await new Promise(r => setTimeout(r, 10))
+
+    // 2. Open TaskFormModal in create mode
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    controller.setComposer(true)
+    root.render(React.createElement(TaskFormModal, { controller }))
+    await new Promise(r => setTimeout(r, 50))
+
+    // Verify Title input and pre-filled Model & Reasoning select
+    const titleInput = host.querySelector<HTMLInputElement>('input[placeholder="一句话说清要做什么"]')!
+    expect(titleInput).not.toBeNull()
+    const selects = host.querySelectorAll('select')
+    // Select 0: Workspace, Select 1: Model, Select 2: Reasoning Effort
+    const modelSelect = selects[1] as HTMLSelectElement
+    expect(modelSelect.value).toBe(JSON.stringify({ provider: 'deepseek', model: 'deepseek-reasoner' }))
+
+    const effortSelect = selects[2] as HTMLSelectElement
+    expect(effortSelect).not.toBeNull()
+    expect(effortSelect.value).toBe('high')
+
+    // Change Title and Submit
+    const titleSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    titleSetter?.call(titleInput, 'My new reasoning task')
+    titleInput.dispatchEvent(new Event('input', { bubbles: true }))
+    titleInput.dispatchEvent(new Event('change', { bubbles: true }))
+
+    // Change effort to 'low'
+    const selectSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set
+    selectSetter?.call(effortSelect, 'low')
+    effortSelect.dispatchEvent(new Event('change', { bubbles: true }))
+
+    await new Promise(r => setTimeout(r, 20))
+
+    // Click submit button (创建任务)
+    const submitBtn = Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-modal-footbtns .dsh-atb-btn'))
+      .find(b => b.textContent === '创建任务')!
+    expect(submitBtn).not.toBeNull()
+    expect(submitBtn.disabled).toBe(false)
+    submitBtn.click()
+    await new Promise(r => setTimeout(r, 30))
+
+    expect(createdPayloads).toHaveLength(1)
+    const payload = createdPayloads[0] as { title: string; model?: { provider: string; model: string; reasoningEffort?: string } }
+    expect(payload.title).toBe('My new reasoning task')
+    expect(payload.model).toEqual({
+      provider: 'deepseek',
+      model: 'deepseek-reasoner',
+      reasoningEffort: 'low',
+    })
+
+    // Verify localStorage was updated to the new choice
+    expect(JSON.parse(localStorage.getItem(LAST_MODEL_KEY)!)).toEqual({
+      provider: 'deepseek',
+      model: 'deepseek-reasoner',
+      reasoningEffort: 'low',
+    })
+
+    root.unmount()
+    host.remove()
+    controller.dispose()
+    localStorage.clear()
+  })
 })

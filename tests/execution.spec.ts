@@ -55,13 +55,13 @@ const fakeAgentsState = { failNext: false }
 
 /** Capturing agents fake: records create options, injected + followup messages, disposals. */
 function fakeAgents(): AgentsFace & {
-  created: Array<{ sessionId: string; cwd?: string; agentPreset?: string; setup?: unknown; agentOptions?: { provider?: string; model?: string } }>
+  created: Array<{ sessionId: string; cwd?: string; agentPreset?: string; setup?: unknown; agentOptions?: { provider?: string; model?: string; reasoningEffort?: string } }>
   followups: unknown[]
   injects: unknown[]
   idle: (sessionId?: string) => void
   disposedSessions: string[]
 } {
-  const created: Array<{ sessionId: string; cwd?: string; agentPreset?: string; setup?: unknown; agentOptions?: { provider?: string; model?: string } }> = []
+  const created: Array<{ sessionId: string; cwd?: string; agentPreset?: string; setup?: unknown; agentOptions?: { provider?: string; model?: string; reasoningEffort?: string } }> = []
   const followups: unknown[] = []
   const injects: unknown[] = []
   const disposedSessions: string[] = []
@@ -75,7 +75,7 @@ function fakeAgents(): AgentsFace & {
       if (sessionId !== undefined) idles.get(sessionId)?.()
       else for (const resolve of idles.values()) resolve()
     },
-    async create(options: { sessionId: string; meta?: { cwd?: string; agentPreset?: string }; setup?: (agentCtx: unknown) => Promise<void> | void; agentOptions?: { provider?: string; model?: string } }) {
+    async create(options: { sessionId: string; meta?: { cwd?: string; agentPreset?: string }; setup?: (agentCtx: unknown) => Promise<void> | void; agentOptions?: { provider?: string; model?: string; reasoningEffort?: string } }) {
       if (fakeAgentsState.failNext) {
         fakeAgentsState.failNext = false
         throw new Error('provider has no adapter')
@@ -274,6 +274,23 @@ describe('ExecutionService', () => {
     expect(t.comments).toHaveLength(1)
     expect(t.comments[0]!.body).toContain('[系统]')
     expect(t.comments[0]!.body).toContain('未按协议交接')
+  })
+
+  it('passes pinned model and reasoningEffort to agents.create', async () => {
+    const store = await storeWith(task({
+      model: { provider: 'deepseek', model: 'deepseek-reasoner', reasoningEffort: 'high' },
+    }))
+    const agents = fakeAgents()
+    const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: () => 1_000 })
+    const result = await svc.run('t-run', 'manual')
+    if (!result.ok) throw new Error('run failed')
+    expect(agents.created).toHaveLength(1)
+    expect(agents.created[0]!.agentOptions).toEqual({
+      provider: 'deepseek',
+      model: 'deepseek-reasoner',
+      reasoningEffort: 'high',
+    })
+    agents.idle()
   })
 
   it('notes a lighter system comment when the session commented but did not move', async () => {
