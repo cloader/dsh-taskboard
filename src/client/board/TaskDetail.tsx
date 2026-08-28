@@ -378,6 +378,8 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
   const holder = task.status === 'in_progress' ? task.claimedBy : undefined
   const stale = now !== undefined && isStaleClaim(task, now)
   const unchecked = (task.checklist ?? []).filter(i => !i.checked).length
+  const sessionExecution = [...task.executions].reverse().find(e => e.sessionId !== undefined)
+  const targetSessionId = runningExecution?.sessionId ?? sessionExecution?.sessionId ?? (task.claimedBy?.startsWith('session-') ? task.claimedBy : undefined)
 
   /** Fire one top action under the shared busy guard; re-enable on settle. */
   const runAction = (action: () => Promise<unknown>): void => {
@@ -422,9 +424,16 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
             )}
             {(task.isolation === undefined || task.isolation === 'worktree') && task.branch === undefined && <Chip icon="🌿">Worktree 隔离</Chip>}
             {holder !== undefined && (
-              <Chip icon={stale ? '⏱' : '🔑'} tone={stale ? 'urgent' : undefined}>
-                {stale ? '认领超时 · ' : '由 '}{shortId(holder)} 持有
-              </Chip>
+              <button
+                type="button"
+                className="dsh-atb-chip2 dsh-atb-chip-btn"
+                data-tone={stale ? 'urgent' : undefined}
+                title={`点击跳转至该会话：${holder}`}
+                onClick={() => jumpToSession(holder)}
+              >
+                <span className="dsh-atb-chip2-icon">{stale ? '⏱' : '🤖'}</span>
+                {stale ? '认领超时 · ' : '由 '}{shortId(holder)} 持有 ↗
+              </button>
             )}
             {task.trashedAt !== undefined && <Chip icon="🗑" tone="urgent">已删除待清除</Chip>}
             <Chip>v{task.version}</Chip>
@@ -434,6 +443,16 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
           </div>
         </div>
         <div className="dsh-atb-detail-topbtns">
+          {targetSessionId !== undefined && (
+            <button
+              type="button"
+              className="dsh-atb-detail-session"
+              title={`一键跳转到对应会话：${targetSessionId}`}
+              onClick={() => jumpToSession(targetSessionId)}
+            >
+              🤖 跳转会话 ↗
+            </button>
+          )}
           <button type="button" className="dsh-atb-detail-edit" onClick={() => controller.openEditor(task.id)}>✎ 编辑</button>
           <button
             type="button"

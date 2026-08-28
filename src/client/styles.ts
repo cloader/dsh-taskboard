@@ -172,6 +172,19 @@ html[data-dsh-atb-active] .dsh-atb-view { display: flex; flex-direction: column;
 .dsh-atb-badge[data-kind="trashed"] { background: rgba(229,72,77,.14); color: #e5484d; text-decoration: line-through; }
 .dsh-atb-badge[data-kind="done"] { background: rgba(46,160,67,.16); color: #2ea043; }
 .dsh-atb-badge[data-kind="running"] { background: rgba(229,152,42,.16); color: #e69842; }
+.dsh-atb-card-session {
+  font: inherit; font-size: 10.5px; line-height: 1; padding: 2px 6px; border-radius: 5px;
+  border: 1px solid var(--dsw-border, rgba(128,128,128,.3));
+  background: var(--dsw-bg-elevated, rgba(128,128,128,.14));
+  color: var(--dsw-text-secondary, inherit);
+  cursor: pointer; display: inline-flex; align-items: center; gap: 3px;
+  transition: all .15s ease;
+}
+.dsh-atb-card-session:hover {
+  border-color: var(--dsw-alias-brand-primary, #1f2328);
+  background: var(--dsw-hover, rgba(128,128,128,.24));
+  color: var(--dsw-alias-label-primary, inherit);
+}
 
 /* ---------- card quick review (in_review column) ---------- */
 .dsh-atb-quick { display: flex; gap: 6px; margin-top: 7px; }
@@ -219,6 +232,17 @@ html[data-dsh-atb-active] .dsh-atb-view { display: flex; flex-direction: column;
   background: var(--dsw-bg-elevated, rgba(128,128,128,.07)); color: var(--dsw-text-secondary, inherit);
 }
 .dsh-atb-detail-edit:hover { border-color: var(--dsw-alias-brand-primary, #1f2328); color: var(--dsw-alias-label-primary, inherit); }
+.dsh-atb-detail-session {
+  font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--dsw-border, rgba(128,128,128,.32));
+  background: var(--dsw-bg-elevated, rgba(128,128,128,.1));
+  color: var(--dsw-alias-label-primary, inherit);
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.dsh-atb-detail-session:hover {
+  border-color: var(--dsw-alias-brand-primary, #1f2328);
+  background: var(--dsw-hover, rgba(128,128,128,.22));
+}
 
 .dsh-atb-statuspill {
   flex: none; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; letter-spacing: .02em;
@@ -235,6 +259,14 @@ html[data-dsh-atb-active] .dsh-atb-view { display: flex; flex-direction: column;
   display: inline-flex; align-items: center; gap: 4px; font-size: 11px; line-height: 1;
   padding: 3px 8px; border-radius: 6px;
   background: var(--dsw-bg-inset, rgba(128,128,128,.09)); color: var(--dsw-text-secondary, #999);
+}
+button.dsh-atb-chip2.dsh-atb-chip-btn {
+  font: inherit; border: 1px solid var(--dsw-border, rgba(128,128,128,.25)); cursor: pointer;
+}
+button.dsh-atb-chip2.dsh-atb-chip-btn:hover {
+  border-color: var(--dsw-alias-brand-primary, #1f2328);
+  color: var(--dsw-alias-label-primary, inherit);
+  background: var(--dsw-hover, rgba(128,128,128,.2));
 }
 .dsh-atb-chip2-icon { font-size: 10.5px; opacity: .85; }
 .dsh-atb-chip2[data-tone="urgent"] { background: rgba(229,72,77,.15); color: #e5484d; }

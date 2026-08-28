@@ -20,6 +20,12 @@ import { OUTCOME_LABEL, URGENCY_LABEL } from './labels.ts'
 /** dataTransfer type carrying the dragged task id. */
 export const DRAG_TYPE = 'application/x-dsh-atb-task'
 
+/** Compact session-id display (execution sessions carry the taskboard infix). */
+function shortId(id: string | undefined): string {
+  if (id === undefined) return ''
+  return id.replace(/^session-(taskboard-)?/, '').slice(0, 8)
+}
+
 /**
  * The card view.
  * @param task - the task record.
@@ -35,6 +41,8 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
   const running = task.executions.find(ex => ex.outcome === 'running')
   const stale = now !== undefined && isStaleClaim(task, now)
   const reviewing = task.status === 'in_review' && task.trashedAt === undefined
+  const sessionExecution = [...task.executions].reverse().find(ex => ex.sessionId !== undefined)
+  const targetSessionId = running?.sessionId ?? sessionExecution?.sessionId ?? (task.claimedBy?.startsWith('session-') ? task.claimedBy : undefined)
 
   /** Submit the quick-reject: one atomic route (move + optional note). */
   const submitReject = (): void => {
@@ -98,6 +106,33 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
           <span className="dsh-atb-badge" data-kind={last.outcome === 'running' ? 'running' : last.outcome}>
             {OUTCOME_LABEL[last.outcome] ?? last.outcome}
           </span>
+        )}
+        {targetSessionId !== undefined && (
+          <button
+            type="button"
+            className="dsh-atb-card-session"
+            title={`点击一键跳转到会话：${targetSessionId}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              void controller.openSession(targetSessionId).then(result => {
+                if (result === 'missing') {
+                  const msg = `该会话已被删除（${shortId(targetSessionId)}），无法打开`
+                  if (onAlert !== undefined) onAlert(msg)
+                  else alert(msg)
+                } else if (result === 'archived') {
+                  const msg = `该会话已归档（${shortId(targetSessionId)}），已从会话列表隐藏`
+                  if (onAlert !== undefined) onAlert(msg)
+                  else alert(msg)
+                } else if (result === 'unavailable') {
+                  const msg = `会话导航不可用，会话 ID：${targetSessionId}`
+                  if (onAlert !== undefined) onAlert(msg)
+                  else alert(msg)
+                }
+              })
+            }}
+          >
+            🤖 {shortId(targetSessionId)} ↗
+          </button>
         )}
         {task.comments.length > 0 && <span>💬 {task.comments.length}</span>}
         {task.trashedAt !== undefined && <span className="dsh-atb-badge" data-kind="trashed">待清除</span>}
