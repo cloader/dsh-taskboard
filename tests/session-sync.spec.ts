@@ -191,4 +191,39 @@ describe('ExternalSessionSyncService (0.5.4)', () => {
 
     h.dispose()
   })
+
+  it('ignores subagent sessions across all subagent identification signals (0.5.5)', async () => {
+    const h = await createHarness({ syncExternalSessions: true })
+
+    // 1. By sessionId prefix
+    await h.emit('subagent-child-1', { type: 'turn/start', data: { turn: 1 } }, { header: { cwd: '/proj/a' } })
+    await h.emit('subagent-child-1', { type: 'user/message', data: { content: 'Subagent prompt' } })
+    await h.emit('subagent-child-1', { type: 'turn/end', data: { turn: 1, reason: 'stop' } })
+    expect(h.store.snapshot().tasks).toHaveLength(0)
+
+    // 2. By header origin & parentSession
+    await h.emit(
+      'sess-custom-sub-2',
+      { type: 'turn/start', data: { turn: 1 } },
+      { header: { cwd: '/proj/a', origin: 'subagent', parentSession: 'sess-parent-main' } as never },
+    )
+    await h.emit('sess-custom-sub-2', { type: 'user/message', data: { content: 'Do research' } })
+    await h.emit('sess-custom-sub-2', { type: 'turn/end', data: { turn: 1, reason: 'stop' } })
+    expect(h.store.snapshot().tasks).toHaveLength(0)
+
+    // 3. By delegationDepth > 0
+    await h.emit(
+      'sess-custom-sub-3',
+      { type: 'turn/start', data: { turn: 1 } },
+      { header: { cwd: '/proj/a', delegationDepth: 1 } as never },
+    )
+    expect(h.store.snapshot().tasks).toHaveLength(0)
+
+    // 4. By subagent/descriptor event
+    await h.emit('sess-custom-sub-4', { type: 'subagent/descriptor', data: { mode: 'one-shot', provider: 'spawn' } })
+    await h.emit('sess-custom-sub-4', { type: 'turn/start', data: { turn: 1 } }, { header: { cwd: '/proj/a' } })
+    expect(h.store.snapshot().tasks).toHaveLength(0)
+
+    h.dispose()
+  })
 })

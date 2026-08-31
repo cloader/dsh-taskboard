@@ -94,7 +94,7 @@ export function apply(ctx: Context): void {
     // Settlement listener over the session event bus.
     const events: EventsFace = {
       onSessionEvent: (listener) => wsCtx.on('session/event', (session, event) => {
-        listener(session.id, event as { type: string; data?: unknown }, session as { header?: { cwd?: string } })
+        listener(session.id, event as { type: string; data?: unknown }, session as never)
       }),
     }
 

@@ -50,6 +50,72 @@ export function titleFromText(text: string): string {
   return firstLine.slice(0, 50).trim()
 }
 
+/**
+ * Detect whether a session represents a subagent child conversation.
+ * Subagents are created by agent delegation (e.g. invoke_subagent / subagents service)
+ * and should never be automatically converted into user tasks on the taskboard.
+ */
+export function isSubagentSession(
+  sessionId: string,
+  sessionMeta?: unknown,
+  event?: { type: string; data?: unknown },
+): boolean {
+  if (typeof sessionId === 'string') {
+    if (sessionId.startsWith('subagent-') || sessionId.startsWith('child-') || sessionId.startsWith('delegate-')) {
+      return true
+    }
+  }
+
+  if (typeof sessionMeta === 'object' && sessionMeta !== null) {
+    const s = sessionMeta as {
+      header?: Record<string, unknown>
+      meta?: Record<string, unknown>
+      options?: Record<string, unknown>
+    }
+
+    const header = s.header
+    const meta = s.meta
+    const options = s.options
+
+    // Check origin
+    if (header?.origin === 'subagent' || meta?.origin === 'subagent') return true
+
+    // Check parent session lineage
+    if (
+      header?.parentSession !== undefined
+      || header?.parentSessionId !== undefined
+      || meta?.parentSession !== undefined
+      || meta?.parentSessionId !== undefined
+    ) {
+      return true
+    }
+
+    // Check delegation depth
+    if (typeof header?.delegationDepth === 'number' && header.delegationDepth > 0) return true
+    if (typeof meta?.delegationDepth === 'number' && meta.delegationDepth > 0) return true
+    if (typeof options?.subagentDepth === 'number' && options.subagentDepth > 0) return true
+  }
+
+  if (event !== undefined) {
+    if (event.type === 'subagent/descriptor' || event.type === 'subagent/start' || event.type === 'subagent/end') {
+      return true
+    }
+    if (typeof event.data === 'object' && event.data !== null) {
+      const d = event.data as Record<string, unknown>
+      if (
+        d.origin === 'subagent'
+        || d.subagent === true
+        || typeof d.subagentId === 'string'
+        || typeof d.parentSession === 'string'
+      ) {
+        return true
+      }
+    }
+  }
+
+  return false
+}
+
 /** Dependencies required by the external session sync service. */
 export interface SessionSyncDeps {
   store: TaskStore
@@ -63,6 +129,7 @@ export interface SessionSyncDeps {
  */
 export class ExternalSessionSyncService {
   private readonly unsubscribe: () => void
+  private readonly ignoredSessions = new Set<string>()
 
   constructor(private readonly deps: SessionSyncDeps) {
     this.unsubscribe = deps.events.onSessionEvent((sessionId, event, sessionMeta) => {
@@ -78,12 +145,39 @@ export class ExternalSessionSyncService {
   private async handleSessionEvent(
     sessionId: string,
     event: { type: string; data?: unknown },
-    sessionMeta?: { header?: { cwd?: string } },
+    sessionMeta?: {
+      header?: { cwd?: string; origin?: string; parentSession?: string; parentSessionId?: string; delegationDepth?: number }
+      meta?: { origin?: string; parentSession?: string; delegationDepth?: number }
+      options?: { subagentDepth?: number }
+    },
   ): Promise<void> {
-    // 1. Ignore taskboard's internal execution sessions
-    if (sessionId.startsWith('session-taskboard-')) return
+    // 1. Check if already ignored
+    if (this.ignoredSessions.has(sessionId)) return
 
-    // 2. Check if external session sync is enabled in board settings
+    // 2. Ignore taskboard's internal execution sessions
+    if (sessionId.startsWith('session-taskboard-')) {
+      this.ignoredSessions.add(sessionId)
+      return
+    }
+
+    // 3. Ignore subagent sessions (delegated children)
+    if (isSubagentSession(sessionId, sessionMeta, event)) {
+      this.ignoredSessions.add(sessionId)
+      // If a task was previously created for this subagent before detection, clean it up
+      await this.deps.store.mutate('task-deleted', (ledger) => {
+        const idx = ledger.tasks.findIndex(
+          t => t.claimedBy === sessionId && t.createdBy.kind === 'agent' && t.createdBy.sessionId === sessionId,
+        )
+        if (idx >= 0) {
+          ledger.tasks.splice(idx, 1)
+          return []
+        }
+        return undefined
+      })
+      return
+    }
+
+    // 4. Check if external session sync is enabled in board settings
     const snapshot = this.deps.store.snapshot()
     if (!defaultSyncExternalSessionsOf(snapshot.settings)) return
 
