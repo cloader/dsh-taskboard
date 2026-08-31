@@ -539,7 +539,7 @@ describe('client half', () => {
     expect(saveBtn().disabled).toBe(false)
     saveBtn().click()
     await new Promise(r => setTimeout(r, 20))
-    expect(saved).toEqual([{ defaultIsolation: 'none', syncExternalSessions: true }])
+    expect(saved).toEqual([{ defaultIsolation: 'none', syncExternalSessions: true, defaultPermission: 'workspace-write' }])
 
     root.unmount()
     host.remove()
@@ -1954,6 +1954,91 @@ describe('client half', () => {
       model: 'deepseek-reasoner',
       reasoningEffort: 'low',
     })
+
+    root.unmount()
+    host.remove()
+    controller.dispose()
+    localStorage.clear()
+  })
+
+  it('TaskFormModal: supports permission tri-picker and SlashPromptInput (0.5.5)', async () => {
+    localStorage.clear()
+    const React = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { TaskFormModal } = await import('../src/client/board/TaskFormModal.tsx')
+
+    const createdPayloads: unknown[] = []
+    const clientFake = {
+      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [] }),
+      workspaces: async () => [{ id: 'ws-a', path: '/proj/a', title: 'A', gitAvailable: true }],
+      create: async (body: unknown) => {
+        createdPayloads.push(body)
+        return { id: 't-perm', title: 'Task with permission', workspaceId: 'ws-a', status: 'todo', version: 1, createdAt: 0, updatedAt: 0 }
+      },
+      update: async () => ({ ok: true }),
+      stream: () => () => {},
+      promptCompletions: async () => ({
+        commands: [{ name: 'goal', kind: 'command' as const, description: '自主完成长期目标' }],
+        skills: [{ name: 'frontend-ui-engineering', kind: 'skill' as const, description: '前端UI工程' }],
+      }),
+    }
+
+    const controller = new BoardController(clientFake as never)
+    controller.start()
+    await new Promise(r => setTimeout(r, 10))
+
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    controller.setComposer(true)
+    root.render(React.createElement(TaskFormModal, { controller }))
+    await new Promise(r => setTimeout(r, 50))
+
+    // Check title input
+    const titleInput = host.querySelector<HTMLInputElement>('input[placeholder="一句话说清要做什么"]')!
+    expect(titleInput).not.toBeNull()
+    const titleSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    titleSetter?.call(titleInput, 'Task with read-only permission')
+    titleInput.dispatchEvent(new Event('input', { bubbles: true }))
+    titleInput.dispatchEvent(new Event('change', { bubbles: true }))
+
+    // Check permission options: default is workspace-write
+    const permOpts = Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-perm-opt'))
+    expect(permOpts.length).toBe(3)
+    expect(permOpts[0]!.textContent).toContain('可写入工作区')
+    expect(permOpts[1]!.textContent).toContain('仅可查看')
+    expect(permOpts[2]!.textContent).toContain('完全权限')
+    expect(permOpts[0]!.dataset.on).toBe('true')
+
+    // Click '仅可查看' (read-only)
+    permOpts[1]!.click()
+    await new Promise(r => setTimeout(r, 20))
+    expect(permOpts[1]!.dataset.on).toBe('true')
+
+    // Find description textarea (SlashPromptInput)
+    const textareas = host.querySelectorAll('textarea')
+    expect(textareas.length).toBe(2)
+    const descTextarea = textareas[0] as HTMLTextAreaElement
+    const textareaSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+    textareaSetter?.call(descTextarea, '使用 /goal 完成任务，包含图片：\n![草图](data:image/png;base64,123)\n')
+    descTextarea.dispatchEvent(new Event('input', { bubbles: true }))
+    descTextarea.dispatchEvent(new Event('change', { bubbles: true }))
+
+    await new Promise(r => setTimeout(r, 20))
+
+    // Submit
+    const submitBtn = Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-modal-footbtns .dsh-atb-btn'))
+      .find(b => b.textContent === '创建任务')!
+    submitBtn.click()
+    await new Promise(r => setTimeout(r, 30))
+
+    expect(createdPayloads).toHaveLength(1)
+    const payload = createdPayloads[0] as { title: string; permission?: string; description?: string }
+    expect(payload.title).toBe('Task with read-only permission')
+    expect(payload.permission).toBe('read-only')
+    expect(payload.description).toContain('/goal')
+    expect(payload.description).toContain('data:image/png;base64,123')
 
     root.unmount()
     host.remove()

@@ -56,6 +56,8 @@ export type CreateTaskBody = {
   isolation?: string
   /** Agent preset for execution sessions; omitted = deployment default. */
   presetId?: string
+  /** Execution permission preset ('workspace-write' | 'read-only' | 'danger-full-access'); omitted = default. */
+  permission?: string
   /** Acceptance checklist item texts (host mints ids, all unchecked). */
   checklist?: string[]
 }
@@ -76,6 +78,8 @@ export type UpdateTaskBody = {
   isolation?: string
   /** Change the execution preset (takes effect on the next run). */
   presetId?: string | null
+  /** Change the execution permission (0.5.5; 'workspace-write' | 'read-only' | 'danger-full-access'). */
+  permission?: string | null
   /** Replace the whole checklist (GUI owner surface); null clears it. */
   checklist?: unknown
 }
@@ -133,6 +137,8 @@ export type TaskTemplateSpec = {
   model?: TaskModel
   isolation?: string
   presetId?: string
+  /** Execution permission preset (0.5.5). */
+  permission?: string
   /** Checklist item texts (host mints ids at create time). */
   checklist?: string[]
 }
@@ -160,6 +166,22 @@ export type UpdateSettingsBody = {
   defaultIsolation?: string
   /** Automatically capture external workspace sessions into the taskboard. */
   syncExternalSessions?: boolean
+  /** Default permission preset for NEW tasks ('workspace-write' | 'read-only' | 'danger-full-access'). */
+  defaultPermission?: string
+}
+
+/** Prompt completion item for skills and slash commands (0.5.5). */
+export type PromptCompletionItem = {
+  name: string
+  kind: 'skill' | 'command'
+  description?: string
+  hint?: string
+}
+
+/** Prompt completions response (0.5.5). */
+export type PromptCompletionsResponse = {
+  commands: PromptCompletionItem[]
+  skills: PromptCompletionItem[]
 }
 
 /** Import dry-run response (0.4.0): every task classified, nothing written. */

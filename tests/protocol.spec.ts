@@ -8,14 +8,18 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
+  ALL_PERMISSIONS,
   ALL_STATUSES,
   DEFAULT_ISOLATION,
+  DEFAULT_PERMISSION,
   MAIN_STATUSES,
   asBoardSettings,
+  asPermission,
   canTransition,
   checklistFromTexts,
   checklistProgress,
   defaultIsolationOf,
+  defaultPermissionOf,
   defaultSyncExternalSessionsOf,
   effectiveIsolation,
   emptyLedger,
@@ -256,13 +260,15 @@ describe('board settings & default isolation (0.5.0)', () => {
     expect(effectiveIsolation({ isolation: 'none' })).toBe('none')
   })
 
-  it('asBoardSettings sanitizes; defaultIsolationOf and defaultSyncExternalSessionsOf resolve setting → factory', () => {
-    expect(asBoardSettings({ defaultIsolation: 'worktree', syncExternalSessions: true, junk: 1 })).toEqual({ defaultIsolation: 'worktree', syncExternalSessions: true })
+  it('asBoardSettings sanitizes; defaultIsolationOf, defaultSyncExternalSessionsOf, and defaultPermissionOf resolve setting → factory', () => {
+    expect(asBoardSettings({ defaultIsolation: 'worktree', syncExternalSessions: true, defaultPermission: 'read-only', junk: 1 })).toEqual({ defaultIsolation: 'worktree', syncExternalSessions: true, defaultPermission: 'read-only' })
     expect(asBoardSettings({ syncExternalSessions: false })).toEqual({ syncExternalSessions: false })
+    expect(asBoardSettings({ defaultPermission: 'fullAccess' })).toEqual({ defaultPermission: 'danger-full-access' })
     expect(asBoardSettings({})).toEqual({})
     expect(() => asBoardSettings({ defaultIsolation: 'docker' })).toThrow("isolation must be")
     expect(() => asBoardSettings({ defaultIsolation: 42 })).toThrow("defaultIsolation must be")
     expect(() => asBoardSettings({ syncExternalSessions: 'yes' })).toThrow("syncExternalSessions must be a boolean")
+    expect(() => asBoardSettings({ defaultPermission: 'super-user' })).toThrow("permission must be")
     expect(() => asBoardSettings(null)).toThrow('object')
     expect(defaultIsolationOf(undefined)).toBe('none')
     expect(defaultIsolationOf({})).toBe('none')
@@ -271,6 +277,22 @@ describe('board settings & default isolation (0.5.0)', () => {
     expect(defaultSyncExternalSessionsOf({})).toBe(false)
     expect(defaultSyncExternalSessionsOf({ syncExternalSessions: true })).toBe(true)
     expect(defaultSyncExternalSessionsOf({ syncExternalSessions: false })).toBe(false)
+    expect(DEFAULT_PERMISSION).toBe('workspace-write')
+    expect(ALL_PERMISSIONS).toEqual(['workspace-write', 'read-only', 'danger-full-access'])
+    expect(defaultPermissionOf(undefined)).toBe('workspace-write')
+    expect(defaultPermissionOf({})).toBe('workspace-write')
+    expect(defaultPermissionOf({ defaultPermission: 'read-only' })).toBe('read-only')
+  })
+
+  it('asPermission normalizes camelCase and kebab-case aliases', () => {
+    expect(asPermission('workspace-write')).toBe('workspace-write')
+    expect(asPermission('workspaceWrite')).toBe('workspace-write')
+    expect(asPermission('read-only')).toBe('read-only')
+    expect(asPermission('readOnly')).toBe('read-only')
+    expect(asPermission('danger-full-access')).toBe('danger-full-access')
+    expect(asPermission('fullAccess')).toBe('danger-full-access')
+    expect(asPermission(undefined)).toBe('workspace-write')
+    expect(() => asPermission('root')).toThrow("permission must be")
   })
 
   it('validateLedgerImport carries sanitized board settings; rejects broken ones', () => {

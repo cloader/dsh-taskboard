@@ -41,6 +41,61 @@ function Chip({ icon, children, tone, title }: { icon?: string; children: ReactN
   return <span className="dsh-atb-chip2" data-tone={tone} title={title}>{icon !== undefined && <span className="dsh-atb-chip2-icon">{icon}</span>}{children}</span>
 }
 
+/** Render markdown text with embedded clickable images and lightbox preview. */
+function MarkdownContent({ text }: { text: string }) {
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+  const regex = /!\[(.*?)\]\(((?:data:image\/[^)]+)|(?:https?:\/\/[^)]+)|(?:[^)]+\.(?:png|jpg|jpeg|gif|webp|svg)))\)/gi
+  const parts: ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  let count = 0
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(<span key={`txt-${lastIndex}`}>{text.slice(lastIndex, match.index)}</span>)
+    }
+    const alt = match[1] || `图片 ${++count}`
+    const url = match[2] ?? ''
+    parts.push(
+      <div key={`img-${match.index}`} className="dsh-atb-detail-img-wrap">
+        <img
+          src={url}
+          alt={alt}
+          className="dsh-atb-detail-img"
+          onClick={() => setLightboxUrl(url)}
+          title={`点击查看大图 (${alt})`}
+        />
+        <span className="dsh-atb-detail-img-caption">{alt}</span>
+      </div>,
+    )
+    lastIndex = regex.lastIndex
+  }
+  if (lastIndex < text.length) {
+    parts.push(<span key={`txt-${lastIndex}`}>{text.slice(lastIndex)}</span>)
+  }
+
+  return (
+    <>
+      <div className="dsh-atb-markdown-body">{parts}</div>
+      {lightboxUrl !== null && (
+        <div className="dsh-atb-lightbox-backdrop" onClick={() => setLightboxUrl(null)}>
+          <div className="dsh-atb-lightbox-content" onClick={e => e.stopPropagation()}>
+            <img src={lightboxUrl} alt="大图预览" className="dsh-atb-lightbox-img" />
+            <button
+              type="button"
+              className="dsh-atb-lightbox-close"
+              title="关闭预览"
+              onClick={() => setLightboxUrl(null)}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 /** The most recent execution carrying isolation facts, newest first. */
 function latestIsolated(task: TaskRecord): ExecutionRecord | undefined {
   return [...task.executions].reverse().find(e => e.isolation !== undefined || e.worktreePath !== undefined || e.isolationNote !== undefined)
@@ -430,6 +485,9 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
               <Chip icon="🌿" tone={undefined}>Worktree · {task.branch.length > 28 ? `${task.branch.slice(0, 28)}…` : task.branch}</Chip>
             )}
             {(task.isolation === undefined || task.isolation === 'worktree') && task.branch === undefined && <Chip icon="🌿">Worktree 隔离</Chip>}
+            {task.permission === 'read-only' && <Chip icon="🔒" tone="urgent">仅可查看</Chip>}
+            {task.permission === 'danger-full-access' && <Chip icon="⚡" tone="urgent">完全权限</Chip>}
+            {(task.permission === 'workspace-write' || task.permission === undefined) && <Chip icon="📁">可写入工作区</Chip>}
             {holder !== undefined && (
               <button
                 type="button"
@@ -530,14 +588,14 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
       {task.description.length > 0 && (
         <div className="dsh-atb-fieldcard">
           <div className="dsh-atb-fieldcard-label">描述</div>
-          <div className="dsh-atb-desc">{task.description}</div>
+          <div className="dsh-atb-desc"><MarkdownContent text={task.description} /></div>
         </div>
       )}
 
       {task.prompt.length > 0 && (
         <div className="dsh-atb-fieldcard" data-kind="prompt">
           <div className="dsh-atb-fieldcard-label">执行 Prompt</div>
-          <div className="dsh-atb-promptbox">{task.prompt}</div>
+          <div className="dsh-atb-promptbox"><MarkdownContent text={task.prompt} /></div>
         </div>
       )}
 

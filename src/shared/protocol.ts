@@ -135,6 +135,30 @@ export function effectiveIsolation(task: Pick<TaskRecord, 'isolation'>): Isolati
 }
 
 /**
+ * Execution permission preset (0.5.5). Matches DSH permission presets:
+ * - 'workspace-write': 可写入工作区 (factory default)
+ * - 'read-only': 仅可查看
+ * - 'danger-full-access': 完全权限
+ */
+export type PermissionMode = 'workspace-write' | 'read-only' | 'danger-full-access'
+
+/** Factory default permission preset (0.5.5). */
+export const DEFAULT_PERMISSION: PermissionMode = 'workspace-write'
+
+/** Canonical list of supported permission modes. */
+export const ALL_PERMISSIONS: readonly PermissionMode[] = ['workspace-write', 'read-only', 'danger-full-access']
+
+/** Validate and normalize a permission string into a valid {@link PermissionMode}. */
+export function asPermission(raw: unknown): PermissionMode {
+  if (typeof raw !== 'string') return DEFAULT_PERMISSION
+  const normalized = raw.trim()
+  if (normalized === 'workspace-write' || normalized === 'workspaceWrite') return 'workspace-write'
+  if (normalized === 'read-only' || normalized === 'readOnly') return 'read-only'
+  if (normalized === 'danger-full-access' || normalized === 'fullAccess') return 'danger-full-access'
+  throw new Error("permission must be 'workspace-write', 'read-only', or 'danger-full-access'")
+}
+
+/**
  * Board-level settings persisted with the ledger (0.5.0). Only fields the
  * user explicitly set are present; absent fields follow factory defaults.
  */
@@ -143,6 +167,8 @@ export type BoardSettings = {
   defaultIsolation?: IsolationMode
   /** Automatically capture external workspace sessions into the taskboard (default: false). */
   syncExternalSessions?: boolean
+  /** Default permission preset applied when a NEW task is created without an explicit choice (0.5.5, default: 'workspace-write'). */
+  defaultPermission?: PermissionMode
 }
 
 /** Validate raw input into sanitized {@link BoardSettings} (unknown fields dropped). */
@@ -164,6 +190,9 @@ export function asBoardSettings(raw: unknown): BoardSettings {
     }
     out.syncExternalSessions = e.syncExternalSessions
   }
+  if (e.defaultPermission !== undefined) {
+    out.defaultPermission = asPermission(e.defaultPermission)
+  }
   return out
 }
 
@@ -175,6 +204,11 @@ export function defaultIsolationOf(settings?: BoardSettings): IsolationMode {
 /** The effective external session sync switch (board setting → factory default false). */
 export function defaultSyncExternalSessionsOf(settings?: BoardSettings): boolean {
   return settings?.syncExternalSessions ?? false
+}
+
+/** The effective default permission preset for NEW tasks (board setting → factory default 'workspace-write'). */
+export function defaultPermissionOf(settings?: BoardSettings): PermissionMode {
+  return settings?.defaultPermission ?? DEFAULT_PERMISSION
 }
 
 /** How a task may run. */
@@ -419,6 +453,10 @@ export type TaskRecord = {
    * tool set. Editable any time (each run composes fresh).
    */
   presetId?: string
+  /**
+   * Execution permission preset (0.5.5; see {@link PermissionMode}).
+   */
+  permission?: PermissionMode
   /**
    * Definition-of-Done acceptance checklist (0.4.0). Agents may append items
    * and check/uncheck them (with evidence); the GUI may edit the whole list.
@@ -919,6 +957,7 @@ export function validateImportedTask(raw: unknown, now: number): { ok: true; tas
       ...(typeof e.model === 'object' && e.model !== null ? { model: normalizeModel(e.model) } : {}),
       ...(typeof e.isolation === 'string' && (e.isolation === 'worktree' || e.isolation === 'none') ? { isolation: e.isolation } : {}),
       ...(typeof e.presetId === 'string' && e.presetId.trim().length > 0 ? { presetId: e.presetId.trim() } : {}),
+      ...(typeof e.permission === 'string' ? { permission: asPermission(e.permission) } : {}),
       ...(Array.isArray(e.checklist) ? { checklist: normalizeChecklist(e.checklist) } : {}),
       ...(typeof e.branch === 'string' ? { branch: e.branch } : {}),
       ...(status === 'in_progress' && typeof e.claimedBy === 'string' ? { claimedBy: e.claimedBy } : {}),
@@ -1010,6 +1049,7 @@ export type TaskSummary = {
   executionMode: ExecutionMode
   nextRunAt?: number
   model?: TaskModel
+  permission?: PermissionMode
   version: number
   claimOwner?: string
   commentCount: number
@@ -1036,6 +1076,7 @@ export function summarize(task: TaskRecord): TaskSummary {
     executionMode: task.execution.mode,
     nextRunAt: task.execution.nextRunAt,
     model: task.model,
+    permission: task.permission,
     version: task.version,
     claimOwner: isClaimedBy(task),
     commentCount: task.comments.length,

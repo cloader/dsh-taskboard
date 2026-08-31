@@ -293,6 +293,28 @@ describe('ExecutionService', () => {
     agents.idle()
   })
 
+  it('calls setPermission with the configured task permission preset (0.5.5)', async () => {
+    const store = await storeWith(task({
+      permission: 'read-only',
+    }))
+    const agents = fakeAgents()
+    const permsSet: Array<{ sessionId: string; permission: string }> = []
+    const svc = new ExecutionService({
+      store,
+      agents,
+      workspaces,
+      events: fakeEvents(),
+      setPermission: (sessionId, permission) => {
+        permsSet.push({ sessionId, permission })
+      },
+      now: () => 1_000,
+    })
+    const result = await svc.run('t-run', 'manual')
+    if (!result.ok) throw new Error('run failed')
+    expect(permsSet).toEqual([{ sessionId: result.sessionId, permission: 'read-only' }])
+    agents.idle()
+  })
+
   it('notes a lighter system comment when the session commented but did not move', async () => {
     const commented = task({
       comments: [{ id: 'c-1', body: 'done, tests pass', version: 1, createdAt: 1, threadId: 'session-worker' }],

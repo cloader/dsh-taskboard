@@ -11,9 +11,10 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { BoardController } from '../controller.ts'
 import type { TaskTemplateSpec } from '../../shared/api.ts'
-import type { ChecklistItem, IsolationMode, Urgency } from '../../shared/protocol.ts'
-import { MAX_CHECKLIST_ITEMS, defaultIsolationOf, nextCronTime, parseCron } from '../../shared/protocol.ts'
+import type { ChecklistItem, IsolationMode, PermissionMode, TaskRecord, Urgency } from '../../shared/protocol.ts'
+import { MAX_CHECKLIST_ITEMS, asPermission, defaultIsolationOf, defaultPermissionOf, nextCronTime, parseCron } from '../../shared/protocol.ts'
 import { fmtTime } from './format.ts'
+import { SlashPromptInput } from './SlashPromptInput.tsx'
 
 /** One row of the configured model catalog (from llm.models). */
 export interface CatalogModel {
@@ -75,6 +76,13 @@ const CRON_PRESETS: ReadonlyArray<{ label: string; cron: string }> = [
   { label: '每小时', cron: '0 * * * *' },
   { label: '每 10 分钟', cron: '*/10 * * * *' },
   { label: '每周一 09:00', cron: '0 9 * * 1' },
+]
+
+/** Permission presets aligned with DSH. */
+const PERMISSION_OPTIONS: ReadonlyArray<{ value: PermissionMode; label: string; hint: string; icon: string }> = [
+  { value: 'workspace-write', label: '可写入工作区', hint: '可读写工作区及临时目录（推荐默认）', icon: '📁' },
+  { value: 'read-only', label: '仅可查看', hint: '只读查看与检索，禁止修改文件或执行外部命令', icon: '🔒' },
+  { value: 'danger-full-access', label: '完全权限', hint: '完全无限制权限，可访问全盘及执行外部命令', icon: '⚡' },
 ]
 
 /** Field shell: label + control, optionally spanning the full grid row. */
@@ -158,7 +166,7 @@ function ChecklistEditor({ rows, onChange, editing }: { rows: CheckRow[]; onChan
  * @param controller - the controller.
  * @param task - the task being edited (create mode when absent).
  */
-export function TaskFormModal({ controller, task }: { controller: BoardController; task?: TaskRecordLike }) {
+export function TaskFormModal({ controller, task }: { controller: BoardController; task?: TaskRecord }) {
   const state = controller.getSnapshot()
   const prefill: TaskTemplateSpec | undefined = state.templatePrefill
   const editing = task !== undefined
@@ -182,6 +190,10 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
   const [presetId, setPresetId] = useState(initialPreset)
   const [presets, setPresets] = useState<Array<{ id: string; name?: string }>>([])
   const [presetDefault, setPresetDefault] = useState<string | undefined>(undefined)
+  // Permission preset (0.5.5): 'workspace-write' (default) | 'read-only' | 'danger-full-access'
+  const [permission, setPermission] = useState<PermissionMode>(
+    task?.permission ?? (prefill?.permission ? asPermission(prefill.permission) : defaultPermissionOf(state.ledger.settings)),
+  )
   // Isolation toggle: create mode starts from the board setting (0.5.0
   // 看板设置 → 默认执行隔离) or the template's choice; edit mode starts from
   // the task and locks once execution began.
@@ -298,6 +310,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
         model: picked ?? null,
         ...(isolationOut !== undefined && !isolationLocked ? { isolation: isolationOut } : {}),
         presetId: presetOut ?? null,
+        permission,
         // [] clears the checklist (host deletes the field on empty).
         checklist: rows.length > 0 ? rows : null,
       })
@@ -311,6 +324,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
         model: picked,
         ...(isolationOut !== undefined ? { isolation: isolationOut } : {}),
         ...(presetOut !== undefined ? { presetId: presetOut } : {}),
+        permission,
         ...(rows.length > 0 ? { checklist: rows.map(r => r.text) } : {}),
       })
     void action.catch(() => undefined).finally(() => setBusy(false))
@@ -337,6 +351,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
           model: picked ?? null,
           ...(isolationOut !== undefined && !isolationLocked ? { isolation: isolationOut } : {}),
           presetId: presetOut ?? null,
+          permission,
           checklist: rows.length > 0 ? rows : null,
         })
         if (saved) await controller.run(task.id)
@@ -351,6 +366,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
           model: picked,
           ...(isolationOut !== undefined ? { isolation: isolationOut } : {}),
           ...(presetOut !== undefined ? { presetId: presetOut } : {}),
+          permission,
           ...(rows.length > 0 ? { checklist: rows.map(r => r.text) } : {}),
         })
         if (id !== undefined) await controller.run(id)
@@ -475,11 +491,38 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
           </Field>
 
           <Field label={editing ? '描述' : '描述（可选）'} full>
-            <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="需求细节、验收标准…" />
+            <SlashPromptInput
+              value={description}
+              onChange={setDescription}
+              controller={controller}
+              placeholder="需求细节、验收标准…"
+            />
           </Field>
 
           <Field label={editing ? '执行 Prompt（实际 Prompt = 标题+任务描述+Prompt）' : '执行 Prompt（可选；实际 Prompt = 标题+任务描述+Prompt）'} full>
-            <textarea value={prompt} onChange={e => setPrompt(e.target.value)} placeholder={'追加在「标题+任务描述」之后发给执行会话的补充指令。支持模板变量：{{lastExecution}}（上次执行结果）、{{lastComments}}（最近 3 条评论）'} />
+            <SlashPromptInput
+              value={prompt}
+              onChange={setPrompt}
+              controller={controller}
+              placeholder={'追加在「标题+任务描述」之后发给执行会话的补充指令。支持模板变量：{{lastExecution}}（上次执行结果）、{{lastComments}}（最近 3 条评论）'}
+            />
+          </Field>
+
+          <Field label="执行权限" full>
+            <div className="dsh-atb-perm-picker">
+              {PERMISSION_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className="dsh-atb-perm-opt"
+                  data-on={permission === opt.value}
+                  onClick={() => setPermission(opt.value)}
+                >
+                  <span className="dsh-atb-perm-name">{opt.icon} {opt.label}{opt.value === 'workspace-write' ? '（默认）' : ''}</span>
+                  <span className="dsh-atb-perm-hint">{opt.hint}</span>
+                </button>
+              ))}
+            </div>
           </Field>
 
           <Field label="执行方式" full>

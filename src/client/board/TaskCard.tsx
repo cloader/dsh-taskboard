@@ -99,6 +99,16 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
             {task.model.model}{task.model.reasoningEffort !== undefined ? ` (${task.model.reasoningEffort})` : ''}
           </span>
         )}
+        {task.permission === 'read-only' && (
+          <span className="dsh-atb-badge" data-kind="blocked" title="权限：仅可查看">
+            🔒 仅查看
+          </span>
+        )}
+        {task.permission === 'danger-full-access' && (
+          <span className="dsh-atb-badge" data-kind="urgent" title="权限：完全权限">
+            ⚡ 全权限
+          </span>
+        )}
         {task.checklist !== undefined && task.checklist.length > 0 && (
           <span
             className="dsh-atb-badge"

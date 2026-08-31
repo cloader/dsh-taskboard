@@ -160,6 +160,16 @@ export function apply(ctx: Context): void {
             return read === undefined ? undefined : read.call(selection)
           } catch { return undefined }
         },
+        setPermission: (sessionId, permission) => {
+          try {
+            const permService = agentCtx.get('permissionPresets') as { set(session: unknown, name: string): void } | undefined
+            const sessions = agentCtx.get('sessions') as { get(id: string): unknown } | undefined
+            const session = sessions?.get(sessionId)
+            if (session !== undefined && permService !== undefined) {
+              permService.set(session, permission)
+            }
+          } catch { /* cosmetic */ }
+        },
         maxConcurrent,
       })
 
@@ -175,6 +185,20 @@ export function apply(ctx: Context): void {
           modelProviders,
           git,
           templates,
+          promptCompletions: async () => {
+            try {
+              const skillsService = agentCtx.get('skills') as { list?(options?: unknown): Promise<Array<{ name: string; description?: string }>> } | undefined
+              const commandsService = agentCtx.get('commands') as { list?(): Array<{ name: string; description?: string; input?: { hint?: string } }> } | undefined
+              const rawSkills = skillsService?.list ? await skillsService.list().catch(() => []) : []
+              const rawCommands = commandsService?.list ? commandsService.list() : []
+              return {
+                skills: Array.isArray(rawSkills) ? rawSkills.map(s => ({ name: s.name, description: s.description })) : [],
+                commands: Array.isArray(rawCommands) ? rawCommands.map(c => ({ name: c.name, description: c.description, hint: c.input?.hint })) : [],
+              }
+            } catch {
+              return { skills: [], commands: [] }
+            }
+          },
         })
         return () => disposeRoutes?.()
       })

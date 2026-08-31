@@ -66,11 +66,12 @@ export function TemplateManager({ controller }: { controller: BoardController })
                       />
                       <span
                         className="dsh-atb-tplm-meta"
-                        title={`${t.builtin === true ? '内置' : '自建'}${t.task.checklist !== undefined && t.task.checklist.length > 0 ? ` · 清单 ${t.task.checklist.length} 项` : ''}${t.task.urgency !== undefined ? ` · ${t.task.urgency}` : ''}`}
+                        title={`${t.builtin === true ? '内置' : '自建'}${t.task.checklist !== undefined && t.task.checklist.length > 0 ? ` · 清单 ${t.task.checklist.length} 项` : ''}${t.task.urgency !== undefined ? ` · ${t.task.urgency}` : ''}${t.task.permission !== undefined ? ` · 权限: ${t.task.permission}` : ''}`}
                       >
                         {t.builtin === true ? '内置' : '自建'}
                         {t.task.checklist !== undefined && t.task.checklist.length > 0 ? ` · 清单 ${t.task.checklist.length} 项` : ''}
                         {t.task.urgency !== undefined ? ` · ${t.task.urgency}` : ''}
+                        {t.task.permission !== undefined && t.task.permission !== 'workspace-write' ? ` · ${t.task.permission === 'read-only' ? '仅查看' : '全权限'}` : ''}
                       </span>
                       <span className="dsh-atb-tplm-btns">
                         <button

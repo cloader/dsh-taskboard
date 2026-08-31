@@ -9,7 +9,7 @@
  */
 import { useState } from 'react'
 import type { BoardController } from '../controller.ts'
-import { DEFAULT_ISOLATION, defaultSyncExternalSessionsOf, type IsolationMode } from '../../shared/protocol.ts'
+import { DEFAULT_ISOLATION, defaultPermissionOf, defaultSyncExternalSessionsOf, type IsolationMode, type PermissionMode } from '../../shared/protocol.ts'
 
 /** The isolation options with one-line hints (mirrors the task form). */
 const ISOLATION_OPTIONS: ReadonlyArray<{ value: IsolationMode; name: string; hint: string }> = [
@@ -26,14 +26,17 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
   const state = controller.getSnapshot()
   const currentIso = state.ledger.settings?.defaultIsolation ?? DEFAULT_ISOLATION
   const currentSync = defaultSyncExternalSessionsOf(state.ledger.settings)
+  const currentPerm = defaultPermissionOf(state.ledger.settings)
   const [draftIso, setDraftIso] = useState<IsolationMode>(currentIso)
   const [draftSync, setDraftSync] = useState<boolean>(currentSync)
-  const dirty = draftIso !== currentIso || draftSync !== currentSync
+  const [draftPerm, setDraftPerm] = useState<PermissionMode>(currentPerm)
+  const dirty = draftIso !== currentIso || draftSync !== currentSync || draftPerm !== currentPerm
 
   const save = (): void => {
     void controller.updateSettings({
       defaultIsolation: draftIso,
       syncExternalSessions: draftSync,
+      defaultPermission: draftPerm,
     }).then(ok => {
       if (ok) controller.closeSettings()
     })
@@ -103,6 +106,43 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
               {currentSync
                 ? '已开启：工作区直接新建并执行的会话将自动在看板生成任务卡片，并在完成后流转至「待验收」列。'
                 : '已关闭：仅在看板内部创建与触发执行的任务会出现在看板上。'}
+            </span>
+          </section>
+
+          <section className="dsh-atb-diag-sec">
+            <h4>默认执行权限</h4>
+            <div className="dsh-atb-perm-picker">
+              <button
+                type="button"
+                className="dsh-atb-perm-opt"
+                data-on={draftPerm === 'workspace-write'}
+                onClick={() => setDraftPerm('workspace-write')}
+              >
+                <span className="dsh-atb-perm-name">📁 可写入工作区（出厂默认）</span>
+                <span className="dsh-atb-perm-hint">可读写工作区及临时目录，写操作无需二次确认</span>
+              </button>
+              <button
+                type="button"
+                className="dsh-atb-perm-opt"
+                data-on={draftPerm === 'read-only'}
+                onClick={() => setDraftPerm('read-only')}
+              >
+                <span className="dsh-atb-perm-name">🔒 仅可查看</span>
+                <span className="dsh-atb-perm-hint">仅允许只读查看与检索，禁止修改文件或破坏性命令</span>
+              </button>
+              <button
+                type="button"
+                className="dsh-atb-perm-opt"
+                data-on={draftPerm === 'danger-full-access'}
+                onClick={() => setDraftPerm('danger-full-access')}
+              >
+                <span className="dsh-atb-perm-name">⚡ 完全权限</span>
+                <span className="dsh-atb-perm-hint">完全无限制权限，可访问全盘及执行系统外部命令</span>
+              </button>
+            </div>
+            <span className="dsh-atb-isolation-note">
+              当前保存的默认：{currentPerm === 'read-only' ? '🔒 仅可查看' : currentPerm === 'danger-full-access' ? '⚡ 完全权限' : '📁 可写入工作区'}。
+              新建任务时预设的执行权限。
             </span>
           </section>
         </div>

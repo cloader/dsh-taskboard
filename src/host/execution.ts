@@ -11,6 +11,7 @@
  * @module dsh-taskboard/host/execution
  */
 import {
+  DEFAULT_PERMISSION,
   effectiveIsolation,
   effectivePrompt,
   newCommentId,
@@ -18,6 +19,7 @@ import {
   normalizeBody,
   type ExecutionRecord,
   type IsolationMode,
+  type PermissionMode,
   type TaskModel,
   type TaskRecord,
 } from '../shared/protocol.ts'
@@ -100,6 +102,10 @@ export interface ExecutionDeps {
    * session (same rollback semantics as apiproxy).
    */
   composeAgent?: (presetId?: string) => Promise<AgentComposition | undefined>
+  /**
+   * Set execution session permission (0.5.5; 'workspace-write' | 'read-only' | 'danger-full-access').
+   */
+  setPermission?: (sessionId: string, permission: PermissionMode) => void
 }
 
 /** Outcome of a run request (immediate; the run settles asynchronously). */
@@ -445,6 +451,13 @@ export class ExecutionService {
 
     // 3. Attach the session to the workspace (GUI project session list).
     await this.deps.workspaces.attach(task.workspaceId, sessionId).catch(() => { /* cosmetic */ })
+
+    // 3a. Apply execution session permission (0.5.5; 'workspace-write' | 'read-only' | 'danger-full-access').
+    if (this.deps.setPermission !== undefined) {
+      try {
+        this.deps.setPermission(sessionId, task.permission ?? DEFAULT_PERMISSION)
+      } catch { /* best effort */ }
+    }
 
     // 3b. Best-effort rename: pin the session title to the task title so the
     //     session list shows the task name (a user-sourced title also stops
