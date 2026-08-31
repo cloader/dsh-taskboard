@@ -220,20 +220,16 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
     return () => document.removeEventListener('keydown', onKey)
   }, [controller])
 
-  // Model catalog: the controller exposes the installed face when the runtime is up.
+  // Model catalog: query runtime or fallback to host API
   useEffect(() => {
-    const face = controller.modelCatalog
-    if (face === undefined) return
-    void face().then(setCatalog).catch(() => setCatalog([]))
+    void controller.fetchModelCatalog().then(setCatalog).catch(() => setCatalog([]))
   }, [controller])
 
-  // Preset roster: same lazy face; pre-select the deployment default in
+  // Preset roster: query runtime or fallback to host API; pre-select the deployment default in
   // create mode (unless a template pinned one) so executions run with a
   // real tool set out of the box.
   useEffect(() => {
-    const face = controller.presetCatalog
-    if (face === undefined) return
-    void face().then(roster => {
+    void controller.fetchPresetCatalog().then(roster => {
       setPresets(roster.presets)
       setPresetDefault(roster.defaultId)
       // CREATE mode only (review P1): pre-selecting in edit mode would

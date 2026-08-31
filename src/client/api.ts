@@ -15,6 +15,7 @@ import type {
   ImportCommitResponse,
   ImportPreviewResponse,
   MergeBranchResponse,
+  ModelCatalogResponse,
   MoveTaskBody,
   PromptCompletionsResponse,
   RejectTaskBody,
@@ -99,6 +100,8 @@ export interface TaskboardClient {
   updateSettings(body: UpdateSettingsBody): Promise<SettingsResponse>
   /** Prompt completions for skills and slash commands (0.5.5). */
   promptCompletions(): Promise<PromptCompletionsResponse>
+  /** Model catalog and agent preset roster (0.5.5). */
+  modelCatalog(): Promise<ModelCatalogResponse>
   /** Subscribe to change frames; the disposer stops the stream. */
   stream(onChange: (event: ChangeEvent) => void, onGap: () => void): () => void
 }
@@ -135,6 +138,7 @@ export function createClient(): TaskboardClient {
     settings: () => get<SettingsResponse>('/dsh-taskboard/settings'),
     updateSettings: body => post('/dsh-taskboard/settings/update', body),
     promptCompletions: () => get<PromptCompletionsResponse>('/dsh-taskboard/prompt-completions'),
+    modelCatalog: () => get<ModelCatalogResponse>('/dsh-taskboard/model-catalog'),
     stream(onChange, onGap) {
       const es = new EventSource('/dsh-taskboard/events')
       let revision: number | undefined

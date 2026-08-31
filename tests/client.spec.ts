@@ -1982,6 +1982,7 @@ describe('client half', () => {
         commands: [{ name: 'goal', kind: 'command' as const, description: '自主完成长期目标' }],
         skills: [{ name: 'frontend-ui-engineering', kind: 'skill' as const, description: '前端UI工程' }],
       }),
+      modelCatalog: async () => ({ models: [], presets: [] }),
     }
 
     const controller = new BoardController(clientFake as never)
@@ -2044,5 +2045,29 @@ describe('client half', () => {
     host.remove()
     controller.dispose()
     localStorage.clear()
+  })
+
+  it('controller.fetchModelCatalog & fetchPresetCatalog fallback to client endpoint (0.5.5)', async () => {
+    const { BoardController } = await import('../src/client/controller.ts')
+    const clientFake = {
+      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [] }),
+      workspaces: async () => [],
+      modelCatalog: async () => ({
+        models: [{ provider: 'fallback-prov', model: 'fallback-model', name: 'Fallback Model' }],
+        presets: [{ id: 'standard', name: '标准模式' }],
+        defaultPresetId: 'standard',
+      }),
+      stream: () => () => {},
+    }
+
+    const controller = new BoardController(clientFake as never)
+    const models = await controller.fetchModelCatalog()
+    expect(models).toEqual([{ provider: 'fallback-prov', model: 'fallback-model', name: 'Fallback Model' }])
+
+    const presets = await controller.fetchPresetCatalog()
+    expect(presets).toEqual({
+      presets: [{ id: 'standard', name: '标准模式' }],
+      defaultId: 'standard',
+    })
   })
 })

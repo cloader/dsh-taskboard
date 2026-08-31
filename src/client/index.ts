@@ -70,51 +70,185 @@ export function apply(ctx: ClientContextFace): void {
     const client = createClient()
     const controller = new BoardController(client)
 
-    // Model catalog for the composer: llm.models over the connection RPC —
-    // installed through the controller's formal installer (T13: no more
-    // monkeypatched instance properties).
-    const connection = ctx.get?.('connection') as ConnectionFace | undefined
-    if (connection !== undefined) {
-      type CatalogRow = {
-        provider: string
-        model: string
-        name?: string
-        reasoning?: {
-          efforts: Array<{ id: string; name: string; description?: string }>
-          defaultEffort?: string
-        }
+    // Model catalog for the composer (0.5.5): multi-tier discovery
+    // 1. DSH ui-model-selection service: ctx.get('modelDirectories')?.catalog?.load()
+    // 2. DSH Remote RPC: ctx.get('remote')?.session?.modelCatalog()
+    // 3. Legacy connection.api face if present
+    // 4. Taskboard host endpoint: /dsh-taskboard/model-catalog
+    type CatalogRow = {
+      provider: string
+      model: string
+      name?: string
+      description?: string
+      reasoning?: {
+        efforts: Array<{ id: string; name: string; description?: string }>
+        defaultEffort?: string
       }
-      controller.installModelCatalog(async (): Promise<CatalogRow[]> => {
-        const response = await connection.api.llm.models({})
-        if (!response.result.ok) return []
-        const out: CatalogRow[] = []
-        for (const group of response.result.value.groups) {
-          for (const model of group.models) {
-            out.push({
-              provider: group.id,
-              model: model.id,
-              name: model.name,
-              ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {}),
-            })
+    }
+    controller.installModelCatalog(async (): Promise<CatalogRow[]> => {
+      // 1. DSH ui-model-selection service
+      try {
+        const modelDirs = (ctx.get?.('modelDirectories') ?? (ctx as Record<string, unknown>).modelDirectories) as {
+          catalog?: { load: () => Promise<{ groups: Array<{ id: string; name: string; models: Array<{ id: string; name?: string; description?: string; reasoning?: { efforts: Array<{ id: string; name: string; description?: string }>; defaultEffort?: string } }> }> }> }
+        } | undefined
+        if (modelDirs?.catalog?.load !== undefined) {
+          const res = await modelDirs.catalog.load()
+          if (res?.groups !== undefined && res.groups.length > 0) {
+            const out: CatalogRow[] = []
+            for (const group of res.groups) {
+              for (const model of group.models) {
+                out.push({
+                  provider: group.id,
+                  model: model.id,
+                  name: model.name,
+                  ...(model.description !== undefined ? { description: model.description } : {}),
+                  ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {}),
+                })
+              }
+            }
+            if (out.length > 0) return out
           }
         }
-        return out
-      })
+      } catch { /* try next */ }
 
-      // Preset roster for the composer (0.3.3): agentPreset.list over the
-      // connection RPC — [{id, name}] plus which one is the deployment
-      // default (the form pre-selects it on create).
-      type PresetRow = { id: string; name?: string }
-      controller.installPresetRoster(async (): Promise<{ presets: PresetRow[]; defaultId?: string }> => {
-        const list = connection.api.agentPresets
-        if (list === undefined) return { presets: [] }
-        const response = await list.list({})
-        if (!response.result.ok) return { presets: [] }
-        const presets = response.result.value.presets.map((p: { id: string; name?: string }) => ({ id: p.id, name: p.name }))
-        const def = response.result.value.presets.find((p: { id: string; isDefault: boolean }) => p.isDefault)
-        return { presets, ...(def !== undefined ? { defaultId: def.id } : {}) }
-      })
-    }
+      // 2. DSH Remote RPC
+      try {
+        const remote = (ctx.get?.('remote') ?? (ctx as Record<string, unknown>).remote) as {
+          session?: { modelCatalog: () => Promise<{ ok: boolean; value?: { groups: Array<{ id: string; name: string; models: Array<{ id: string; name?: string; description?: string; reasoning?: { efforts: Array<{ id: string; name: string; description?: string }>; defaultEffort?: string } }> }> } }> }
+          llm?: { models: (payload: Record<string, never>) => Promise<{ result: { ok: true; value: { groups: Array<{ id: string; name: string; models: Array<{ id: string; name?: string; description?: string; reasoning?: { efforts: Array<{ id: string; name: string; description?: string }>; defaultEffort?: string } }> }> } } | { ok: false } }> }
+        } | undefined
+
+        if (remote?.session?.modelCatalog !== undefined) {
+          const res = await remote.session.modelCatalog()
+          if (res.ok && res.value?.groups !== undefined && res.value.groups.length > 0) {
+            const out: CatalogRow[] = []
+            for (const group of res.value.groups) {
+              for (const model of group.models) {
+                out.push({
+                  provider: group.id,
+                  model: model.id,
+                  name: model.name,
+                  ...(model.description !== undefined ? { description: model.description } : {}),
+                  ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {}),
+                })
+              }
+            }
+            if (out.length > 0) return out
+          }
+        }
+
+        if (remote?.llm?.models !== undefined) {
+          const res = await remote.llm.models({})
+          if (res.result.ok && res.result.value?.groups !== undefined && res.result.value.groups.length > 0) {
+            const out: CatalogRow[] = []
+            for (const group of res.result.value.groups) {
+              for (const model of group.models) {
+                out.push({
+                  provider: group.id,
+                  model: model.id,
+                  name: model.name,
+                  ...(model.description !== undefined ? { description: model.description } : {}),
+                  ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {}),
+                })
+              }
+            }
+            if (out.length > 0) return out
+          }
+        }
+      } catch { /* try next */ }
+
+      // 3. Legacy connection.api
+      try {
+        const connection = (ctx.get?.('connection') ?? (ctx as Record<string, unknown>).connection) as {
+          api?: {
+            llm?: {
+              models: (payload: Record<string, never>) => Promise<{ result: { ok: true; value: { groups: Array<{ id: string; name: string; models: Array<{ id: string; name?: string; description?: string; reasoning?: { efforts: Array<{ id: string; name: string; description?: string }>; defaultEffort?: string } }> }> } } | { ok: false } }>
+            }
+          }
+        } | undefined
+        if (connection?.api?.llm?.models !== undefined) {
+          const res = await connection.api.llm.models({})
+          if (res.result.ok && res.result.value?.groups !== undefined && res.result.value.groups.length > 0) {
+            const out: CatalogRow[] = []
+            for (const group of res.result.value.groups) {
+              for (const model of group.models) {
+                out.push({
+                  provider: group.id,
+                  model: model.id,
+                  name: model.name,
+                  ...(model.description !== undefined ? { description: model.description } : {}),
+                  ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {}),
+                })
+              }
+            }
+            if (out.length > 0) return out
+          }
+        }
+      } catch { /* try next */ }
+
+      // 4. Taskboard host endpoint: /dsh-taskboard/model-catalog
+      try {
+        const res = await client.modelCatalog()
+        if (res.models !== undefined && res.models.length > 0) {
+          return res.models
+        }
+      } catch { /* none */ }
+
+      return []
+    })
+
+    // Preset roster for the composer (0.3.3 / 0.5.5)
+    type PresetRow = { id: string; name?: string }
+    controller.installPresetRoster(async (): Promise<{ presets: PresetRow[]; defaultId?: string }> => {
+      // 1. DSH Remote RPC: ctx.get('remote')?.agentPresets?.list()
+      try {
+        const remote = (ctx.get?.('remote') ?? (ctx as Record<string, unknown>).remote) as {
+          agentPresets?: { list: () => Promise<{ ok: boolean; value?: { presets: Array<{ id: string; name?: string; isDefault?: boolean }> } } | { result: { ok: true; value: { presets: Array<{ id: string; name?: string; isDefault?: boolean }> } } }> }
+        } | undefined
+        if (remote?.agentPresets?.list !== undefined) {
+          const res = await remote.agentPresets.list()
+          const rawPresets = (res as { ok?: boolean; value?: { presets?: Array<{ id: string; name?: string; isDefault?: boolean }> } }).ok === true
+            ? (res as { value: { presets: Array<{ id: string; name?: string; isDefault?: boolean }> } }).value.presets
+            : (res as { result?: { ok?: boolean; value?: { presets?: Array<{ id: string; name?: string; isDefault?: boolean }> } } }).result?.ok === true
+              ? (res as { result: { value: { presets: Array<{ id: string; name?: string; isDefault?: boolean }> } } }).result.value.presets
+              : undefined
+          if (rawPresets !== undefined && rawPresets.length > 0) {
+            const presets = rawPresets.map(p => ({ id: p.id, name: p.name }))
+            const def = rawPresets.find(p => p.isDefault)
+            return { presets, ...(def !== undefined ? { defaultId: def.id } : {}) }
+          }
+        }
+      } catch { /* try next */ }
+
+      // 2. Legacy connection.api
+      try {
+        const connection = (ctx.get?.('connection') ?? (ctx as Record<string, unknown>).connection) as {
+          api?: {
+            agentPresets?: {
+              list: (payload: Record<string, never>) => Promise<{ result: { ok: true; value: { presets: Array<{ id: string; name?: string; isDefault: boolean }> } } | { ok: false } }>
+            }
+          }
+        } | undefined
+        if (connection?.api?.agentPresets?.list !== undefined) {
+          const res = await connection.api.agentPresets.list({})
+          if (res.result.ok && res.result.value?.presets !== undefined && res.result.value.presets.length > 0) {
+            const presets = res.result.value.presets.map(p => ({ id: p.id, name: p.name }))
+            const def = res.result.value.presets.find(p => p.isDefault)
+            return { presets, ...(def !== undefined ? { defaultId: def.id } : {}) }
+          }
+        }
+      } catch { /* try next */ }
+
+      // 3. Taskboard host endpoint: /dsh-taskboard/model-catalog
+      try {
+        const res = await client.modelCatalog()
+        if (res.presets !== undefined && res.presets.length > 0) {
+          return { presets: res.presets, ...(res.defaultPresetId !== undefined ? { defaultId: res.defaultPresetId } : {}) }
+        }
+      } catch { /* none */ }
+
+      return { presets: [] }
+    })
 
     // Session navigation for execution rows: resolved LAZILY on every jump —
     // apply may run before the runtime provides the services, and a captured

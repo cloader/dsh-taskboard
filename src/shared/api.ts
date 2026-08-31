@@ -184,6 +184,31 @@ export type PromptCompletionsResponse = {
   skills: PromptCompletionItem[]
 }
 
+/** Model item in catalog (0.5.5). */
+export type CatalogModelItem = {
+  provider: string
+  model: string
+  name?: string
+  description?: string
+  reasoning?: {
+    efforts: Array<{ id: string; name: string; description?: string }>
+    defaultEffort?: string
+  }
+}
+
+/** Preset item in catalog (0.5.5). */
+export type CatalogPresetItem = {
+  id: string
+  name?: string
+}
+
+/** Model and preset catalog response (0.5.5). */
+export type ModelCatalogResponse = {
+  models: CatalogModelItem[]
+  presets: CatalogPresetItem[]
+  defaultPresetId?: string
+}
+
 /** Import dry-run response (0.4.0): every task classified, nothing written. */
 export type ImportPreviewResponse = {
   plan: {

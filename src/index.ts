@@ -199,6 +199,79 @@ export function apply(ctx: Context): void {
               return { skills: [], commands: [] }
             }
           },
+          modelCatalog: async () => {
+            try {
+              type ModelItem = {
+                provider: string
+                model: string
+                name?: string
+                description?: string
+                reasoning?: {
+                  efforts: Array<{ id: string; name: string; description?: string }>
+                  defaultEffort?: string
+                }
+              }
+              const models: ModelItem[] = []
+
+              const llm = (agentCtx.get('llm') ?? wsCtx.get('llm')) as {
+                listProviders?(): Array<{ id: string; name?: string }>
+                listModels?(provider: string): Promise<Array<{ id: string; name?: string; description?: string }>>
+                resolveModelInfo?(provider: string, model: string): Promise<{ reasoning?: { efforts: Array<{ id: string; name: string; description?: string }>; defaultEffort?: string } }>
+                resolveModel?(provider: string, model: string): Promise<{ reasoning?: { efforts: Array<{ id: string; name: string; description?: string }>; defaultEffort?: string } }>
+              } | undefined
+
+              if (llm?.listProviders !== undefined && llm.listModels !== undefined) {
+                const providers = llm.listProviders()
+                for (const p of providers) {
+                  try {
+                    const list = await llm.listModels(p.id)
+                    for (const m of list) {
+                      let reasoning: { efforts: Array<{ id: string; name: string; description?: string }>; defaultEffort?: string } | undefined
+                      try {
+                        const meta = llm.resolveModelInfo !== undefined
+                          ? await llm.resolveModelInfo(p.id, m.id)
+                          : llm.resolveModel !== undefined ? await llm.resolveModel(p.id, m.id) : undefined
+                        if (meta?.reasoning !== undefined) {
+                          reasoning = meta.reasoning
+                        }
+                      } catch { /* ignore */ }
+
+                      models.push({
+                        provider: p.id,
+                        model: m.id,
+                        name: m.name,
+                        ...(m.description ? { description: m.description } : {}),
+                        ...(reasoning !== undefined ? { reasoning } : {}),
+                      })
+                    }
+                  } catch { /* continue */ }
+                }
+              }
+
+              const presetsService = agentCtx.get('agentPresets') as {
+                list?(): Promise<{ ok: boolean; value?: { presets: Array<{ id: string; name?: string; isDefault?: boolean }> } } | Array<{ id: string; name?: string; isDefault?: boolean }>>
+              } | undefined
+              const presets: Array<{ id: string; name?: string }> = []
+              let defaultPresetId: string | undefined
+
+              if (presetsService?.list !== undefined) {
+                try {
+                  const raw = await presetsService.list()
+                  const list = (raw as { ok?: boolean; value?: { presets?: unknown[] } }).ok === true
+                    ? (raw as { value: { presets: Array<{ id: string; name?: string; isDefault?: boolean }> } }).value.presets
+                    : Array.isArray(raw) ? raw : []
+                  for (const p of list) {
+                    presets.push({ id: p.id, name: p.name })
+                    if (p.isDefault) defaultPresetId = p.id
+                  }
+                } catch { /* continue */ }
+              }
+
+              return { models, presets, ...(defaultPresetId !== undefined ? { defaultPresetId } : {}) }
+            } catch {
+              return { models: [], presets: [] }
+            }
+          },
         })
         return () => disposeRoutes?.()
       })

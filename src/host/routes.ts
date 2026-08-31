@@ -41,7 +41,7 @@ import {
   type TaskRecord,
 } from '../shared/protocol.ts'
 import { WORKTREE_DIR, worktreePathOf, type GitFace } from './git.ts'
-import type { TaskTemplate } from '../shared/api.ts'
+import type { CatalogModelItem, CatalogPresetItem, TaskTemplate } from '../shared/api.ts'
 import type { TemplateStore } from './templates.ts'
 import { ROUTE_PREFIX, SSE_PATH, type ApiFail, type ApiResult } from '../shared/api.ts'
 import type { TaskStore } from './store.ts'
@@ -87,6 +87,12 @@ export interface TaskboardRoutesOptions {
   promptCompletions?: () => Promise<{
     skills?: Array<{ name: string; description?: string }>
     commands?: Array<{ name: string; description?: string; hint?: string }>
+  }>
+  /** Model and preset catalog face (0.5.5; dynamically discovers models & presets). */
+  modelCatalog?: () => Promise<{
+    models?: CatalogModelItem[]
+    presets?: CatalogPresetItem[]
+    defaultPresetId?: string
   }>
 }
 
@@ -423,6 +429,20 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
             value: {
               commands: completions?.commands ?? [],
               skills: completions?.skills ?? [],
+            },
+          })
+          return
+        }
+
+        // Model catalog (0.5.5; dynamically discovers models & presets from runtime).
+        if (pathname === `${ROUTE_PREFIX}/model-catalog`) {
+          const catalog = await options.modelCatalog?.().catch(() => undefined)
+          json(res, {
+            ok: true,
+            value: {
+              models: catalog?.models ?? [],
+              presets: catalog?.presets ?? [],
+              ...(catalog?.defaultPresetId !== undefined ? { defaultPresetId: catalog.defaultPresetId } : {}),
             },
           })
           return

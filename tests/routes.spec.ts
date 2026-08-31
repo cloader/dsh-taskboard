@@ -171,6 +171,11 @@ beforeAll(async () => {
     modelProviders: () => ['prov-a'],
     git: gitFace,
     templates: templatesFace as unknown as InstanceType<typeof TemplateStore>,
+    modelCatalog: async () => ({
+      models: [{ provider: 'prov-a', model: 'model-a', name: 'Model A' }],
+      presets: [{ id: 'standard', name: '标准模式' }],
+      defaultPresetId: 'standard',
+    }),
   })
   server.on('request', (req, res) => {
     const url = new URL(req.url ?? '/', 'http://x')
@@ -957,5 +962,13 @@ describe('taskboard routes 0.5.0 (board settings → default isolation)', () => 
     const badFile = { ...ledgerFile, settings: { defaultIsolation: 'docker' } }
     const refused = await post('/dsh-taskboard/import/preview', badFile)
     expect(refused.status).toBe(400)
+  })
+
+  it('GET /model-catalog: returns models, presets, and default preset id (0.5.5)', async () => {
+    const res = await (await fetch(`${base}/dsh-taskboard/model-catalog`)).json()
+    expect(res.ok).toBe(true)
+    expect(res.value.models).toEqual([{ provider: 'prov-a', model: 'model-a', name: 'Model A' }])
+    expect(res.value.presets).toEqual([{ id: 'standard', name: '标准模式' }])
+    expect(res.value.defaultPresetId).toBe('standard')
   })
 })

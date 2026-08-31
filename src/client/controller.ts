@@ -322,6 +322,54 @@ export class BoardController {
   }
 
   /**
+   * Fetch model catalog: prefers installed runtime face, falls back to Taskboard client API (0.5.5).
+   */
+  async fetchModelCatalog(): Promise<Array<{
+    provider: string
+    model: string
+    name?: string
+    description?: string
+    reasoning?: {
+      efforts: Array<{ id: string; name: string; description?: string }>
+      defaultEffort?: string
+    }
+  }>> {
+    if (this.catalogFaces.models !== undefined) {
+      try {
+        const list = await this.catalogFaces.models()
+        if (list !== undefined && list.length > 0) return list
+      } catch { /* fallback to client */ }
+    }
+    try {
+      const res = await this.client.modelCatalog()
+      return res.models ?? []
+    } catch {
+      return []
+    }
+  }
+
+  /**
+   * Fetch preset roster: prefers installed runtime face, falls back to Taskboard client API (0.5.5).
+   */
+  async fetchPresetCatalog(): Promise<{ presets: Array<{ id: string; name?: string }>; defaultId?: string }> {
+    if (this.catalogFaces.presets !== undefined) {
+      try {
+        const roster = await this.catalogFaces.presets()
+        if (roster !== undefined && roster.presets !== undefined && roster.presets.length > 0) return roster
+      } catch { /* fallback to client */ }
+    }
+    try {
+      const res = await this.client.modelCatalog()
+      return {
+        presets: res.presets ?? [],
+        ...(res.defaultPresetId !== undefined ? { defaultId: res.defaultPresetId } : {}),
+      }
+    } catch {
+      return { presets: [] }
+    }
+  }
+
+  /**
    * Jump to an execution's session (open it in the GUI). On success the board
    * closes so the conversation shows; a deleted-or-archived session reports
    * 'missing' for the caller to prompt about.
