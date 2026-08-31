@@ -57,13 +57,14 @@ export interface ExtractedImage {
   id: string
   alt: string
   url: string
-  fullMatch: string
 }
+
+const IMAGE_MD_REGEX = /!\[(.*?)\]\(((?:data:image\/[^)\s]+)|(?:https?:\/\/[^)\s]+)|(?:[^)\s]+\.(?:png|jpg|jpeg|gif|webp|svg)))\)/gi
 
 /** Extract markdown images `![alt](url)` from text. */
 export function extractMarkdownImages(text: string): ExtractedImage[] {
   const images: ExtractedImage[] = []
-  const regex = /!\[(.*?)\]\(((?:data:image\/[^)]+)|(?:https?:\/\/[^)]+)|(?:[^)]+\.(?:png|jpg|jpeg|gif|webp|svg)))\)/gi
+  const regex = new RegExp(IMAGE_MD_REGEX.source, 'gi')
   let match: RegExpExecArray | null
   let count = 0
   while ((match = regex.exec(text)) !== null) {
@@ -73,10 +74,26 @@ export function extractMarkdownImages(text: string): ExtractedImage[] {
       id: `img-${count}-${url.slice(0, 30)}`,
       alt: match[1] || `图片 ${count}`,
       url,
-      fullMatch: match[0],
     })
   }
   return images
+}
+
+/** Split a markdown prompt into clean text (without markdown image tags) and extracted images. */
+export function decomposePromptValue(fullValue: string): { text: string; images: ExtractedImage[] } {
+  const images = extractMarkdownImages(fullValue)
+  const regex = new RegExp(IMAGE_MD_REGEX.source, 'gi')
+  const text = fullValue.replace(regex, '').trimEnd()
+  return { text, images }
+}
+
+/** Compose clean text and images back into complete Markdown for task storage & agent execution. */
+export function composePromptValue(text: string, images: ExtractedImage[]): string {
+  const clean = text.trimEnd()
+  if (images.length === 0) return clean
+  const imagesMd = images.map((img, idx) => `![${img.alt || `图片 ${idx + 1}`}](${img.url})`).join('\n\n')
+  if (clean.length === 0) return imagesMd
+  return `${clean}\n\n${imagesMd}`
 }
 
 /** Props for SlashPromptInput. */
@@ -112,6 +129,27 @@ export function SlashPromptInput({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+
+  // Internal decomposed text & attached images
+  const lastPropValueRef = useRef<string>(value)
+  const [text, setText] = useState<string>(() => decomposePromptValue(value).text)
+  const [images, setImages] = useState<ExtractedImage[]>(() => decomposePromptValue(value).images)
+
+  // Synchronize when prop `value` changes externally (e.g. template selection or reset)
+  useEffect(() => {
+    if (value !== lastPropValueRef.current) {
+      lastPropValueRef.current = value
+      const decomposed = decomposePromptValue(value)
+      setText(decomposed.text)
+      setImages(decomposed.images)
+    }
+  }, [value])
+
+  const notifyChange = (nextText: string, nextImages: ExtractedImage[]): void => {
+    const combined = composePromptValue(nextText, nextImages)
+    lastPropValueRef.current = combined
+    onChange(combined)
+  }
 
   // Autocomplete state
   const [completions, setCompletions] = useState<{ commands: PromptCompletionItem[]; skills: PromptCompletionItem[] }>({
@@ -169,14 +207,14 @@ export function SlashPromptInput({
     const el = textareaRef.current
     if (el === null) return
     const pos = el.selectionStart
-    const text = el.value.slice(0, pos)
+    const currentText = el.value.slice(0, pos)
     
     // Check if cursor is right after a word starting with /
-    const lastSlash = text.lastIndexOf('/')
+    const lastSlash = currentText.lastIndexOf('/')
     if (lastSlash >= 0) {
-      const charBefore = lastSlash > 0 ? (text[lastSlash - 1] ?? '\n') : '\n'
+      const charBefore = lastSlash > 0 ? (currentText[lastSlash - 1] ?? '\n') : '\n'
       const isWordStart = /\s/.test(charBefore) || lastSlash === 0
-      const queryPart = text.slice(lastSlash + 1)
+      const queryPart = currentText.slice(lastSlash + 1)
       const noWhitespaceInQuery = !/\s/.test(queryPart)
 
       if (isWordStart && noWhitespaceInQuery) {
@@ -194,11 +232,12 @@ export function SlashPromptInput({
     const el = textareaRef.current
     if (el === null || slashStart < 0) return
     const pos = el.selectionStart
-    const before = value.slice(0, slashStart)
-    const after = value.slice(pos)
+    const before = text.slice(0, slashStart)
+    const after = text.slice(pos)
     const inserted = `/${item.name} `
-    const nextVal = before + inserted + after
-    onChange(nextVal)
+    const nextText = before + inserted + after
+    setText(nextText)
+    notifyChange(nextText, images)
     setPopupOpen(false)
 
     // Restore focus & cursor position
@@ -211,41 +250,50 @@ export function SlashPromptInput({
     }, 0)
   }
 
-  // Insert image markdown at cursor or end
-  const insertImageMarkdown = (dataUrl: string, name = '图片'): void => {
-    const el = textareaRef.current
-    const timestamp = Date.now().toString(36)
-    const md = `\n![${name}-${timestamp}](${dataUrl})\n`
-    if (el !== null) {
-      const start = el.selectionStart ?? value.length
-      const end = el.selectionEnd ?? value.length
-      const nextVal = value.slice(0, start) + md + value.slice(end)
-      onChange(nextVal)
-      setTimeout(() => {
-        if (textareaRef.current !== null) {
-          const nextPos = start + md.length
-          textareaRef.current.focus()
-          textareaRef.current.setSelectionRange(nextPos, nextPos)
-        }
-      }, 0)
-    } else {
-      onChange(value + md)
-    }
+  // Add images to attachments rail (without polluting textarea text)
+  const addImages = (newImages: Array<{ alt: string; url: string }>): void => {
+    if (newImages.length === 0) return
+    const additions: ExtractedImage[] = newImages.map((img, idx) => ({
+      id: `img-${Date.now().toString(36)}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+      alt: img.alt,
+      url: img.url,
+    }))
+    const nextImages = [...images, ...additions]
+    setImages(nextImages)
+    notifyChange(text, nextImages)
+  }
+
+  // Remove image from attachments rail
+  const removeImage = (idToRemove: string): void => {
+    const nextImages = images.filter(img => img.id !== idToRemove)
+    setImages(nextImages)
+    notifyChange(text, nextImages)
   }
 
   // Handle image files to Data URL
   const processImageFiles = (files: FileList | File[]): void => {
+    const readPromises: Promise<{ alt: string; url: string }>[] = []
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
       if (file && file.type.startsWith('image/')) {
-        const reader = new FileReader()
-        reader.onload = () => {
-          if (typeof reader.result === 'string') {
-            insertImageMarkdown(reader.result, file.name.replace(/\.[^/.]+$/, '') || '图片')
+        readPromises.push(new Promise((resolve) => {
+          const reader = new FileReader()
+          reader.onload = () => {
+            if (typeof reader.result === 'string') {
+              resolve({
+                alt: file.name.replace(/\.[^/.]+$/, '') || '图片',
+                url: reader.result,
+              })
+            }
           }
-        }
-        reader.readAsDataURL(file)
+          reader.readAsDataURL(file)
+        }))
       }
+    }
+    if (readPromises.length > 0) {
+      Promise.all(readPromises).then(newImgs => {
+        addImages(newImgs)
+      })
     }
   }
 
@@ -306,10 +354,12 @@ export function SlashPromptInput({
         return
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault()
-        const target = filteredItems[selectedIndex]
-        if (target !== undefined) applyCompletion(target)
-        return
+        const picked = filteredItems[selectedIndex]
+        if (picked !== undefined) {
+          e.preventDefault()
+          applyCompletion(picked)
+          return
+        }
       }
       if (e.key === 'Escape') {
         e.preventDefault()
@@ -318,14 +368,6 @@ export function SlashPromptInput({
       }
     }
   }
-
-  // Remove an image from text
-  const removeImage = (img: ExtractedImage): void => {
-    const nextVal = value.replace(img.fullMatch, '').trim()
-    onChange(nextVal)
-  }
-
-  const extractedImages = useMemo(() => extractMarkdownImages(value), [value])
 
   return (
     <div
@@ -339,7 +381,7 @@ export function SlashPromptInput({
         <textarea
           ref={textareaRef}
           className="dsh-atb-prompt-input"
-          value={value}
+          value={text}
           rows={rows}
           maxLength={maxLength}
           disabled={disabled}
@@ -347,7 +389,9 @@ export function SlashPromptInput({
           placeholder={placeholder}
           aria-label={ariaLabel}
           onChange={(e: ChangeEvent<HTMLTextAreaElement>) => {
-            onChange(e.target.value)
+            const nextText = e.target.value
+            setText(nextText)
+            notifyChange(nextText, images)
             checkSlashTrigger()
           }}
           onKeyUp={checkSlashTrigger}
@@ -389,11 +433,11 @@ export function SlashPromptInput({
       </div>
 
       {/* Extracted Images Rail */}
-      {extractedImages.length > 0 && (
+      {images.length > 0 && (
         <div className="dsh-atb-img-rail">
-          <div className="dsh-atb-img-rail-label">已嵌入图片 ({extractedImages.length})</div>
+          <div className="dsh-atb-img-rail-label">已添加图片 ({images.length})</div>
           <div className="dsh-atb-img-list">
-            {extractedImages.map(img => (
+            {images.map(img => (
               <div key={img.id} className="dsh-atb-img-card">
                 <img
                   src={img.url}
@@ -407,7 +451,7 @@ export function SlashPromptInput({
                   type="button"
                   className="dsh-atb-img-del"
                   title="移除该图片"
-                  onClick={() => removeImage(img)}
+                  onClick={() => removeImage(img.id)}
                 >
                   ✕
                 </button>
@@ -425,7 +469,7 @@ export function SlashPromptInput({
         <button
           type="button"
           className="dsh-atb-prompt-imgbtn"
-          title="上传并插入图片"
+          title="上传图片"
           onClick={() => fileInputRef.current?.click()}
         >
           🖼 添加图片
