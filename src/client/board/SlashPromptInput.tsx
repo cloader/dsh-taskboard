@@ -1,14 +1,12 @@
 /**
  * SlashPromptInput: Rich text input component for task description & execution prompt.
  * Features:
- * 1. Slash autocomplete popup for commands and skills with keyboard navigation.
- * 2. Image pasting (Ctrl+V) and drag-and-drop into Markdown image format.
- * 3. Thumbnail rail for attached/embedded images with delete and lightbox preview.
- * 4. File picker button for manual image uploads.
+ * - Slash autocomplete popup for commands and skills with keyboard navigation.
+ * - Clean text editing without image base64 pollution.
  *
  * @module dsh-taskboard/client/board/SlashPromptInput
  */
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type ClipboardEvent, type DragEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import type { BoardController } from '../controller.ts'
 import type { PromptCompletionItem } from '../../shared/api.ts'
 
@@ -52,50 +50,6 @@ export const DEFAULT_SKILLS: PromptCompletionItem[] = [
   { name: 'using-agent-skills', kind: 'skill', description: '发现并动态调用智能体各项专业技能' },
 ]
 
-/** Parsed image entry from Markdown text. */
-export interface ExtractedImage {
-  id: string
-  alt: string
-  url: string
-}
-
-const IMAGE_MD_REGEX = /!\[(.*?)\]\(((?:data:image\/[^)\s]+)|(?:https?:\/\/[^)\s]+)|(?:[^)\s]+\.(?:png|jpg|jpeg|gif|webp|svg)))\)/gi
-
-/** Extract markdown images `![alt](url)` from text. */
-export function extractMarkdownImages(text: string): ExtractedImage[] {
-  const images: ExtractedImage[] = []
-  const regex = new RegExp(IMAGE_MD_REGEX.source, 'gi')
-  let match: RegExpExecArray | null
-  let count = 0
-  while ((match = regex.exec(text)) !== null) {
-    count++
-    const url = match[2] ?? ''
-    images.push({
-      id: `img-${count}-${url.slice(0, 30)}`,
-      alt: match[1] || `图片 ${count}`,
-      url,
-    })
-  }
-  return images
-}
-
-/** Split a markdown prompt into clean text (without markdown image tags) and extracted images. */
-export function decomposePromptValue(fullValue: string): { text: string; images: ExtractedImage[] } {
-  const images = extractMarkdownImages(fullValue)
-  const regex = new RegExp(IMAGE_MD_REGEX.source, 'gi')
-  const text = fullValue.replace(regex, '').trimEnd()
-  return { text, images }
-}
-
-/** Compose clean text and images back into complete Markdown for task storage & agent execution. */
-export function composePromptValue(text: string, images: ExtractedImage[]): string {
-  const clean = text.trimEnd()
-  if (images.length === 0) return clean
-  const imagesMd = images.map((img, idx) => `![${img.alt || `图片 ${idx + 1}`}](${img.url})`).join('\n\n')
-  if (clean.length === 0) return imagesMd
-  return `${clean}\n\n${imagesMd}`
-}
-
 /** Props for SlashPromptInput. */
 export interface SlashPromptInputProps {
   value: string
@@ -111,7 +65,7 @@ export interface SlashPromptInputProps {
 }
 
 /**
- * Rich prompt textarea with / autocomplete, image paste, and thumbnails.
+ * Rich prompt textarea with / autocomplete for slash commands & skills.
  */
 export function SlashPromptInput({
   value,
@@ -126,30 +80,6 @@ export function SlashPromptInput({
   ariaLabel,
 }: SlashPromptInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [dragOver, setDragOver] = useState(false)
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
-
-  // Internal decomposed text & attached images
-  const lastPropValueRef = useRef<string>(value)
-  const [text, setText] = useState<string>(() => decomposePromptValue(value).text)
-  const [images, setImages] = useState<ExtractedImage[]>(() => decomposePromptValue(value).images)
-
-  // Synchronize when prop `value` changes externally (e.g. template selection or reset)
-  useEffect(() => {
-    if (value !== lastPropValueRef.current) {
-      lastPropValueRef.current = value
-      const decomposed = decomposePromptValue(value)
-      setText(decomposed.text)
-      setImages(decomposed.images)
-    }
-  }, [value])
-
-  const notifyChange = (nextText: string, nextImages: ExtractedImage[]): void => {
-    const combined = composePromptValue(nextText, nextImages)
-    lastPropValueRef.current = combined
-    onChange(combined)
-  }
 
   // Autocomplete state
   const [completions, setCompletions] = useState<{ commands: PromptCompletionItem[]; skills: PromptCompletionItem[] }>({
@@ -232,12 +162,11 @@ export function SlashPromptInput({
     const el = textareaRef.current
     if (el === null || slashStart < 0) return
     const pos = el.selectionStart
-    const before = text.slice(0, slashStart)
-    const after = text.slice(pos)
+    const before = value.slice(0, slashStart)
+    const after = value.slice(pos)
     const inserted = `/${item.name} `
     const nextText = before + inserted + after
-    setText(nextText)
-    notifyChange(nextText, images)
+    onChange(nextText)
     setPopupOpen(false)
 
     // Restore focus & cursor position
@@ -248,96 +177,6 @@ export function SlashPromptInput({
         textareaRef.current.setSelectionRange(nextPos, nextPos)
       }
     }, 0)
-  }
-
-  // Add images to attachments rail (without polluting textarea text)
-  const addImages = (newImages: Array<{ alt: string; url: string }>): void => {
-    if (newImages.length === 0) return
-    const additions: ExtractedImage[] = newImages.map((img, idx) => ({
-      id: `img-${Date.now().toString(36)}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
-      alt: img.alt,
-      url: img.url,
-    }))
-    const nextImages = [...images, ...additions]
-    setImages(nextImages)
-    notifyChange(text, nextImages)
-  }
-
-  // Remove image from attachments rail
-  const removeImage = (idToRemove: string): void => {
-    const nextImages = images.filter(img => img.id !== idToRemove)
-    setImages(nextImages)
-    notifyChange(text, nextImages)
-  }
-
-  // Handle image files to Data URL
-  const processImageFiles = (files: FileList | File[]): void => {
-    const readPromises: Promise<{ alt: string; url: string }>[] = []
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]
-      if (file && file.type.startsWith('image/')) {
-        readPromises.push(new Promise((resolve) => {
-          const reader = new FileReader()
-          reader.onload = () => {
-            if (typeof reader.result === 'string') {
-              resolve({
-                alt: file.name.replace(/\.[^/.]+$/, '') || '图片',
-                url: reader.result,
-              })
-            }
-          }
-          reader.readAsDataURL(file)
-        }))
-      }
-    }
-    if (readPromises.length > 0) {
-      Promise.all(readPromises).then(newImgs => {
-        addImages(newImgs)
-      })
-    }
-  }
-
-  // Paste handler
-  const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>): void => {
-    const items = e.clipboardData?.items
-    if (items !== undefined && items.length > 0) {
-      const imageFiles: File[] = []
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i]
-        if (item !== undefined && item.type.startsWith('image/')) {
-          const file = item.getAsFile()
-          if (file !== null) imageFiles.push(file)
-        }
-      }
-      if (imageFiles.length > 0) {
-        e.preventDefault()
-        processImageFiles(imageFiles)
-        return
-      }
-    }
-    // Normal paste: update slash trigger after render
-    setTimeout(checkSlashTrigger, 0)
-  }
-
-  // Drag & drop handlers
-  const handleDragOver = (e: DragEvent<HTMLDivElement>): void => {
-    e.preventDefault()
-    if (e.dataTransfer.types.includes('Files')) {
-      setDragOver(true)
-    }
-  }
-
-  const handleDragLeave = (e: DragEvent<HTMLDivElement>): void => {
-    e.preventDefault()
-    setDragOver(false)
-  }
-
-  const handleDrop = (e: DragEvent<HTMLDivElement>): void => {
-    e.preventDefault()
-    setDragOver(false)
-    if (e.dataTransfer.files.length > 0) {
-      processImageFiles(e.dataTransfer.files)
-    }
   }
 
   // Keyboard navigation for slash popup
@@ -370,18 +209,12 @@ export function SlashPromptInput({
   }
 
   return (
-    <div
-      className={`dsh-atb-prompt-wrap ${className ?? ''}`}
-      data-drag-over={dragOver ? 'true' : undefined}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
+    <div className={`dsh-atb-prompt-wrap ${className ?? ''}`}>
       <div className="dsh-atb-prompt-inner">
         <textarea
           ref={textareaRef}
           className="dsh-atb-prompt-input"
-          value={text}
+          value={value}
           rows={rows}
           maxLength={maxLength}
           disabled={disabled}
@@ -389,14 +222,11 @@ export function SlashPromptInput({
           placeholder={placeholder}
           aria-label={ariaLabel}
           onChange={(e: ChangeEvent<HTMLTextAreaElement>) => {
-            const nextText = e.target.value
-            setText(nextText)
-            notifyChange(nextText, images)
+            onChange(e.target.value)
             checkSlashTrigger()
           }}
           onKeyUp={checkSlashTrigger}
           onClick={checkSlashTrigger}
-          onPaste={handlePaste}
           onKeyDown={handleKeyDown}
         />
 
@@ -432,79 +262,12 @@ export function SlashPromptInput({
         )}
       </div>
 
-      {/* Extracted Images Rail */}
-      {images.length > 0 && (
-        <div className="dsh-atb-img-rail">
-          <div className="dsh-atb-img-rail-label">已添加图片 ({images.length})</div>
-          <div className="dsh-atb-img-list">
-            {images.map(img => (
-              <div key={img.id} className="dsh-atb-img-card">
-                <img
-                  src={img.url}
-                  alt={img.alt}
-                  className="dsh-atb-img-thumb"
-                  onClick={() => setLightboxUrl(img.url)}
-                  title="点击查看大图"
-                />
-                <span className="dsh-atb-img-name" title={img.alt}>{img.alt}</span>
-                <button
-                  type="button"
-                  className="dsh-atb-img-del"
-                  title="移除该图片"
-                  onClick={() => removeImage(img.id)}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Bottom helper & upload trigger */}
+      {/* Bottom helper toolbar */}
       <div className="dsh-atb-prompt-foot">
         <span className="dsh-atb-prompt-tip">
-          💡 输入 <code>/</code> 补全命令与技能 · 截图直接 <code>Ctrl+V</code> 粘贴图片 · 支持拖拽
+          💡 输入 <code>/</code> 可快速补全 Slash 命令与 Agent 技能
         </span>
-        <button
-          type="button"
-          className="dsh-atb-prompt-imgbtn"
-          title="上传图片"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          🖼 添加图片
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          style={{ display: 'none' }}
-          onChange={e => {
-            if (e.target.files !== null && e.target.files.length > 0) {
-              processImageFiles(e.target.files)
-              e.target.value = ''
-            }
-          }}
-        />
       </div>
-
-      {/* Lightbox Modal */}
-      {lightboxUrl !== null && (
-        <div className="dsh-atb-lightbox-backdrop" onClick={() => setLightboxUrl(null)}>
-          <div className="dsh-atb-lightbox-content" onClick={e => e.stopPropagation()}>
-            <img src={lightboxUrl} alt="预览大图" className="dsh-atb-lightbox-img" />
-            <button
-              type="button"
-              className="dsh-atb-lightbox-close"
-              title="关闭预览"
-              onClick={() => setLightboxUrl(null)}
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

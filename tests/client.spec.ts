@@ -2022,7 +2022,7 @@ describe('client half', () => {
     expect(textareas.length).toBe(2)
     const descTextarea = textareas[0] as HTMLTextAreaElement
     const textareaSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
-    textareaSetter?.call(descTextarea, '使用 /goal 完成任务，包含图片：\n![草图](data:image/png;base64,123)\n')
+    textareaSetter?.call(descTextarea, '使用 /goal 完成任务并按规范交付')
     descTextarea.dispatchEvent(new Event('input', { bubbles: true }))
     descTextarea.dispatchEvent(new Event('change', { bubbles: true }))
 
@@ -2038,8 +2038,7 @@ describe('client half', () => {
     const payload = createdPayloads[0] as { title: string; permission?: string; description?: string }
     expect(payload.title).toBe('Task with read-only permission')
     expect(payload.permission).toBe('read-only')
-    expect(payload.description).toContain('/goal')
-    expect(payload.description).toContain('data:image/png;base64,123')
+    expect(payload.description).toBe('使用 /goal 完成任务并按规范交付')
 
     root.unmount()
     host.remove()
