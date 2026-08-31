@@ -514,24 +514,32 @@ describe('client half', () => {
     root.render(React.createElement(SettingsModal, { controller }))
     await new Promise(r => setTimeout(r, 10))
 
-    const isoOpts = () => Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-mode-opt'))
+    const isoOpts = () => Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-diag-sec:nth-child(1) .dsh-atb-mode-opt'))
     expect(isoOpts().length).toBe(2)
     expect(isoOpts()[0]!.textContent).toContain('原目录执行')
     // Current setting worktree is the selected draft.
     expect(isoOpts()[0]!.dataset.on).toBe('false')
     expect(isoOpts()[1]!.dataset.on).toBe('true')
 
+    const syncOpts = () => Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-diag-sec:nth-child(2) .dsh-atb-mode-opt'))
+    expect(syncOpts().length).toBe(2)
+    expect(syncOpts()[0]!.textContent).toContain('关闭同步')
+    expect(syncOpts()[1]!.textContent).toContain('自动纳入会话')
+    expect(syncOpts()[0]!.dataset.on).toBe('true') // default false
+    expect(syncOpts()[1]!.dataset.on).toBe('false')
+
     const saveBtn = () => Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-btn'))
       .find(b => b.textContent === '保存设置')!
     expect(saveBtn().disabled).toBe(true) // clean draft → save disabled
 
-    // Pick 原目录执行 → dirty → save goes through the controller.
+    // Pick 原目录执行 & 自动纳入会话 → dirty → save goes through the controller.
     isoOpts()[0]!.click()
+    syncOpts()[1]!.click()
     await new Promise(r => setTimeout(r, 10))
     expect(saveBtn().disabled).toBe(false)
     saveBtn().click()
     await new Promise(r => setTimeout(r, 20))
-    expect(saved).toEqual([{ defaultIsolation: 'none' }])
+    expect(saved).toEqual([{ defaultIsolation: 'none', syncExternalSessions: true }])
 
     root.unmount()
     host.remove()

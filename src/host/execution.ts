@@ -67,7 +67,7 @@ export interface ExecutionWorkspaceFace {
 
 /** Narrow event-bus face for settlement listening. */
 export interface EventsFace {
-  onSessionEvent(listener: (sessionId: string, event: { type: string; data?: unknown }) => void): () => void
+  onSessionEvent(listener: (sessionId: string, event: { type: string; data?: unknown }, sessionMeta?: { header?: { cwd?: string } }) => void): () => void
 }
 
 /** Everything the execution service needs. */

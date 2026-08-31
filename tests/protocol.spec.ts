@@ -16,6 +16,7 @@ import {
   checklistFromTexts,
   checklistProgress,
   defaultIsolationOf,
+  defaultSyncExternalSessionsOf,
   effectiveIsolation,
   emptyLedger,
   isClaim,
@@ -255,15 +256,21 @@ describe('board settings & default isolation (0.5.0)', () => {
     expect(effectiveIsolation({ isolation: 'none' })).toBe('none')
   })
 
-  it('asBoardSettings sanitizes; defaultIsolationOf resolves setting → factory', () => {
-    expect(asBoardSettings({ defaultIsolation: 'worktree', junk: 1 })).toEqual({ defaultIsolation: 'worktree' })
+  it('asBoardSettings sanitizes; defaultIsolationOf and defaultSyncExternalSessionsOf resolve setting → factory', () => {
+    expect(asBoardSettings({ defaultIsolation: 'worktree', syncExternalSessions: true, junk: 1 })).toEqual({ defaultIsolation: 'worktree', syncExternalSessions: true })
+    expect(asBoardSettings({ syncExternalSessions: false })).toEqual({ syncExternalSessions: false })
     expect(asBoardSettings({})).toEqual({})
     expect(() => asBoardSettings({ defaultIsolation: 'docker' })).toThrow("isolation must be")
     expect(() => asBoardSettings({ defaultIsolation: 42 })).toThrow("defaultIsolation must be")
+    expect(() => asBoardSettings({ syncExternalSessions: 'yes' })).toThrow("syncExternalSessions must be a boolean")
     expect(() => asBoardSettings(null)).toThrow('object')
     expect(defaultIsolationOf(undefined)).toBe('none')
     expect(defaultIsolationOf({})).toBe('none')
     expect(defaultIsolationOf({ defaultIsolation: 'worktree' })).toBe('worktree')
+    expect(defaultSyncExternalSessionsOf(undefined)).toBe(false)
+    expect(defaultSyncExternalSessionsOf({})).toBe(false)
+    expect(defaultSyncExternalSessionsOf({ syncExternalSessions: true })).toBe(true)
+    expect(defaultSyncExternalSessionsOf({ syncExternalSessions: false })).toBe(false)
   })
 
   it('validateLedgerImport carries sanitized board settings; rejects broken ones', () => {

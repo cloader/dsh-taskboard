@@ -27,6 +27,7 @@ import { SchedulerService } from './host/scheduler.ts'
 import { dshHomePath } from './host/sdk.ts'
 import { TaskStore } from './host/store.ts'
 import { TemplateStore } from './host/templates.ts'
+import { ExternalSessionSyncService } from './host/session-sync.ts'
 import { registerTaskboardTools, workspaceFace } from './host/tools.ts'
 
 /** Ledger file name under the DSH home. */
@@ -93,9 +94,18 @@ export function apply(ctx: Context): void {
     // Settlement listener over the session event bus.
     const events: EventsFace = {
       onSessionEvent: (listener) => wsCtx.on('session/event', (session, event) => {
-        listener(session.id, event as { type: string; data?: unknown })
+        listener(session.id, event as { type: string; data?: unknown }, session as { header?: { cwd?: string } })
       }),
     }
+
+    // External workspace sessions sync service (0.5.4).
+    const sessionSync = new ExternalSessionSyncService({
+      store,
+      workspaces: workspaceFace(wsCtx.workspaceRegistry),
+      events,
+      now,
+    })
+    disposers.push(() => sessionSync.dispose())
 
     // The narrow git face shared by execution (worktree isolation) and the
     // routes (merge / remove / workspace detection).

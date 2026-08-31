@@ -158,6 +158,8 @@ export type SettingsResponse = BoardSettings
 export type UpdateSettingsBody = {
   /** Default code isolation for NEW tasks ('worktree' | 'none'). */
   defaultIsolation?: string
+  /** Automatically capture external workspace sessions into the taskboard. */
+  syncExternalSessions?: boolean
 }
 
 /** Import dry-run response (0.4.0): every task classified, nothing written. */

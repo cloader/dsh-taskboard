@@ -141,6 +141,8 @@ export function effectiveIsolation(task: Pick<TaskRecord, 'isolation'>): Isolati
 export type BoardSettings = {
   /** Default code isolation applied when a NEW task is created without an explicit choice. */
   defaultIsolation?: IsolationMode
+  /** Automatically capture external workspace sessions into the taskboard (default: false). */
+  syncExternalSessions?: boolean
 }
 
 /** Validate raw input into sanitized {@link BoardSettings} (unknown fields dropped). */
@@ -156,12 +158,23 @@ export function asBoardSettings(raw: unknown): BoardSettings {
     }
     out.defaultIsolation = asIsolation(e.defaultIsolation)
   }
+  if (e.syncExternalSessions !== undefined) {
+    if (typeof e.syncExternalSessions !== 'boolean') {
+      throw new Error('syncExternalSessions must be a boolean')
+    }
+    out.syncExternalSessions = e.syncExternalSessions
+  }
   return out
 }
 
 /** The effective default isolation for NEW tasks (board setting → factory default). */
 export function defaultIsolationOf(settings?: BoardSettings): IsolationMode {
   return settings?.defaultIsolation ?? DEFAULT_ISOLATION
+}
+
+/** The effective external session sync switch (board setting → factory default false). */
+export function defaultSyncExternalSessionsOf(settings?: BoardSettings): boolean {
+  return settings?.syncExternalSessions ?? false
 }
 
 /** How a task may run. */
