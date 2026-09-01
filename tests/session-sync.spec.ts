@@ -226,4 +226,126 @@ describe('ExternalSessionSyncService (0.5.4)', () => {
 
     h.dispose()
   })
+
+  it('isSessionActiveWorking accurately detects various working indicators (0.5.5)', async () => {
+    const { isSessionActiveWorking } = await import('../src/host/session-sync.ts')
+
+    expect(isSessionActiveWorking(null)).toBe(false)
+    expect(isSessionActiveWorking({})).toBe(false)
+    expect(isSessionActiveWorking({ state: 'idle' })).toBe(false)
+
+    expect(isSessionActiveWorking({ state: 'running' })).toBe(true)
+    expect(isSessionActiveWorking({ status: 'busy' })).toBe(true)
+    expect(isSessionActiveWorking({ running: true })).toBe(true)
+    expect(isSessionActiveWorking({ isWorking: () => true })).toBe(true)
+    expect(isSessionActiveWorking({ activeTurn: { id: 1 } })).toBe(true)
+    expect(isSessionActiveWorking({ currentTurn: { status: 'running' } })).toBe(true)
+    expect(isSessionActiveWorking({ turns: [{ status: 'running' }] })).toBe(true)
+  })
+
+  it('user/message or turn/step on in_review task immediately pulls it back to in_progress (0.5.5)', async () => {
+    const h = await createHarness({ syncExternalSessions: true })
+    h.setTime(1000)
+
+    // Complete turn 1 -> in_review
+    await h.emit('sess-user-resume', { type: 'turn/start', data: { turn: 1 } }, { header: { cwd: '/proj/a' } })
+    await h.emit('sess-user-resume', { type: 'turn/end', data: { turn: 1, reason: 'stop' } })
+
+    expect(h.store.snapshot().tasks[0]!.status).toBe('in_review')
+
+    // User sends another prompt -> immediately transitions to in_progress
+    h.setTime(2000)
+    await h.emit('sess-user-resume', { type: 'user/message', data: { content: '还有个额外需求要补充' } })
+
+    let task = h.store.snapshot().tasks[0]!
+    expect(task.status).toBe('in_progress')
+    expect(task.claimedBy).toBe('sess-user-resume')
+    expect(task.executions).toHaveLength(2)
+    expect(task.executions[1]!.outcome).toBe('running')
+
+    // Settle again
+    h.setTime(3000)
+    await h.emit('sess-user-resume', { type: 'turn/end', data: { turn: 2, reason: 'stop' } })
+    expect(h.store.snapshot().tasks[0]!.status).toBe('in_review')
+
+    // Step event also pulls back to in_progress
+    h.setTime(4000)
+    await h.emit('sess-user-resume', { type: 'turn/step', data: { step: 1 } })
+    task = h.store.snapshot().tasks[0]!
+    expect(task.status).toBe('in_progress')
+    expect(task.claimedBy).toBe('sess-user-resume')
+
+    h.dispose()
+  })
+
+  it('scanActiveSessions scans active external sessions and pulls in_review tasks to in_progress (0.5.5)', async () => {
+    const store = new TaskStore({ file: join(dir, `led-scan-${Math.random().toString(36).slice(2)}.json`) })
+    await store.mutate('settings-updated', (ledger) => {
+      ledger.settings = { syncExternalSessions: true }
+      return []
+    })
+
+    const liveSessions = new Map<string, Record<string, unknown>>()
+    const service = new ExternalSessionSyncService({
+      store,
+      workspaces: fakeWorkspaces(),
+      events: { onSessionEvent: () => () => {} },
+      sessions: {
+        get: (id) => liveSessions.get(id),
+        list: () => [...liveSessions.values()],
+      },
+      now: () => 5000,
+      scanIntervalMs: 0, // manual scan in test
+    })
+
+    // Setup an existing task in in_review linked to sess-active-1
+    await store.mutate('task-created', (ledger) => {
+      ledger.tasks.push({
+        id: 't-scan-1',
+        title: '活跃会话任务',
+        description: '',
+        prompt: '',
+        workspaceId: 'ws-a',
+        urgency: 'normal',
+        status: 'in_review',
+        blocked: false,
+        execution: { mode: 'claim' },
+        isolation: 'none',
+        version: 1,
+        createdAt: 1000,
+        updatedAt: 2000,
+        createdBy: { kind: 'user' },
+        updatedBy: { kind: 'user' },
+        comments: [],
+        executions: [
+          {
+            id: 'e-1',
+            sessionId: 'sess-active-1',
+            trigger: 'manual',
+            startedAt: 1000,
+            endedAt: 2000,
+            outcome: 'succeeded',
+          },
+        ],
+      })
+      return ledger.tasks
+    })
+
+    // Initially, session is idle
+    liveSessions.set('sess-active-1', { id: 'sess-active-1', state: 'idle' })
+    await service.scanActiveSessions()
+    expect(store.snapshot().tasks[0]!.status).toBe('in_review')
+
+    // Session starts working (e.g. user typed prompt in workspace)
+    liveSessions.set('sess-active-1', { id: 'sess-active-1', state: 'running' })
+    await service.scanActiveSessions()
+
+    const updated = store.snapshot().tasks[0]!
+    expect(updated.status).toBe('in_progress')
+    expect(updated.claimedBy).toBe('sess-active-1')
+    expect(updated.executions).toHaveLength(2)
+    expect(updated.executions[1]!.outcome).toBe('running')
+
+    service.dispose()
+  })
 })

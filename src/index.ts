@@ -98,11 +98,27 @@ export function apply(ctx: Context): void {
       }),
     }
 
+    let agentSessions: { get?: (id: string) => unknown; list?: () => unknown[] } | undefined
+
     // External workspace sessions sync service (0.5.4).
     const sessionSync = new ExternalSessionSyncService({
       store,
       workspaces: workspaceFace(wsCtx.workspaceRegistry),
       events,
+      sessions: {
+        get: id => {
+          try {
+            const registry = (agentSessions ?? wsCtx.get('sessions') ?? wsCtx.get('sessionRegistry') ?? wsCtx.root?.get('sessions')) as { get?: (id: string) => unknown } | undefined
+            return registry?.get?.(id)
+          } catch { return undefined }
+        },
+        list: () => {
+          try {
+            const registry = (agentSessions ?? wsCtx.get('sessions') ?? wsCtx.get('sessionRegistry') ?? wsCtx.root?.get('sessions')) as { list?: () => unknown[] } | undefined
+            return registry?.list?.() ?? []
+          } catch { return [] }
+        },
+      },
       now,
     })
     disposers.push(() => sessionSync.dispose())
@@ -112,6 +128,7 @@ export function apply(ctx: Context): void {
     const git = createGitFace()
 
     wsCtx.inject(['agents'], (agentCtx: Context) => {
+      agentSessions = agentCtx.get('sessions') as { get?: (id: string) => unknown; list?: () => unknown[] } | undefined
       const execution = new ExecutionService({
         store,
         agents: {
