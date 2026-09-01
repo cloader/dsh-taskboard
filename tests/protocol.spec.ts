@@ -398,6 +398,34 @@ describe('TaskStore', () => {
     expect(second.snapshot().revision).toBe(2)
   })
 
+  it('persists and restores board settings across store reloads (0.5.5)', async () => {
+    const file = join(dir, 'settings-reload.json')
+    const store = new TaskStore({ file })
+    await store.mutate('settings-updated', ledger => {
+      ledger.settings = {
+        defaultIsolation: 'worktree',
+        syncExternalSessions: true,
+        defaultPermission: 'read-only',
+      }
+      return []
+    })
+
+    expect(store.snapshot().settings).toEqual({
+      defaultIsolation: 'worktree',
+      syncExternalSessions: true,
+      defaultPermission: 'read-only',
+    })
+
+    // Reload in a completely fresh store instance simulating server restart
+    const restarted = new TaskStore({ file })
+    await restarted.load()
+    expect(restarted.snapshot().settings).toEqual({
+      defaultIsolation: 'worktree',
+      syncExternalSessions: true,
+      defaultPermission: 'read-only',
+    })
+  })
+
   it('quarantines a corrupt ledger instead of throwing', async () => {
     const file = join(dir, 'corrupt.json')
     await writeFile(file, '{not json', 'utf8')

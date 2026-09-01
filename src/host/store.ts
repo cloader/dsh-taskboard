@@ -10,6 +10,7 @@ import { mkdir, open, readFile, rename } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import {
   LEDGER_SCHEMA_VERSION,
+  asBoardSettings,
   emptyLedger,
   isPlausibleTaskRecord,
   pruneExecutions,
@@ -81,7 +82,20 @@ export class TaskStore {
             task.claimedAt = task.updatedAt
           }
         }
-        this.ledger = { schemaVersion: LEDGER_SCHEMA_VERSION, revision: parsed.revision, tasks }
+        let settings = undefined
+        if (parsed.settings !== undefined) {
+          try {
+            settings = asBoardSettings(parsed.settings)
+          } catch {
+            console.warn('[dsh-taskboard] dropping invalid board settings on load')
+          }
+        }
+        this.ledger = {
+          schemaVersion: LEDGER_SCHEMA_VERSION,
+          revision: parsed.revision,
+          tasks,
+          ...(settings !== undefined ? { settings } : {}),
+        }
       }
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
