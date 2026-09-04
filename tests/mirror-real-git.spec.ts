@@ -23,6 +23,14 @@ function git(cwd: string, ...args: string[]): void {
   execFileSync('git', ['-c', 'user.email=agent@dsh.test', '-c', 'user.name=agent', ...args], { cwd, stdio: 'ignore' })
 }
 
+/** Persist identity in the repo's local config so bare-git calls made by the
+ * git face (e.g. merge creating a merge commit) also have a committer on CI,
+ * where no global user.name/user.email exists. */
+function withIdentity(cwd: string): void {
+  git(cwd, 'config', 'user.email', 'agent@dsh.test')
+  git(cwd, 'config', 'user.name', 'agent')
+}
+
 const gitAvailable = (() => {
   try {
     execFileSync('git', ['--version'], { stdio: 'ignore' })
@@ -44,11 +52,13 @@ d('mirror orchestration on real git (0.6.3)', () => {
       const sub = join(ws, 'sub-repo')
       mkdirSync(ws, { recursive: true })
       git(ws, 'init', '-q')
+      withIdentity(ws)
       writeFileSync(join(ws, 'README.md'), 'root\n')
       git(ws, 'add', '.')
       git(ws, 'commit', '-qm', 'root init')
       mkdirSync(sub, { recursive: true })
       git(sub, 'init', '-q')
+      withIdentity(sub)
       writeFileSync(join(sub, 'lib.txt'), 'sub\n')
       git(sub, 'add', '.')
       git(sub, 'commit', '-qm', 'sub init')
@@ -111,11 +121,13 @@ d('mirror orchestration on real git (0.6.3)', () => {
       const sub = join(ws, 'sub-repo')
       mkdirSync(ws, { recursive: true })
       git(ws, 'init', '-q')
+      withIdentity(ws)
       writeFileSync(join(ws, 'README.md'), 'root\n')
       git(ws, 'add', '.')
       git(ws, 'commit', '-qm', 'root init')
       mkdirSync(sub, { recursive: true })
       git(sub, 'init', '-q')
+      withIdentity(sub)
       writeFileSync(join(sub, 'lib.txt'), 'sub\n')
       git(sub, 'add', '.')
       git(sub, 'commit', '-qm', 'sub init')
