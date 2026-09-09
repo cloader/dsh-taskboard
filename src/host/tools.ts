@@ -98,11 +98,15 @@ function taskDetail(t: TaskRecord & { effectivePrompt?: string }): string {
   if (t.checklist !== undefined && t.checklist.length > 0) {
     const done = t.checklist.filter(i => i.checked).length
     lines.push(`验收清单 (${done}/${t.checklist.length}):`)
-    for (const item of t.checklist) {
+    for (const [index, item] of t.checklist.entries()) {
       const mark = item.checked ? '☑' : '☐'
       const who = item.checkedBy === undefined ? '' : item.checkedBy === 'user' ? ' ·用户勾选' : ` ·agent ${String(item.checkedBy).slice(0, 24)}勾选`
       const note = item.note !== undefined ? ` ·证据: ${item.note}` : ''
-      lines.push(`  ${mark} ${item.text}${who}${note}`)
+      // Carry the checklist item id so `taskboard_checklist check/uncheck` can
+      // address it without guessing — a terse render starves the agent (render
+      // is fed to the model as result.content). Mirrors the index+id carried
+      // by the taskboard_checklist tool output.
+      lines.push(`  ${mark} [${index + 1}] ${item.text}${who}${note} id=${item.id}`)
     }
   }
   if (t.comments.length > 0) {

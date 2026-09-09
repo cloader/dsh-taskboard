@@ -1,5 +1,13 @@
 # 更新日志 / Changelog
 
+### 0.6.6
+
+- **修复：`taskboard_get`（以及 `taskDetail`）渲染的验收清单缺失每个 DoD 条目 id，导致 agent 无法把 checklist 项地址化给 `taskboard_checklist check/uncheck`**：数据层 `ChecklistItem` 本就带 `id`（`k-<base36>-<base36>`，见 `newChecklistItemId`），但 `taskboard_get` 的文本渲染只打印「☐ 文本 + 勾选人 + 证据」，丢弃了 `item.id`（也无序号）；`taskboard_list` 的 `TaskSummary` 更是只折叠出 `checklist:{done,total}` 进度计数。因此 agent 从两个只读接口的输出都拿不到每个 DOD 项的标识，而 `taskboard_checklist` 的 `check/uncheck` 又强制要求 `itemId`——无只读来源可推导，agent 只能猜测并撞 `not_found`。修复：`taskDetail()` 的验收清单行现在随文本一并输出序号与 `id=${item.id}`，与 `taskboard_checklist` 工具自身的回显格式对齐；agent 读 `taskboard_get` 即可直接拿到每个 DoD 项的 `itemId` 去勾选。新增回归守护测试：断言 `taskboard_get` 渲染逐项携带 checklist 条目 id 与序号。纯渲染修复，不改数据模型/账本/前端，无 token 面扩大影响
+
+**English:**
+
+- **Fix: `taskboard_get` (via `taskDetail`) rendered the DoD checklist without each item's id, so an agent could never address a checklist item to `taskboard_checklist check/uncheck`**: the data layer `ChecklistItem` already carries an `id` (e.g. `k-<base36>-<base36>` from `newChecklistItemId`), but `taskboard_get`'s text render only printed "☐ text + checker + note", dropping `item.id` (and any position index); `taskboard_list`'s `TaskSummary` collapses to just `checklist:{done,total}`. Reading either read-only interface yielded no identifier for a DOD item, while `taskboard_checklist` `check/uncheck` hard-require an `itemId` — nothing to derive it from, the agent could only guess and hit `not_found`. Fix: each `taskDetail` checklist line now carries its position and `id=${item.id}` (mirroring the `taskboard_checklist` tool's own echo format), so reading `taskboard_get` is enough to reconstruct every DoD item's id and check it off. New regression test asserts the render carries each item id and position. Pure render fix — no model/ledger/frontend change, no token-usage impact
+
 ### 0.6.5
 
 - **修复：与 dsh-better-sidebar 并存时看板顶栏右侧按钮被其右上角常驻按钮簇遮挡（[#19](https://github.com/cloader/dsh-taskboard/issues/19)，@heptaspirit 报告）**：better-sidebar 在视口右上角钉有「展开底部面板 / 展开侧边栏」常驻按钮簇（z-index 45 浮层，占视口右边 10~70px、纵向与中栏顶带重合），它对 DSH 原生会话头的避让契约（右栏收起时 header `padding-right:78px`）在看板激活时失效——看板隐藏了该会话头并把自己的工具条放进同一条顶带，右端控件（筛选 chip、设置/诊断/导入导出、版本号）沉到按钮簇下面，窗口越窄挤进角落的控件越多。修复：镜像 better-sidebar 自己的避让契约——看板激活且其右栏收起（`body[data-dsh-sidebar-collapsed]`）时，工具条右侧预留 62px（70px 簇足迹 + 8px 间隙 − 16px 看板自身 padding），作用于全部换行行，任何窗口宽度下工具条内容都不再进入簇区；未安装 better-sidebar 或其右栏展开时规则零生效，纯 CSS 无 JS 开销
