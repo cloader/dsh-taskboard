@@ -90,6 +90,27 @@ describe('taskboard tool outputs', () => {
     for (const dispose of disposers) dispose()
   })
 
+  it('get render carries each checklist (DoD) item id — so check/uncheck needs no guessing', async () => {
+    // Regression: taskDetail() previously rendered only "☐ text" for DoD items,
+    // so an agent reading taskboard_get could never derive the `itemId` that
+    // taskboard_checklist requires — it had to guess and hit not_found.
+    const { disposers, tool, exec } = await setup()
+    const created = await tool('taskboard_create').execute(
+      { title: 'DoD ids', workspaceId: 'ws-a', urgency: 'normal', checklist: ['复现', '修复'] }, exec,
+    )
+    const id = (created as { task: { id: string } }).task.id
+    const got = await tool('taskboard_get').execute({ id }, exec) as { task: { checklist: Array<{ id: string; text: string }> } }
+    const gotText = tool('taskboard_get').output.render({ id }, got)[0]!.text
+
+    expect(got.task.checklist).toHaveLength(2)
+    // Every item id the agent needs for taskboard_checklist appears verbatim.
+    for (const item of got.task.checklist) expect(gotText).toContain(item.id)
+    // Index position is present too, mirroring the taskboard_checklist output.
+    expect(gotText).toContain('[1] 复现')
+    expect(gotText).toContain('[2] 修复')
+    for (const dispose of disposers) dispose()
+  })
+
   it('every tool returns lossless JSON (no undefined-valued fields)', async () => {
     const { disposers, tool, exec } = await setup()
 
