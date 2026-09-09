@@ -42,7 +42,7 @@ describe('ExternalSessionSyncService (0.5.4)', () => {
       })
     }
 
-    type Listener = (sessionId: string, event: { type: string; data?: unknown }, sessionMeta?: { header?: { cwd?: string } }) => void
+    type Listener = (sessionId: string, event: { type: string; data?: unknown }, sessionMeta?: { header?: { cwd?: string } }) => void | Promise<void>
     const listeners = new Set<Listener>()
     const events: EventsFace = {
       onSessionEvent: (listener) => {
@@ -62,10 +62,7 @@ describe('ExternalSessionSyncService (0.5.4)', () => {
     })
 
     const emit = async (sessionId: string, event: { type: string; data?: unknown }, sessionMeta?: { header?: { cwd?: string } }) => {
-      for (const l of listeners) {
-        l(sessionId, event, sessionMeta)
-      }
-      await new Promise(r => setTimeout(r, 20))
+      await Promise.all([...listeners].map(listener => listener(sessionId, event, sessionMeta)))
     }
 
     return {

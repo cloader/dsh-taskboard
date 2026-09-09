@@ -213,7 +213,7 @@ export class ExternalSessionSyncService {
 
   constructor(private readonly deps: SessionSyncDeps) {
     this.unsubscribe = deps.events.onSessionEvent((sessionId, event, sessionMeta) => {
-      void this.handleSessionEvent(sessionId, event, sessionMeta)
+      return this.handleSessionEvent(sessionId, event, sessionMeta)
     })
 
     const interval = deps.scanIntervalMs ?? DEFAULT_SCAN_INTERVAL_MS
