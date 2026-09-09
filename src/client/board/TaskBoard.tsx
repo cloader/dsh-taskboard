@@ -11,6 +11,7 @@ import { MAIN_STATUSES, canTransition } from '../../shared/protocol.ts'
 import { PLUGIN_VERSION } from '../../shared/version.ts'
 import { COLUMN_KEYS, URGENCY_KEYS } from './labels.ts'
 import { useT } from '../i18n/runtime.ts'
+import { localizeBuiltinName, localizeBuiltinTask } from '../i18n/templates.ts'
 import { fmtTime, isStaleClaim } from './format.ts'
 import { DRAG_TYPE, TaskCard } from './TaskCard.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
@@ -88,17 +89,21 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               <div className="dsh-atb-newmenu-backdrop" onClick={closeMenu} />
               <div className="dsh-atb-newmenu-list">
                 <button type="button" className="dsh-atb-newmenu-opt" onClick={() => { closeMenu(); controller.setComposer(true) }}>{t('board.action.blankTask')}</button>
-                {state.templates.map(t => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    className="dsh-atb-newmenu-opt"
-                    title={t.task.description !== undefined && t.task.description.length > 0 ? t.task.description.slice(0, 120) : t.name}
-                    onClick={() => { closeMenu(); controller.newFromTemplate(t.task) }}
-                  >
-                    {t.name}
-                  </button>
-                ))}
+                {state.templates.map(t => {
+                  const name = localizeBuiltinName(t)
+                  const spec = localizeBuiltinTask(t)
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className="dsh-atb-newmenu-opt"
+                      title={spec.description !== undefined && spec.description.length > 0 ? spec.description.slice(0, 120) : name}
+                      onClick={() => { closeMenu(); controller.newFromTemplate(spec) }}
+                    >
+                      {name}
+                    </button>
+                  )
+                })}
                 <div className="dsh-atb-newmenu-sep" />
                 <button type="button" className="dsh-atb-newmenu-opt" onClick={() => { closeMenu(); controller.openTemplateManager() }}>{t('board.action.manageTemplates')}</button>
               </div>

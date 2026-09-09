@@ -40,10 +40,12 @@ import {
   type TaskLedger,
   type TaskModel,
   type TaskRecord,
+  type SystemCommentRow,
 } from '../shared/protocol.ts'
 import { WORKTREE_DIR, worktreePathOf, type GitFace } from './git.ts'
 import { removeMirror, repoMainPath } from './isolation.ts'
 import { createRepoScanner, type RepoScanner } from './repos.ts'
+import { activeHostLocale } from './locale.ts'
 import type { CatalogModelItem, CatalogPresetItem, MergeRepoResult, TaskTemplate } from '../shared/api.ts'
 import type { TemplateStore } from './templates.ts'
 import { ROUTE_PREFIX, SSE_PATH, type ApiFail, type ApiResult } from '../shared/api.ts'
@@ -316,10 +318,15 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
     } catch { /* fail-soft → false */ }
     // gitignore 建议 (plan §3.2): suggest (never write) ignoring our
     // worktree directory, once per workspace per host run. Root repos only.
+    // The line is localized from the DSH locale preference (see host/locale.ts).
     if (rootRepo && !gitHinted.has(path)) {
       gitHinted.add(path)
       if (await gitignoreMissing(path)) {
-        console.info(`[dsh-taskboard] 建议在 ${path}/.gitignore 加入一行 ${WORKTREE_DIR}/ 以隐藏任务 worktree 目录（不会自动修改）`)
+        const file = `${path}/.gitignore`
+        const hint = activeHostLocale(ctx) === 'zh'
+          ? `建议在 ${file} 加入一行 ${WORKTREE_DIR}/ 以隐藏任务 worktree 目录（不会自动修改）`
+          : `suggests adding one line to ${file}: ${WORKTREE_DIR}/ to hide the task worktree directory (no automatic edits)`
+        console.info(`[dsh-taskboard] ${hint}`)
       }
     }
     // The nested scan always runs: repoCount needs it even when the root
@@ -909,11 +916,21 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
             }
             // R1: the git merges above are slow — re-find the FRESH task inside
             // the mutation so a concurrent comment is never overwritten.
-            const pushComment = (body: string): Promise<void> =>
+            const pushComment = (body: string, system?: { key: string; params?: Record<string, string>; rows?: SystemCommentRow[] }): Promise<void> =>
               store.mutate('comment-added', ledger => {
                 const { index, task: fresh } = liveTaskAt(ledger, id)
                 const next = structuredClone(fresh)
-                next.comments.push({ id: newCommentId(), body: normalizeBody(body), version: 1, createdAt: options.now() })
+                next.comments.push({
+                  id: newCommentId(),
+                  body: normalizeBody(body),
+                  ...(system !== undefined ? {
+                    systemKey: system.key,
+                    ...(system.params !== undefined ? { systemParams: system.params } : {}),
+                    ...(system.rows !== undefined ? { systemRows: system.rows } : {}),
+                  } : {}),
+                  version: 1,
+                  createdAt: options.now(),
+                })
                 next.version = fresh.version + 1
                 next.updatedAt = options.now()
                 ledger.tasks[index] = next
@@ -930,7 +947,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
               if (root.outcome === 'failed') {
                 throw new Error(`Error: invalid_input: ${root.error ?? '合并失败'}`)
               }
-              await pushComment(`[系统] 分支 ${root.branch} 已合并到主工作区（--no-ff）。`)
+              await pushComment(`[系统] 分支 ${root.branch} 已合并到主工作区（--no-ff）。`, { key: 'sys.mergeSingle', params: { branch: root.branch } })
               json(res, { ok: true, value: { merged: true, branch: root.branch } })
               return
             }
@@ -942,7 +959,10 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
                 ? `${labelOf(r.repo)} ✓ 已合并`
                 : r.outcome === 'noop' ? `${labelOf(r.repo)} ⟲ 无新提交` : `${labelOf(r.repo)} ✗ ${(r.error ?? '合并失败').slice(0, 150)}`)
               .join('；')
-            await pushComment(`[系统] 分支已按仓库合并（--no-ff）：${summary}`)
+            await pushComment(`[系统] 分支已按仓库合并（--no-ff）：${summary}`, {
+              key: 'sys.mergeMulti',
+              rows: results.map(r => ({ repo: r.repo, outcome: r.outcome, ...(r.error !== undefined ? { error: r.error.slice(0, 150) } : {}) })),
+            })
             json(res, {
               ok: true,
               value: {

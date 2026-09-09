@@ -456,4 +456,14 @@ export const en: TaskboardDict = {
   'slash.skill.source-driven-development': 'Design from authoritative docs and source code',
   'slash.skill.spec-driven-development': 'Write clear technical specs before coding',
   'slash.skill.using-agent-skills': 'Discover and invoke agent skills dynamically',
+
+  // ── host-generated system comments (0.6.4; localized at render) ────
+  'sys.execFailed': '[System] Execution failed: {error}; the task was returned to todo.',
+  'sys.endedWithComment': '[System] The execution session ended with comments but was not moved to in review; the system moved it to in review automatically.',
+  'sys.endedNoHandoff': '[System] The execution session ended without a protocol handoff (no comments, not moved to in review); the system moved it to in review automatically — review it, then send back or accept.',
+  'sys.sessionError': '[System] Session execution error: {error}; the task was returned to todo.',
+  'sys.sessionDone': '[System] The session finished; automatically moved to in review.',
+  'sys.cronDead': '[System] The cron expression {cron} has no trigger time within 4 years; scheduling disabled — fix the cron and re-enable.',
+  'sys.mergeSingle': '[System] Branch {branch} merged into the main worktree (--no-ff).',
+  'sys.mergeMulti': '[System] Branches merged per repo (--no-ff): {summary}',
 }

@@ -458,6 +458,16 @@ export const zh = {
   'slash.skill.source-driven-development': '基于权威官方文档与源码进行设计实现',
   'slash.skill.spec-driven-development': '在编码前制定清晰的技术规范',
   'slash.skill.using-agent-skills': '发现并动态调用智能体各项专业技能',
+
+  // ── host-generated system comments (0.6.4; localized at render) ────
+  'sys.execFailed': '[系统] 执行失败：{error}；任务已退回待办。',
+  'sys.endedWithComment': '[系统] 执行会话已结束并留有评论，但未移至待验收；系统自动移入待验收。',
+  'sys.endedNoHandoff': '[系统] 执行会话已结束，但未按协议交接（无评论、未移至待验收）；系统自动移入待验收，请审查后退回或验收。',
+  'sys.sessionError': '[系统] 会话执行异常：{error}；任务已退回待办。',
+  'sys.sessionDone': '[系统] 会话执行完毕，已自动进入待验收。',
+  'sys.cronDead': '[系统] 定时表达式 {cron} 在 4 年内没有可触发时间，已停用定时；请修正 cron 后重新开启。',
+  'sys.mergeSingle': '[系统] 分支 {branch} 已合并到主工作区（--no-ff）。',
+  'sys.mergeMulti': '[系统] 分支已按仓库合并（--no-ff）：{summary}',
 } as const
 
 /** The dictionary shape en.ts must match key-for-key. */

@@ -9,12 +9,12 @@
  */
 import { useEffect, useState, type ReactNode } from 'react'
 import type { BoardController } from '../controller.ts'
-import type { ExecutionRecord, TaskRecord } from '../../shared/protocol.ts'
+import type { CommentRecord, ExecutionRecord, TaskRecord } from '../../shared/protocol.ts'
 import { canTransition, checklistProgress } from '../../shared/protocol.ts'
 import { useAlert } from './AlertModal.tsx'
 import { fmtTime, isStaleClaim } from './format.ts'
 import { MOVE_KEYS, OUTCOME_KEYS, STATUS_KEYS, URGENCY_KEYS } from './labels.ts'
-import { useT } from '../i18n/runtime.ts'
+import { useT, type Translate } from '../i18n/runtime.ts'
 
 /** Statuses a user may move this task to, per the state machine. */
 function moveTargets(task: TaskRecord): TaskRecord['status'][] {
@@ -26,6 +26,26 @@ function moveTargets(task: TaskRecord): TaskRecord['status'][] {
 function shortId(id: string | undefined): string {
   if (id === undefined) return ''
   return id.replace(/^session-(taskboard-)?/, '').slice(0, 8)
+}
+
+/**
+ * Render a comment body, localizing host-generated system messages (0.6.4).
+ * System comments carry a `systemKey` (+ flat params, or structured per-repo
+ * rows for the multi-repo merge summary); user/agent comments render raw.
+ */
+export function commentBody(t: Translate, c: CommentRecord): string {
+  if (c.systemKey === undefined) return c.body
+  if (c.systemRows !== undefined) {
+    const summary = c.systemRows
+      .map(r => {
+        const label = r.repo === '' ? t('iso.repo.root') : r.repo
+        const mark = r.outcome === 'merged' ? '✓' : r.outcome === 'noop' ? '⟲' : '✗'
+        return r.outcome === 'failed' && r.error !== undefined ? `${label} ${mark} ${r.error}` : `${label} ${mark}`
+      })
+      .join(' · ')
+    return t(c.systemKey, { summary })
+  }
+  return t(c.systemKey, c.systemParams)
 }
 
 /** Execution duration between start and end. */
@@ -730,7 +750,7 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
                         <b>{c.threadId !== undefined ? `agent ${shortId(c.threadId)}` : t('detail.comments.user')}</b>
                         <span>{fmtTime(c.createdAt)}</span>
                       </div>
-                      <div className="dsh-atb-bubble-body">{c.body}</div>
+                      <div className="dsh-atb-bubble-body">{commentBody(t, c)}</div>
                     </div>
                   </div>
                 ))}

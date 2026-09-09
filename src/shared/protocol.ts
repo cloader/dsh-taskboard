@@ -335,6 +335,15 @@ export type Actor =
   | { kind: 'agent'; sessionId: string }
   | { kind: 'system' }
 
+/** Structured row of a multi-repo merge system comment (0.6.4). */
+export type SystemCommentRow = {
+  /** Repo path relative to the workspace ('' = the workspace root repo). */
+  repo: string
+  outcome: 'merged' | 'noop' | 'failed'
+  /** Failure reason (verbatim) when outcome = 'failed'. */
+  error?: string
+}
+
 /** A progress/report comment on a task. */
 export type CommentRecord = {
   id: string
@@ -345,6 +354,16 @@ export type CommentRecord = {
   createdAt: number
   /** The session that wrote this comment; absent for user-written ones. */
   threadId?: string
+  /**
+   * i18n key of a host-generated system message (0.6.4). The GUI localizes it
+   * at render time; `body` stays a zh fallback for agent tools / CSV / raw
+   * JSON views.
+   */
+  systemKey?: string
+  /** Flat {name} interpolation params for the system message. */
+  systemParams?: Record<string, string>
+  /** Structured per-repo rows for the multi-repo merge summary (0.6.4). */
+  systemRows?: SystemCommentRow[]
 }
 
 /** One commit produced by an isolated execution (hash + subject). */

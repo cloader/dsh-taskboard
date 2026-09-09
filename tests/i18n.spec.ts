@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { en } from '../src/client/i18n/en.ts'
 import { zh } from '../src/client/i18n/zh.ts'
+import { localizeBuiltinName, localizeBuiltinTask } from '../src/client/i18n/templates.ts'
+import { builtinTemplateContent } from '../src/shared/builtin-templates.ts'
 import { COLUMN_KEYS, MOVE_KEYS, OUTCOME_KEYS, STATUS_KEYS, URGENCY_KEYS } from '../src/client/board/labels.ts'
 import { disposeI18n, initI18n, localeStore, translate } from '../src/client/i18n/runtime.ts'
 
@@ -170,6 +172,77 @@ describe('late locale activation (issue #16)', () => {
     document.documentElement.lang = 'en'
     await new Promise(r => setTimeout(r, 50))
     expect(localeStore.getSnapshot().active).toBe('en')
+  })
+})
+
+describe('built-in template localization', () => {
+  const builtin = { id: 'tpl-feature', name: '新增功能', task: { title: '新增：' }, builtin: true }
+
+  it('builtinTemplateContent resolves per locale and rejects unknown ids', () => {
+    expect(builtinTemplateContent('tpl-feature', 'zh')?.name).toBe('新增功能')
+    expect(builtinTemplateContent('tpl-feature', 'en')?.name).toBe('New feature')
+    expect(builtinTemplateContent('tpl-nope', 'en')).toBeUndefined()
+  })
+
+  it('localizeBuiltinName / localizeBuiltinTask follow the active locale', () => {
+    document.documentElement.lang = 'en-US'
+    disposeI18n()
+    expect(localizeBuiltinName(builtin)).toBe('New feature')
+    expect(localizeBuiltinTask(builtin).title).toBe('New feature:')
+
+    document.documentElement.lang = 'zh-CN'
+    disposeI18n()
+    expect(localizeBuiltinName(builtin)).toBe('新增功能')
+    expect(localizeBuiltinTask(builtin).title).toBe('新增：')
+  })
+
+  it('custom templates and unknown built-in ids pass through untouched', () => {
+    document.documentElement.lang = 'en-US'
+    disposeI18n()
+    const custom = { id: 'tpl-x', name: '我的模板', task: { title: '自定义' }, builtin: undefined }
+    expect(localizeBuiltinName(custom)).toBe('我的模板')
+    expect(localizeBuiltinTask(custom).title).toBe('自定义')
+    const unknownBuiltin = { id: 'tpl-1', name: 'Bug 修复', task: { urgency: 'urgent' as const }, builtin: true }
+    expect(localizeBuiltinName(unknownBuiltin)).toBe('Bug 修复')
+    expect(localizeBuiltinTask(unknownBuiltin).urgency).toBe('urgent')
+  })
+})
+
+describe('host system message localization', () => {
+  it('translate resolves the sys.* keys per locale', () => {
+    document.documentElement.lang = 'zh-CN'
+    disposeI18n()
+    expect(translate('sys.sessionDone')).toContain('会话执行完毕')
+    expect(translate('sys.execFailed', { error: 'boom' })).toContain('boom')
+
+    document.documentElement.lang = 'en-US'
+    disposeI18n()
+    expect(translate('sys.sessionDone')).toContain('automatically moved to in review')
+  })
+
+  it('commentBody localizes system comments and renders the merge summary', async () => {
+    document.documentElement.lang = 'en-US'
+    disposeI18n()
+    const { commentBody } = await import('../src/client/board/TaskDetail.tsx')
+    const base = { id: 'c1', body: 'x', version: 1, createdAt: 0 }
+
+    // A system comment renders its localized message.
+    expect(commentBody(translate, { ...base, systemKey: 'sys.sessionDone' })).toContain('[System]')
+    // A plain user/agent comment renders raw.
+    expect(commentBody(translate, { ...base, body: 'plain text' })).toBe('plain text')
+    // A multi-repo merge summary renders per-row localized labels + symbols.
+    const merged = commentBody(translate, {
+      ...base,
+      systemKey: 'sys.mergeMulti',
+      systemRows: [
+        { repo: '', outcome: 'merged' },
+        { repo: 'sub', outcome: 'noop' },
+        { repo: 'x', outcome: 'failed', error: 'conflict' },
+      ],
+    })
+    expect(merged).toContain('Root repo ✓')
+    expect(merged).toContain('sub ⟲')
+    expect(merged).toContain('x ✗ conflict')
   })
 })
 

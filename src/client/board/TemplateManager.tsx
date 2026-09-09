@@ -7,8 +7,12 @@
  */
 import { useState } from 'react'
 import type { BoardController } from '../controller.ts'
+import type { TaskTemplate } from '../../shared/api.ts'
+import type { Urgency } from '../../shared/protocol.ts'
 import { useAlert } from './AlertModal.tsx'
+import { URGENCY_KEYS } from './labels.ts'
 import { useT } from '../i18n/runtime.ts'
+import { localizeBuiltinName, localizeBuiltinTask } from '../i18n/templates.ts'
 
 /**
  * The template manager modal.
@@ -23,12 +27,20 @@ export function TemplateManager({ controller }: { controller: BoardController })
 
   const close = (): void => controller.closeTemplateManager()
 
-  const nameOf = (id: string, fallback: string): string => edits[id] ?? fallback
+  /** The name a row currently shows: an in-flight rename edit, else the localized name. */
+  const nameOf = (tpl: TaskTemplate): string => edits[tpl.id] ?? localizeBuiltinName(tpl)
+
+  /** Localized urgency label for the meta line ('' when the template pins none). */
+  const urgencyLabel = (urgency: string | undefined): string => {
+    if (urgency === undefined) return ''
+    const key = URGENCY_KEYS[urgency as Urgency]
+    return key !== undefined ? ` · ${t(key)}` : ` · ${urgency}`
+  }
 
   /** Save one template's rename. */
   const save = (id: string, name: string): void => {
     const template = state.templates.find(t => t.id === id)
-    if (template === undefined || name === template.name) return
+    if (template === undefined || name === localizeBuiltinName(template)) return
     void controller.upsertTemplate({ id, name, task: template.task }).then(ok => {
       if (ok) {
         setEdits(prev => { const next = { ...prev }; delete next[id]; return next })
@@ -57,31 +69,31 @@ export function TemplateManager({ controller }: { controller: BoardController })
                     <div key={tpl.id} className="dsh-atb-tplm-row">
                       <input
                         className="dsh-atb-tplm-name"
-                        value={nameOf(tpl.id, tpl.name)}
+                        value={nameOf(tpl)}
                         maxLength={60}
                         spellCheck={false}
-                        aria-label={t('tpl.name.aria', { name: tpl.name })}
+                        aria-label={t('tpl.name.aria', { name: localizeBuiltinName(tpl) })}
                         onChange={e => setEdits(prev => ({ ...prev, [tpl.id]: e.target.value }))}
                         onKeyDown={e => {
-                          if (e.key === 'Enter') save(tpl.id, nameOf(tpl.id, tpl.name))
+                          if (e.key === 'Enter') save(tpl.id, nameOf(tpl))
                         }}
                       />
                       <span
                         className="dsh-atb-tplm-meta"
-                        title={`${tpl.builtin === true ? t('tpl.builtin') : t('tpl.custom')}${tpl.task.checklist !== undefined && tpl.task.checklist.length > 0 ? t('tpl.meta.checklist', { n: tpl.task.checklist.length }) : ''}${tpl.task.urgency !== undefined ? ` · ${tpl.task.urgency}` : ''}${tpl.task.permission !== undefined ? ` · ${t('shared.permission')}: ${tpl.task.permission}` : ''}`}
+                        title={`${tpl.builtin === true ? t('tpl.builtin') : t('tpl.custom')}${tpl.task.checklist !== undefined && tpl.task.checklist.length > 0 ? t('tpl.meta.checklist', { n: tpl.task.checklist.length }) : ''}${urgencyLabel(tpl.task.urgency)}${tpl.task.permission !== undefined ? ` · ${t('shared.permission')}: ${tpl.task.permission}` : ''}`}
                       >
                         {tpl.builtin === true ? t('tpl.builtin') : t('tpl.custom')}
                         {tpl.task.checklist !== undefined && tpl.task.checklist.length > 0 ? t('tpl.meta.checklist', { n: tpl.task.checklist.length }) : ''}
-                        {tpl.task.urgency !== undefined ? ` · ${tpl.task.urgency}` : ''}
+                        {urgencyLabel(tpl.task.urgency)}
                         {tpl.task.permission !== undefined && tpl.task.permission !== 'workspace-write' ? ` · ${tpl.task.permission === 'read-only' ? t('tpl.meta.permReadOnly') : t('tpl.meta.permFull')}` : ''}
                       </span>
                       <span className="dsh-atb-tplm-btns">
                         <button
                           type="button"
                           className="dsh-atb-btn"
-                          disabled={nameOf(tpl.id, tpl.name) === tpl.name || nameOf(tpl.id, tpl.name).trim().length === 0}
+                          disabled={nameOf(tpl) === localizeBuiltinName(tpl) || nameOf(tpl).trim().length === 0}
                           title={t('tpl.rename.title')}
-                          onClick={() => save(tpl.id, nameOf(tpl.id, tpl.name))}
+                          onClick={() => save(tpl.id, nameOf(tpl))}
                         >
                           {t('tpl.rename.button')}
                         </button>
@@ -91,7 +103,7 @@ export function TemplateManager({ controller }: { controller: BoardController })
                           title={t('tpl.use.title')}
                           onClick={() => {
                             close()
-                            controller.newFromTemplate(tpl.task)
+                            controller.newFromTemplate(localizeBuiltinTask(tpl))
                           }}
                         >
                           {t('tpl.use.button')}

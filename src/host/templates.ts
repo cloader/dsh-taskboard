@@ -10,66 +10,15 @@
  */
 import { readFile } from 'node:fs/promises'
 import type { TaskTemplate } from '../shared/api.ts'
+import { BUILTIN_TEMPLATE_CONTENT, BUILTIN_TEMPLATE_IDS, type BuiltinTemplateId } from '../shared/builtin-templates.ts'
 
-/** The built-in templates seeded when the side file does not exist yet. */
-export const BUILTIN_TEMPLATES: ReadonlyArray<{ id: string; name: string; task: TaskTemplate['task'] }> = [
-  {
-    id: 'tpl-feature',
-    name: '新增功能',
-    task: {
-      title: '新增：',
-      prompt: [
-        '实现以上新功能并按序交接：',
-        '1. 明确需求边界与验收标准，列出实现要点',
-        '2. 实现功能（含类型定义与错误处理）',
-        '3. 补充测试（单测/回归）',
-        '4. 运行相关测试套件确认通过',
-      ].join('\n'),
-      urgency: 'normal',
-      checklist: ['实现要点已明确（需求边界与验收标准）', '功能已实现并补充测试', '相关测试套件通过'],
-    },
-  },
-  {
-    id: 'tpl-bugfix',
-    name: 'Bug 修复',
-    task: {
-      title: '修复：',
-      prompt: [
-        '修复以上问题并按序交接：',
-        '1. 复现问题（写最小复现步骤或测试）',
-        '2. 定位根因，说明为什么会发生',
-        '3. 修复并补回归测试',
-        '4. 运行相关测试套件确认无回归',
-      ].join('\n'),
-      urgency: 'urgent',
-      checklist: ['已复现并定位根因', '修复已提交到任务分支', '回归测试通过'],
-    },
-  },
-  {
-    id: 'tpl-release',
-    name: '发布检查',
-    task: {
-      title: '发布：',
-      prompt: '执行发布流程：版本号更新、构建、测试、变更记录，完成后按序交接（不要实际推送/发布，等用户确认）。',
-      urgency: 'normal',
-      checklist: ['版本号已更新（package.json 与版本常量同步）', '构建通过', '全部测试通过', '变更记录已写'],
-    },
-  },
-  {
-    id: 'tpl-patrol',
-    name: '例行巡检',
-    task: {
-      title: '巡检：',
-      prompt: [
-        '例行巡检：检查依赖更新、失败测试、明显代码问题与未处理的告警。',
-        '发现的问题逐条列出（严重度/位置/建议），小问题直接修复，大问题只报告不动手。',
-        '输出巡检摘要（用 {{lastComments}} 可回看上次巡检结论）。',
-      ].join('\n'),
-      urgency: 'relaxed',
-      execution: { mode: 'scheduled', cron: '0 9 * * 1' },
-    },
-  },
-]
+/**
+ * The built-in templates seeded when the side file does not exist yet.
+ * Seeded from the shared zh content (the side file is plain data; the client
+ * resolves the active locale at render time — see shared/builtin-templates.ts).
+ */
+export const BUILTIN_TEMPLATES: ReadonlyArray<{ id: BuiltinTemplateId; name: string; task: TaskTemplate['task'] }> =
+  BUILTIN_TEMPLATE_IDS.map(id => ({ id, name: BUILTIN_TEMPLATE_CONTENT.zh[id].name, task: BUILTIN_TEMPLATE_CONTENT.zh[id].task }))
 
 /** Mint a template id. */
 function newTemplateId(): string {

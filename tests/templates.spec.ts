@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { BUILTIN_TEMPLATES, TemplateStore } from '../src/host/templates.ts'
+import { BUILTIN_TEMPLATE_CONTENT, BUILTIN_TEMPLATE_IDS } from '../src/shared/builtin-templates.ts'
 import { TaskStore } from '../src/host/store.ts'
 
 let dir: string
@@ -20,6 +21,19 @@ afterAll(async () => {
 })
 
 describe('TemplateStore', () => {
+  it('built-in content ships both locales with matching ids (host seeds the zh copy)', () => {
+    expect(BUILTIN_TEMPLATES.map(t => t.id)).toEqual([...BUILTIN_TEMPLATE_IDS])
+    expect(BUILTIN_TEMPLATES.map(t => t.name)).toEqual(BUILTIN_TEMPLATE_IDS.map(id => BUILTIN_TEMPLATE_CONTENT.zh[id].name))
+    for (const id of BUILTIN_TEMPLATE_IDS) {
+      const zhT = BUILTIN_TEMPLATE_CONTENT.zh[id]
+      const enT = BUILTIN_TEMPLATE_CONTENT.en[id]
+      expect(zhT.name.length).toBeGreaterThan(0)
+      expect(enT.name.length).toBeGreaterThan(0)
+      expect(enT.task.checklist?.length ?? 0).toBe(zhT.task.checklist?.length ?? 0)
+      expect(enT.task.urgency).toBe(zhT.task.urgency)
+    }
+  })
+
   it('seeds the built-ins when the side file is missing', async () => {
     const store = new TemplateStore(join(dir, 'a-templates.json'))
     const list = await store.list()
