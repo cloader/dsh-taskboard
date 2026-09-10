@@ -1002,7 +1002,7 @@ describe('mirror protocol additions (0.6.3)', () => {
     expect(mixed.ok && mixed.task.branches).toEqual({ sub: 'task/x' })
   })
 
-  it('taskAssociatedSessionIds extracts distinct session IDs from executions, claim, and creator', () => {
+  it('taskAssociatedSessionIds extracts execution IDs only, excluding claim and creator', () => {
     const task: TaskRecord = {
       id: 't-test-1',
       title: 'Test',
@@ -1027,7 +1027,7 @@ describe('mirror protocol additions (0.6.3)', () => {
       ],
     }
     const sessionIds = taskAssociatedSessionIds(task)
-    expect(sessionIds).toEqual(['session-exec-1', 'session-exec-2', 'session-holder-456', 'session-creator-123'])
+    expect(sessionIds).toEqual(['session-exec-1', 'session-exec-2'])
 
     // Empty when task has no sessions
     const emptyTask = { ...task, createdBy: { kind: 'user' as const }, claimedBy: undefined, executions: [] }

@@ -1086,11 +1086,13 @@ describe('client half', () => {
       }],
     }
     const moves: Array<{ id: string; body: Record<string, unknown> }> = []
+    let archiveSupported = true
     const client = {
-      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [taskWithSession] }),
+      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [taskWithSession], capabilities: { archiveSessions: archiveSupported } }),
       workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
       stream: () => () => {},
-      move: async (id: string, body: Record<string, unknown>) => { moves.push({ id, body }); return taskWithSession },
+      move: async (id: string, body: Record<string, unknown>) => { moves.push({ id, body }); return { ...taskWithSession, ...(body.archiveSessions === true ? { sessionArchive: { archived: [], failed: [{ sessionId: 'session-taskboard-s1234567', error: 'disk failure' }], unsupported: [] } } : {}) } },
+      archiveSessions: async () => ({ archived: ['session-taskboard-s1234567'], failed: [], unsupported: [] }),
     }
     const controller = new BoardController(client as never)
     controller.start()
@@ -1115,11 +1117,13 @@ describe('client half', () => {
     expect(confirmLabel.textContent).toContain('s1234567')
 
     const btns = Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-confirm .dsh-atb-btn'))
-    const withSessionBtn = btns.find(b => b.dataset.primary === 'true')!
+    const withSessionBtn = btns.find(b => b.textContent === '连同会话归档')!
     const cardOnlyBtn = btns.find(b => b.textContent!.includes('仅归档卡片') || b.textContent!.includes('Card only'))!
     const cancelBtn = btns.find(b => b.textContent!.includes('取消') || b.textContent!.includes('Cancel'))!
 
     expect(withSessionBtn).not.toBeNull()
+    expect(withSessionBtn.dataset.primary).toBeUndefined()
+    expect(host.textContent).toContain('session-taskboard-s1234567')
     expect(cardOnlyBtn).not.toBeNull()
     expect(cancelBtn).not.toBeNull()
 
@@ -1146,10 +1150,30 @@ describe('client half', () => {
     archBtn3.click()
     await new Promise(r => setTimeout(r, 10))
 
-    const withSessionBtn3 = host.querySelector<HTMLButtonElement>('.dsh-atb-confirm .dsh-atb-btn[data-primary="true"]')!
+    const withSessionBtn3 = Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-confirm .dsh-atb-btn')).find(b => b.textContent === '连同会话归档')!
     withSessionBtn3.click()
     await new Promise(r => setTimeout(r, 10))
     expect(moves).toEqual([{ id: 't-arch-1', body: { ifVersion: 5, status: 'archived', archiveSessions: true } }])
+
+    root.render(React.createElement(TaskDetail, { task: { ...taskWithSession, status: 'archived' } as never, controller, now: 1_000 }))
+    await new Promise(r => setTimeout(r, 10))
+    expect(host.textContent).toContain('disk failure')
+    const retry = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(b => b.textContent!.includes('重试归档'))!
+    retry.click()
+    await new Promise(r => setTimeout(r, 10))
+    expect(controller.getSnapshot().sessionArchive?.result.failed).toEqual([])
+    expect(host.textContent).not.toContain('disk failure')
+    expect(moves).toHaveLength(1) // retry never repeats the terminal transition
+
+    archiveSupported = false
+    await controller.refresh()
+    root.render(React.createElement(TaskDetail, { task: taskWithSession as never, controller, now: 1_000 }))
+    await new Promise(r => setTimeout(r, 10))
+    host.querySelector<HTMLButtonElement>('.dsh-atb-movebtn[data-to="archived"]')!.click()
+    await new Promise(r => setTimeout(r, 10))
+    const unsupported = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(b => b.textContent === '连同会话归档')!
+    expect(unsupported.disabled).toBe(true)
+    expect(unsupported.title).toContain('不支持')
 
     root.unmount()
     host.remove()

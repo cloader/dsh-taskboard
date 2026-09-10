@@ -38,7 +38,7 @@ export type ApiResult<T> = ApiOk<T> | ApiFail
 // ---------------------------------------------------------------------------
 
 /** Full-state response (the reconnect baseline after an SSE gap). */
-export type StateResponse = TaskLedger
+export type StateResponse = TaskLedger & { capabilities?: { archiveSessions: boolean } }
 
 /**
  * Workspace listing for the UI pickers. `repoCount` (0.6.3): how many repos a
@@ -90,6 +90,9 @@ export type UpdateTaskBody = {
 
 /** Move-task request body (ifVersion mandatory; the user MAY move to done). */
 export type MoveTaskBody = { ifVersion: number; status: string; archiveSessions?: boolean }
+
+export type SessionArchiveResult = { archived: string[]; failed: Array<{ sessionId: string; error: string }>; unsupported: string[] }
+export type MoveTaskResponse = TaskSummary & { sessionArchive?: SessionArchiveResult }
 
 /**
  * Quick-reject request body (card ✗ button): move back to todo plus an

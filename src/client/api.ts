@@ -17,6 +17,8 @@ import type {
   MergeBranchResponse,
   ModelCatalogResponse,
   MoveTaskBody,
+  MoveTaskResponse,
+  SessionArchiveResult,
   PromptCompletionsResponse,
   RejectTaskBody,
   RunTaskBody,
@@ -65,7 +67,8 @@ export interface TaskboardClient {
   create(body: CreateTaskBody): Promise<TaskSummary>
   get(id: string): Promise<TaskRecord>
   update(id: string, body: UpdateTaskBody): Promise<TaskSummary>
-  move(id: string, body: MoveTaskBody): Promise<TaskSummary>
+  move(id: string, body: MoveTaskBody): Promise<MoveTaskResponse>
+  archiveSessions?(id: string): Promise<SessionArchiveResult>
   /** Quick-reject (card ✗): back to todo + optional comment, one mutation. */
   reject(id: string, body: RejectTaskBody): Promise<TaskSummary>
   comment(id: string, bodyText: string): Promise<CommentRecord>
@@ -115,6 +118,7 @@ export function createClient(): TaskboardClient {
     get: id => get<TaskRecord>(`/dsh-taskboard/tasks/${encodeURIComponent(id)}`),
     update: (id, body) => post(`/dsh-taskboard/tasks/${encodeURIComponent(id)}/update`, body),
     move: (id, body) => post(`/dsh-taskboard/tasks/${encodeURIComponent(id)}/move`, body),
+    archiveSessions: id => post(`/dsh-taskboard/tasks/${encodeURIComponent(id)}/archive-sessions`, {}),
     reject: (id, body) => post(`/dsh-taskboard/tasks/${encodeURIComponent(id)}/reject`, body),
     comment: (id, bodyText) => post(`/dsh-taskboard/tasks/${encodeURIComponent(id)}/comment`, { body: bodyText }),
     remove: (id, body) => post(`/dsh-taskboard/tasks/${encodeURIComponent(id)}/delete`, body),

@@ -1,3 +1,4 @@
+import { archiveTaskSessions } from './archive-sessions.ts'
 /**
  * /dsh-taskboard routes on the shared DSH webserver: a JSON API for the
  * GUI's human operations (create/update/move/comment/delete — actor `user`,
@@ -36,7 +37,6 @@ import {
   normalizeTitle,
   summarize,
   syncClaim,
-  taskAssociatedSessionIds,
   validateLedgerImport,
   type TaskLedger,
   type TaskModel,
@@ -380,7 +380,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
       if (req.method === 'GET') {
         if (pathname === `${ROUTE_PREFIX}/state`) {
           await store.load()
-          json(res, { ok: true, value: store.snapshot() })
+          json(res, { ok: true, value: { ...store.snapshot(), capabilities: { archiveSessions: typeof workspaces.archiveSession === 'function' } } })
           return
         }
         if (pathname === `${ROUTE_PREFIX}/workspaces`) {
@@ -623,6 +623,12 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
         try {
           const task = store.get(id)
           if (task === undefined) throw new Error('Error: not_found: no such task')
+          if (action === 'archive-sessions') {
+            if (task.trashedAt !== undefined || task.status !== 'archived') throw new Error('Error: invalid_transition: only archived live tasks can retry session archiving')
+            const result = await archiveTaskSessions(task, workspaces.archiveSession)
+            json(res, { ok: true, value: result })
+            return
+          }
           if (action === 'update') {
             const ifVersion = num(body, 'ifVersion')
             if (ifVersion === undefined || ifVersion === null) throw new Error('Error: version_conflict: ifVersion required')
@@ -686,7 +692,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
           if (action === 'move') {
             const ifVersion = num(body, 'ifVersion')
             const status = str(body, 'status') ?? ''
-            const archiveSessions = body.archiveSessions === true || body.archiveSession === true
+            const archiveSessions = body.archiveSessions === true
             if (ifVersion === undefined || ifVersion === null) throw new Error('Error: version_conflict: ifVersion required')
             const to = asStatus(status)
             let next: TaskRecord | undefined
@@ -707,18 +713,10 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
               ledger.tasks[index] = next
               return [next]
             })
-            if (to === 'archived' && archiveSessions && options.workspaces?.archiveSession !== undefined) {
-              const targetTask = beforeTask ?? next
-              if (targetTask !== undefined) {
-                const sessionIds = taskAssociatedSessionIds(targetTask)
-                for (const sid of sessionIds) {
-                  try {
-                    await options.workspaces.archiveSession(sid)
-                  } catch { /* best effort */ }
-                }
-              }
-            }
-            json(res, { ok: true, value: summarize(next!) })
+            const sessionArchive = to === 'archived' && archiveSessions
+              ? await archiveTaskSessions(beforeTask ?? next!, workspaces.archiveSession)
+              : undefined
+            json(res, { ok: true, value: { ...summarize(next!), ...(sessionArchive !== undefined ? { sessionArchive } : {}) } })
             return
           }
           if (action === 'reject') {

@@ -776,10 +776,9 @@ export function syncClaim(task: TaskRecord, to: TaskStatus, now: number, holder?
 }
 
 /**
- * Collect unique session IDs associated with a task:
+ * Collect unique execution session IDs associated with a task:
  * - executions with a non-empty `sessionId`
- * - current/prior holder in `claimedBy` (when prefixed with `session-`)
- * - agent creator in `createdBy` (when prefixed with `session-`)
+ * Creator and claim sessions may serve other tasks and are never included.
  * @param task - the task record to inspect.
  * @returns an array of distinct session IDs in stable discovery order.
  */
@@ -802,12 +801,6 @@ export function taskAssociatedSessionIds(task: TaskRecord): string[] {
         push((ex as { sessionId?: unknown }).sessionId)
       }
     }
-  }
-  if (typeof task.claimedBy === 'string' && task.claimedBy.startsWith('session-')) {
-    push(task.claimedBy)
-  }
-  if (task.createdBy?.kind === 'agent' && typeof task.createdBy.sessionId === 'string' && task.createdBy.sessionId.startsWith('session-')) {
-    push(task.createdBy.sessionId)
   }
   return result
 }

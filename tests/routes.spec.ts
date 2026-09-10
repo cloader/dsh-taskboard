@@ -418,6 +418,33 @@ describe('taskboard routes', () => {
     expect(after.value.comments).toEqual([])
   })
 
+  it('reports partial archiving and retries without moving the archived card again', async () => {
+    const saved = workspaces.archiveSession
+    try {
+      const created = await post('/dsh-taskboard/tasks', { title: 'Archive retry', workspaceId: 'ws-a', urgency: 'normal' })
+      const id = created.json.value.id as string
+      expect((await post(`/dsh-taskboard/tasks/${id}/archive-sessions`, {})).status).toBe(400)
+      await store.mutate('execution-recorded', ledger => {
+        const task = ledger.tasks.find(t => t.id === id)!
+        task.status = 'done'
+        task.createdBy = { kind: 'agent', sessionId: 'session-planner' }
+        task.executions.push(...['session-one', 'session-two'].map((sessionId, i) => ({ id: `e-${i}`, trigger: 'manual' as const, outcome: 'succeeded' as const, startedAt: 0, sessionId })))
+        return [task]
+      })
+      workspaces.archiveSession = async id => { if (id === 'session-two') throw new Error('disk failure'); archivedSessionsHistory.push(id) }
+      const moved = await post(`/dsh-taskboard/tasks/${id}/move`, { ifVersion: store.get(id)!.version, status: 'archived', archiveSessions: true })
+      expect(moved.json.value.sessionArchive).toEqual({ archived: ['session-one'], failed: [{ sessionId: 'session-two', error: 'disk failure' }], unsupported: [] })
+      const version = store.get(id)!.version
+      workspaces.archiveSession = saved
+      const retried = await post(`/dsh-taskboard/tasks/${id}/archive-sessions`, {})
+      expect(retried.json.value).toEqual({ archived: ['session-one', 'session-two'], failed: [], unsupported: [] })
+      expect(store.get(id)!.version).toBe(version)
+      expect(archivedSessionsHistory).not.toContain('session-planner')
+      workspaces.archiveSession = undefined
+      expect((await post(`/dsh-taskboard/tasks/${id}/archive-sessions`, {})).json.value.unsupported).toEqual(['session-one', 'session-two'])
+    } finally { workspaces.archiveSession = saved }
+  })
+
   it('moving to archived with archiveSessions: true archives associated sessions', async () => {
     const created = await post('/dsh-taskboard/tasks', { title: '待归档', workspaceId: 'ws-a', urgency: 'normal' })
     const id = created.json.value.id as string

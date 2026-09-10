@@ -532,6 +532,8 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
   const sessionExecution = [...task.executions].reverse().find(e => e.sessionId !== undefined)
   const targetSessionId = runningExecution?.sessionId ?? sessionExecution?.sessionId ?? (task.claimedBy?.startsWith('session-') ? task.claimedBy : undefined)
   const associatedSessions = taskAssociatedSessionIds(task)
+  const archiveState = controller.getSnapshot()
+  const archiveResult = archiveState.sessionArchive?.taskId === task.id ? archiveState.sessionArchive.result : undefined
 
   /** Fire one top action under the shared busy guard; re-enable on settle. */
   const runAction = (action: () => Promise<unknown>): void => {
@@ -702,6 +704,16 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
 
       <ChecklistBlock task={task} controller={controller} />
 
+      {archiveResult !== undefined && (
+        <div role="status" className="dsh-atb-confirm">
+          <span>{t('detail.move.archiveResult', { n: archiveResult.archived.length })}</span>
+          {archiveResult.failed.map(item => <span key={item.sessionId}>{item.sessionId}: {item.error}</span>)}
+          {archiveResult.unsupported.length > 0 && <span>{t('detail.move.archiveUnsupported')} {archiveResult.unsupported.join(', ')}</span>}
+        </div>
+      )}
+      {task.status === 'archived' && associatedSessions.length > 0 && archiveState.archiveSessionsSupported && (
+        <button type="button" className="dsh-atb-btn" disabled={actionBusy} onClick={() => runAction(() => controller.retryArchiveSessions(task.id))}>{t('detail.move.archiveRetry')}</button>
+      )}
       <div className="dsh-atb-detail-actions">
         <div className="dsh-atb-movebtns">
           {moveTargets(task).map(to => {
@@ -729,14 +741,16 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
                           ? t('detail.move.confirmArchiveSessionCount', { n: associatedSessions.length })
                           : t('detail.move.confirmArchive')}
                     </span>
+                    {associatedSessions.length > 0 && <span className="dsh-atb-confirm-label">{associatedSessions.join(', ')}</span>}
                     {associatedSessions.length > 0 ? (
                       <>
                         <button
                           type="button"
                           className="dsh-atb-btn"
-                          data-primary="true"
+                          disabled={!archiveState.archiveSessionsSupported || actionBusy}
+                          title={!archiveState.archiveSessionsSupported ? t('detail.move.archiveUnsupported') : undefined}
                           onClick={() => {
-                            void controller.move(task.id, task.version, 'archived', { archiveSessions: true })
+                            runAction(() => controller.move(task.id, task.version, 'archived', { archiveSessions: true }))
                             setConfirmArchive(false)
                           }}
                         >
@@ -746,7 +760,7 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
                           type="button"
                           className="dsh-atb-btn"
                           onClick={() => {
-                            void controller.move(task.id, task.version, 'archived', { archiveSessions: false })
+                            runAction(() => controller.move(task.id, task.version, 'archived', { archiveSessions: false }))
                             setConfirmArchive(false)
                           }}
                         >

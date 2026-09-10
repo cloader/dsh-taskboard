@@ -1,3 +1,4 @@
+import type { SessionArchiveResult } from '../shared/api.ts'
 /**
  * The board controller: framework-free state holder the React views render
  * from. Owns the ledger snapshot, workspace listing, view state (open,
@@ -47,6 +48,8 @@ function loadView(): { workspaceId?: string; urgencies: Urgency[]; sortBy: SortB
 
 /** Controller snapshot the views render. */
 export interface ControllerState {
+  archiveSessionsSupported?: boolean
+  sessionArchive?: { taskId: string; result: SessionArchiveResult }
   boardOpen: boolean
   ledger: TaskLedger
   workspaces: WorkspaceView[]
@@ -185,7 +188,7 @@ export class BoardController {
           if (this.state.selectedId !== undefined) {
             selected = ledger.tasks.find(t => t.id === this.state.selectedId)
           }
-          this.setState({ ledger, workspaces, error: undefined, selectedId: selected === undefined ? undefined : this.state.selectedId })
+          this.setState({ archiveSessionsSupported: ledger.capabilities?.archiveSessions === true, ledger, workspaces, error: undefined, selectedId: selected === undefined ? undefined : this.state.selectedId })
           if (this.seenRevision === undefined || ledger.revision >= this.seenRevision) break
         }
       } catch (error) {
@@ -422,14 +425,27 @@ export class BoardController {
     }
   }
 
+  /** Retry session archiving without repeating the task's terminal transition. */
+  async retryArchiveSessions(id: string): Promise<void> {
+    try {
+      if (this.client.archiveSessions === undefined) return
+      const result = await this.client.archiveSessions(id)
+      this.setState({ sessionArchive: { taskId: id, result } })
+      await this.refresh()
+    } catch (error) {
+      this.setState({ error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
   /** Move a task (user surface: done allowed). */
   async move(id: string, ifVersion: number, status: string, options?: { archiveSessions?: boolean }): Promise<void> {
     try {
-      await this.client.move(id, {
+      const result = await this.client.move(id, {
         ifVersion,
         status,
         ...(options?.archiveSessions !== undefined ? { archiveSessions: options.archiveSessions } : {}),
       })
+      if (result.sessionArchive !== undefined) this.setState({ sessionArchive: { taskId: id, result: result.sessionArchive } })
       await this.refresh()
     } catch (error) {
       this.setState({ error: error instanceof Error ? error.message : String(error) })
