@@ -1068,6 +1068,95 @@ describe('client half', () => {
     localStorage.clear()
   })
 
+  it('detail: archive move with associated session prompts for confirmation and supports archive with session vs card only', async () => {
+    localStorage.clear()
+    const React = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { TaskDetail } = await import('../src/client/board/TaskDetail.tsx')
+
+    const taskWithSession = {
+      id: 't-arch-1', title: '已完成任务', description: '', prompt: '', workspaceId: 'ws-a',
+      urgency: 'normal' as const, status: 'done' as const, blocked: false,
+      execution: { mode: 'claim' as const }, version: 5, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
+      comments: [], executions: [{
+        id: 'e-1', trigger: 'manual' as const, startedAt: 0, endedAt: 10, outcome: 'succeeded' as const,
+        sessionId: 'session-taskboard-s1234567',
+      }],
+    }
+    const moves: Array<{ id: string; body: Record<string, unknown> }> = []
+    const client = {
+      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [taskWithSession] }),
+      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
+      stream: () => () => {},
+      move: async (id: string, body: Record<string, unknown>) => { moves.push({ id, body }); return taskWithSession },
+    }
+    const controller = new BoardController(client as never)
+    controller.start()
+    await new Promise(r => setTimeout(r, 10))
+
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    root.render(React.createElement(TaskDetail, { task: taskWithSession as never, controller, now: 1_000 }))
+    await new Promise(r => setTimeout(r, 10))
+
+    // 1. Initial state: archive move button is rendered
+    const archBtn = host.querySelector<HTMLButtonElement>('.dsh-atb-movebtn[data-to="archived"]')!
+    expect(archBtn).not.toBeNull()
+
+    // 2. Click archive button: should NOT move directly; instead shows confirm prompt with session ID
+    archBtn.click()
+    await new Promise(r => setTimeout(r, 10))
+    expect(moves).toHaveLength(0)
+
+    const confirmLabel = host.querySelector('.dsh-atb-confirm-label')!
+    expect(confirmLabel.textContent).toContain('s1234567')
+
+    const btns = Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-confirm .dsh-atb-btn'))
+    const withSessionBtn = btns.find(b => b.dataset.primary === 'true')!
+    const cardOnlyBtn = btns.find(b => b.textContent!.includes('仅归档卡片') || b.textContent!.includes('Card only'))!
+    const cancelBtn = btns.find(b => b.textContent!.includes('取消') || b.textContent!.includes('Cancel'))!
+
+    expect(withSessionBtn).not.toBeNull()
+    expect(cardOnlyBtn).not.toBeNull()
+    expect(cancelBtn).not.toBeNull()
+
+    // 3. Test cancel button
+    cancelBtn.click()
+    await new Promise(r => setTimeout(r, 10))
+    expect(moves).toHaveLength(0)
+    expect(host.querySelector('.dsh-atb-confirm')).toBeNull()
+
+    // 4. Click archive again, then choose "仅归档卡片"
+    const archBtn2 = host.querySelector<HTMLButtonElement>('.dsh-atb-movebtn[data-to="archived"]')!
+    archBtn2.click()
+    await new Promise(r => setTimeout(r, 10))
+
+    const cardOnlyBtn2 = Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-confirm .dsh-atb-btn'))
+      .find(b => b.textContent!.includes('仅归档卡片') || b.textContent!.includes('Card only'))!
+    cardOnlyBtn2.click()
+    await new Promise(r => setTimeout(r, 10))
+    expect(moves).toEqual([{ id: 't-arch-1', body: { ifVersion: 5, status: 'archived', archiveSessions: false } }])
+
+    // 5. Click archive again, then choose "连同会话归档"
+    moves.length = 0
+    const archBtn3 = host.querySelector<HTMLButtonElement>('.dsh-atb-movebtn[data-to="archived"]')!
+    archBtn3.click()
+    await new Promise(r => setTimeout(r, 10))
+
+    const withSessionBtn3 = host.querySelector<HTMLButtonElement>('.dsh-atb-confirm .dsh-atb-btn[data-primary="true"]')!
+    withSessionBtn3.click()
+    await new Promise(r => setTimeout(r, 10))
+    expect(moves).toEqual([{ id: 't-arch-1', body: { ifVersion: 5, status: 'archived', archiveSessions: true } }])
+
+    root.unmount()
+    host.remove()
+    controller.dispose()
+    localStorage.clear()
+  })
+
   it('new-task menu lists templates and manages them; 存为模板 carries task fields', async () => {
     localStorage.clear()
     const React = await import('react')

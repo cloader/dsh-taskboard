@@ -365,7 +365,7 @@ button.dsh-atb-chip2.dsh-atb-chip-btn:hover {
 .dsh-atb-movebtn[data-to="canceled"], .dsh-atb-movebtn[data-to="archived"] { opacity: .75; }
 .dsh-atb-movebtn[data-to="blocked"] { border-color: rgba(229,72,77,.45); }
 .dsh-atb-movebtn[data-to="blocked"]:hover { background: rgba(229,72,77,.1); }
-.dsh-atb-confirm { display: inline-flex; align-items: center; gap: 6px; }
+.dsh-atb-confirm { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .dsh-atb-confirm-label { font-size: 11.5px; color: var(--dsw-text-secondary, gray); }
 
 .dsh-atb-section { font-size: 13px; display: flex; flex-direction: column; gap: 7px; }

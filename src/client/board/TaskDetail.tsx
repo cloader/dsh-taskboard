@@ -10,7 +10,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { BoardController } from '../controller.ts'
 import type { CommentRecord, ExecutionRecord, TaskRecord } from '../../shared/protocol.ts'
-import { canTransition, checklistProgress } from '../../shared/protocol.ts'
+import { canTransition, checklistProgress, taskAssociatedSessionIds } from '../../shared/protocol.ts'
 import { useAlert } from './AlertModal.tsx'
 import { fmtTime, isStaleClaim } from './format.ts'
 import { MOVE_KEYS, OUTCOME_KEYS, STATUS_KEYS, URGENCY_KEYS } from './labels.ts'
@@ -517,6 +517,7 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
   const [confirmDone, setConfirmDone] = useState(false)
   const [confirmPurge, setConfirmPurge] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
+  const [confirmArchive, setConfirmArchive] = useState(false)
   // Top action buttons (duplicate / save-as-template / run / reuse-run)
   // share one in-flight guard: a double click used to fire duplicate runs or
   // copies while the first round-trip was still pending (review P0).
@@ -530,6 +531,7 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
   const unchecked = (task.checklist ?? []).filter(i => !i.checked).length
   const sessionExecution = [...task.executions].reverse().find(e => e.sessionId !== undefined)
   const targetSessionId = runningExecution?.sessionId ?? sessionExecution?.sessionId ?? (task.claimedBy?.startsWith('session-') ? task.claimedBy : undefined)
+  const associatedSessions = taskAssociatedSessionIds(task)
 
   /** Fire one top action under the shared busy guard; re-enable on settle. */
   const runAction = (action: () => Promise<unknown>): void => {
@@ -702,8 +704,9 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
 
       <div className="dsh-atb-detail-actions">
         <div className="dsh-atb-movebtns">
-          {moveTargets(task).map(to => to === 'done'
-            ? (confirmDone
+          {moveTargets(task).map(to => {
+            if (to === 'done') {
+              return confirmDone
                 ? (
                     <span key={to} className="dsh-atb-confirm">
                       <span className="dsh-atb-confirm-label" data-tone={unchecked > 0 ? 'bad' : undefined}>
@@ -713,12 +716,81 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
                       <button type="button" className="dsh-atb-btn" onClick={() => setConfirmDone(false)}>{t('shared.cancel')}</button>
                     </span>
                   )
-                : <button key={to} type="button" className="dsh-atb-movebtn" data-to={to} onClick={() => setConfirmDone(true)}>{t('detail.move.to', { status: t(MOVE_KEYS[to]) })}</button>)
-            : (
-                <button key={to} type="button" className="dsh-atb-movebtn" data-to={to} onClick={() => void controller.move(task.id, task.version, to)}>
+                : <button key={to} type="button" className="dsh-atb-movebtn" data-to={to} onClick={() => { setConfirmDone(true); setConfirmArchive(false) }}>{t('detail.move.to', { status: t(MOVE_KEYS[to]) })}</button>
+            }
+            if (to === 'archived') {
+              if (confirmArchive) {
+                return (
+                  <span key={to} className="dsh-atb-confirm">
+                    <span className="dsh-atb-confirm-label">
+                      {associatedSessions.length === 1
+                        ? t('detail.move.confirmArchiveSessionWithId', { id: shortId(associatedSessions[0]) })
+                        : associatedSessions.length > 1
+                          ? t('detail.move.confirmArchiveSessionCount', { n: associatedSessions.length })
+                          : t('detail.move.confirmArchive')}
+                    </span>
+                    {associatedSessions.length > 0 ? (
+                      <>
+                        <button
+                          type="button"
+                          className="dsh-atb-btn"
+                          data-primary="true"
+                          onClick={() => {
+                            void controller.move(task.id, task.version, 'archived', { archiveSessions: true })
+                            setConfirmArchive(false)
+                          }}
+                        >
+                          {t('detail.move.archiveWithSession')}
+                        </button>
+                        <button
+                          type="button"
+                          className="dsh-atb-btn"
+                          onClick={() => {
+                            void controller.move(task.id, task.version, 'archived', { archiveSessions: false })
+                            setConfirmArchive(false)
+                          }}
+                        >
+                          {t('detail.move.archiveCardOnly')}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="dsh-atb-btn"
+                        data-primary="true"
+                        onClick={() => {
+                          void controller.move(task.id, task.version, 'archived')
+                          setConfirmArchive(false)
+                        }}
+                      >
+                        {t('detail.move.confirm')}
+                      </button>
+                    )}
+                    <button type="button" className="dsh-atb-btn" onClick={() => setConfirmArchive(false)}>{t('shared.cancel')}</button>
+                  </span>
+                )
+              }
+              return (
+                <button
+                  key={to}
+                  type="button"
+                  className="dsh-atb-movebtn"
+                  data-to={to}
+                  onClick={() => {
+                    setConfirmArchive(true)
+                    setConfirmDone(false)
+                  }}
+                >
                   {t('detail.move.to', { status: t(MOVE_KEYS[to]) })}
                 </button>
-              ))}
+              )
+            }
+            return (
+              <button key={to} type="button" className="dsh-atb-movebtn" data-to={to} onClick={() => void controller.move(task.id, task.version, to)}>
+                {t('detail.move.to', { status: t(MOVE_KEYS[to]) })}
+              </button>
+            )
+          })}
           <button type="button" className="dsh-atb-movebtn" data-to="blocked" onClick={() => void controller.toggleBlocked(task)}>
             {task.blocked ? t('detail.blocked.unmark') : t('detail.blocked.mark')}
           </button>

@@ -36,6 +36,7 @@ import {
   normalizeTitle,
   summarize,
   syncClaim,
+  taskAssociatedSessionIds,
   validateLedgerImport,
   type TaskLedger,
   type TaskModel,
@@ -685,13 +686,16 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
           if (action === 'move') {
             const ifVersion = num(body, 'ifVersion')
             const status = str(body, 'status') ?? ''
+            const archiveSessions = body.archiveSessions === true || body.archiveSession === true
             if (ifVersion === undefined || ifVersion === null) throw new Error('Error: version_conflict: ifVersion required')
             const to = asStatus(status)
             let next: TaskRecord | undefined
+            let beforeTask: TaskRecord | undefined
             await store.mutate('task-moved', ledger => {
               const { index, task } = liveTaskAt(ledger, id)
               if (ifVersion !== task.version) throw new Error(`Error: version_conflict: stale version ${ifVersion} (current ${task.version})`)
               if (!canTransition(task.status, to)) throw new Error(`Error: invalid_transition: illegal transition ${task.status} → ${to}`)
+              beforeTask = task
               next = structuredClone(task)
               next.status = to
               next.version = task.version + 1
@@ -703,6 +707,17 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
               ledger.tasks[index] = next
               return [next]
             })
+            if (to === 'archived' && archiveSessions && options.workspaces?.archiveSession !== undefined) {
+              const targetTask = beforeTask ?? next
+              if (targetTask !== undefined) {
+                const sessionIds = taskAssociatedSessionIds(targetTask)
+                for (const sid of sessionIds) {
+                  try {
+                    await options.workspaces.archiveSession(sid)
+                  } catch { /* best effort */ }
+                }
+              }
+            }
             json(res, { ok: true, value: summarize(next!) })
             return
           }

@@ -37,6 +37,7 @@ import {
   normalizeRepoEvidence,
   validateLedgerImport,
   isValidTaskId,
+  taskAssociatedSessionIds,
   type TaskRecord,
 } from '../src/shared/protocol.ts'
 import { TASKBOARD_PROTOCOL } from '../src/host/protocol-text.ts'
@@ -999,5 +1000,37 @@ describe('mirror protocol additions (0.6.3)', () => {
     // An illegal branches key is silently dropped (legal ones survive).
     const mixed = validateImportedTask({ ...base, branches: { sub: 'task/x', '../evil': 'task/y' } }, 0)
     expect(mixed.ok && mixed.task.branches).toEqual({ sub: 'task/x' })
+  })
+
+  it('taskAssociatedSessionIds extracts distinct session IDs from executions, claim, and creator', () => {
+    const task: TaskRecord = {
+      id: 't-test-1',
+      title: 'Test',
+      description: '',
+      prompt: '',
+      workspaceId: 'ws-a',
+      urgency: 'normal',
+      status: 'done',
+      blocked: false,
+      execution: { mode: 'claim' },
+      version: 1,
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: { kind: 'agent', sessionId: 'session-creator-123' },
+      updatedBy: { kind: 'user' },
+      claimedBy: 'session-holder-456',
+      comments: [],
+      executions: [
+        { id: 'e-1', trigger: 'manual', startedAt: 0, outcome: 'succeeded', sessionId: 'session-exec-1' },
+        { id: 'e-2', trigger: 'manual', startedAt: 10, outcome: 'succeeded', sessionId: 'session-exec-2' },
+        { id: 'e-3', trigger: 'manual', startedAt: 20, outcome: 'succeeded', sessionId: 'session-exec-1' }, // duplicate
+      ],
+    }
+    const sessionIds = taskAssociatedSessionIds(task)
+    expect(sessionIds).toEqual(['session-exec-1', 'session-exec-2', 'session-holder-456', 'session-creator-123'])
+
+    // Empty when task has no sessions
+    const emptyTask = { ...task, createdBy: { kind: 'user' as const }, claimedBy: undefined, executions: [] }
+    expect(taskAssociatedSessionIds(emptyTask)).toEqual([])
   })
 })

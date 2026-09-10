@@ -89,7 +89,7 @@ export type UpdateTaskBody = {
 }
 
 /** Move-task request body (ifVersion mandatory; the user MAY move to done). */
-export type MoveTaskBody = { ifVersion: number; status: string }
+export type MoveTaskBody = { ifVersion: number; status: string; archiveSessions?: boolean }
 
 /**
  * Quick-reject request body (card ✗ button): move back to todo plus an

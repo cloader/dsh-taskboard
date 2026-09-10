@@ -44,6 +44,7 @@ import {
   normalizeTitle,
   summarize,
   syncClaim,
+  taskAssociatedSessionIds,
   type Actor,
   type ChecklistItem,
   type TaskLedger,
@@ -162,6 +163,8 @@ export interface WorkspaceFace {
   get(id: string): { id: string; path: string; title: string } | undefined
   /** List all workspaces. */
   list(): Array<{ id: string; path: string; title: string }>
+  /** Archive one session durably (when supported by runtime workspaceRegistry). */
+  archiveSession?(sessionId: string): Promise<void>
 }
 
 /** Adapt the real registry to the narrow face. */
@@ -178,6 +181,14 @@ export function workspaceFace(registry: WorkspaceRegistry): WorkspaceFace {
       return ws === undefined ? undefined : { id: ws.id, path: ws.path, title: ws.title }
     },
     list: () => registry.list().map(ws => ({ id: ws.id, path: ws.path, title: ws.title })),
+    archiveSession: async (sessionId: string) => {
+      const reg = registry as unknown as { archiveSession?: (id: string) => Promise<void> }
+      if (typeof reg.archiveSession === 'function') {
+        try {
+          await reg.archiveSession(sessionId)
+        } catch { /* best effort */ }
+      }
+    },
   }
 }
 
@@ -554,6 +565,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       id: { type: 'string', required: true, description: 'Task id.' },
       status: { type: 'string', required: true, description: 'Target status.' },
       ifVersion: { type: 'number', required: true, description: 'Task version you read; fails on mismatch.' },
+      archiveSessions: { type: 'boolean', description: 'When moving to archived: whether to archive associated execution sessions as well. Defaults to false.' },
     },
     output: {
       schema: JSON_OUT,
@@ -563,7 +575,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
         return [{ type: 'text', text: t === undefined ? '移动失败。' : `任务 ${t.id} 已移到 ${t.status}，当前 v${t.version}。` }]
       },
     },
-    async execute(args: { id: string; status: string; ifVersion: number }, exec: unknown) {
+    async execute(args: { id: string; status: string; ifVersion: number; archiveSessions?: boolean }, exec: unknown) {
       try {
         const { actor } = caller(exec as ToolRunContext)
         const to = asStatus(args.status)
@@ -575,9 +587,11 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           : undefined
         // R1: every state guard + the write itself run inside the mutation.
         let next: TaskRecord | undefined
+        let beforeTask: TaskRecord | undefined
         await store.mutate('task-moved', ledger => {
           const { index, task } = liveTaskAt(ledger, args.id)
           versionGuard(task, args.ifVersion)
+          beforeTask = task
 
           // Code-level gate: agents never complete a task.
           if (to === 'done') {
@@ -607,6 +621,15 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           ledger.tasks[index] = next
           return [next]
         })
+        if (to === 'archived' && args.archiveSessions === true && deps.workspaces.archiveSession !== undefined) {
+          const targetTask = beforeTask ?? next
+          if (targetTask !== undefined) {
+            const sessionIds = taskAssociatedSessionIds(targetTask)
+            for (const sid of sessionIds) {
+              try { await deps.workspaces.archiveSession(sid) } catch { /* best effort */ }
+            }
+          }
+        }
         return json({ task: summarize(next!) })
       } catch (error) { fail(error) }
     },

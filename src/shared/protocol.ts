@@ -776,6 +776,43 @@ export function syncClaim(task: TaskRecord, to: TaskStatus, now: number, holder?
 }
 
 /**
+ * Collect unique session IDs associated with a task:
+ * - executions with a non-empty `sessionId`
+ * - current/prior holder in `claimedBy` (when prefixed with `session-`)
+ * - agent creator in `createdBy` (when prefixed with `session-`)
+ * @param task - the task record to inspect.
+ * @returns an array of distinct session IDs in stable discovery order.
+ */
+export function taskAssociatedSessionIds(task: TaskRecord): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  const push = (raw: unknown) => {
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim()
+      if (trimmed.length > 0 && !seen.has(trimmed)) {
+        seen.add(trimmed)
+        result.push(trimmed)
+      }
+    }
+  }
+
+  if (Array.isArray(task.executions)) {
+    for (const ex of task.executions) {
+      if (ex !== null && typeof ex === 'object') {
+        push((ex as { sessionId?: unknown }).sessionId)
+      }
+    }
+  }
+  if (typeof task.claimedBy === 'string' && task.claimedBy.startsWith('session-')) {
+    push(task.claimedBy)
+  }
+  if (task.createdBy?.kind === 'agent' && typeof task.createdBy.sessionId === 'string' && task.createdBy.sessionId.startsWith('session-')) {
+    push(task.createdBy.sessionId)
+  }
+  return result
+}
+
+/**
  * Validate and normalize a pinned model: `{ provider, model, reasoningEffort? }`,
  * provider and model must be non-empty trimmed strings.
  * @param raw - the raw input.

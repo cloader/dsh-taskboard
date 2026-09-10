@@ -43,10 +43,14 @@ const WS_BASE: Array<{ id: string; path: string; title: string }> = [
   { id: 'ws-b', path: '/proj/b', title: 'B' },
 ]
 const wsList: Array<{ id: string; path: string; title: string }> = []
+const archivedSessionsHistory: string[] = []
 const workspaces: WorkspaceFace = {
   resolveByPath: async path => (path === '/proj/a' ? { id: 'ws-a' } : path === '/proj/b' ? { id: 'ws-b' } : undefined),
   get: id => wsList.find(w => w.id === id),
   list: () => wsList.slice(),
+  archiveSession: async sessionId => {
+    archivedSessionsHistory.push(sessionId)
+  },
 }
 
 /** Factory defaults for the swappable git behavior (reset in beforeEach). */
@@ -214,6 +218,7 @@ beforeEach(async () => {
   )
   cancelCalls.length = 0
   runCalls.length = 0
+  archivedSessionsHistory.length = 0
   Object.assign(gitBehavior, freshGitBehavior())
   wsList.length = 0
   wsList.push(...WS_BASE.map(w => ({ ...w })))
@@ -411,6 +416,67 @@ describe('taskboard routes', () => {
     expect(after.value.title).toBe('已归档')
     expect(after.value.version).toBe(full.value.version)
     expect(after.value.comments).toEqual([])
+  })
+
+  it('moving to archived with archiveSessions: true archives associated sessions', async () => {
+    const created = await post('/dsh-taskboard/tasks', { title: '待归档', workspaceId: 'ws-a', urgency: 'normal' })
+    const id = created.json.value.id as string
+
+    // Simulate task having an execution session and being marked done
+    await store.mutate('execution-recorded', ledger => {
+      const target = ledger.tasks.find(t => t.id === id)!
+      target.status = 'done'
+      target.version += 1
+      target.executions.push({
+        id: 'e-1',
+        trigger: 'manual',
+        startedAt: 100,
+        outcome: 'succeeded',
+        sessionId: 'session-to-archive-123',
+      })
+      return [target]
+    })
+
+    const taskDone = store.snapshot().tasks.find(t => t.id === id)!
+    expect(taskDone.status).toBe('done')
+
+    // Move to archived with archiveSessions: false -> session NOT archived
+    const resNoArchive = await post(`/dsh-taskboard/tasks/${id}/move`, {
+      status: 'archived',
+      ifVersion: taskDone.version,
+      archiveSessions: false,
+    })
+    expect(resNoArchive.status).toBe(200)
+    expect(resNoArchive.json.value.status).toBe('archived')
+    expect(archivedSessionsHistory).toEqual([])
+
+    // Now test with archiveSessions: true on a second task
+    const created2 = await post('/dsh-taskboard/tasks', { title: '待归档带会话', workspaceId: 'ws-a', urgency: 'normal' })
+    const id2 = created2.json.value.id as string
+
+    await store.mutate('execution-recorded', ledger => {
+      const target = ledger.tasks.find(t => t.id === id2)!
+      target.status = 'done'
+      target.version += 1
+      target.executions.push({
+        id: 'e-2',
+        trigger: 'manual',
+        startedAt: 200,
+        outcome: 'succeeded',
+        sessionId: 'session-archive-me-456',
+      })
+      return [target]
+    })
+
+    const task2Done = store.snapshot().tasks.find(t => t.id === id2)!
+    const resArchive = await post(`/dsh-taskboard/tasks/${id2}/move`, {
+      status: 'archived',
+      ifVersion: task2Done.version,
+      archiveSessions: true,
+    })
+    expect(resArchive.status).toBe(200)
+    expect(resArchive.json.value.status).toBe('archived')
+    expect(archivedSessionsHistory).toEqual(['session-archive-me-456'])
   })
 
   it('POST /tasks rejects non-initial statuses (backlog/todo only)', async () => {

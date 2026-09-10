@@ -423,9 +423,13 @@ export class BoardController {
   }
 
   /** Move a task (user surface: done allowed). */
-  async move(id: string, ifVersion: number, status: string): Promise<void> {
+  async move(id: string, ifVersion: number, status: string, options?: { archiveSessions?: boolean }): Promise<void> {
     try {
-      await this.client.move(id, { ifVersion, status })
+      await this.client.move(id, {
+        ifVersion,
+        status,
+        ...(options?.archiveSessions !== undefined ? { archiveSessions: options.archiveSessions } : {}),
+      })
       await this.refresh()
     } catch (error) {
       this.setState({ error: error instanceof Error ? error.message : String(error) })
