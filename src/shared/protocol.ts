@@ -1039,6 +1039,21 @@ export function validateImportedTask(raw: unknown, now: number): { ok: true; tas
           version: numOr(ce, 'version', 1),
           createdAt: numOr(ce, 'createdAt', now),
           ...(typeof ce.threadId === 'string' ? { threadId: ce.threadId } : {}),
+          ...(typeof ce.systemKey === 'string' && /^sys\.[A-Za-z0-9]+$/.test(ce.systemKey) && ce.systemKey.length <= 100
+            ? {
+                systemKey: ce.systemKey,
+                ...(typeof ce.systemParams === 'object' && ce.systemParams !== null && !Array.isArray(ce.systemParams)
+                  ? { systemParams: Object.fromEntries(Object.entries(ce.systemParams).filter(([key, value]) => key.length <= 100 && typeof value === 'string' && value.length <= 4000).slice(0, 20)) as Record<string, string> }
+                  : {}),
+                ...(Array.isArray(ce.systemRows)
+                  ? { systemRows: ce.systemRows.filter((row): row is SystemCommentRow => typeof row === 'object' && row !== null
+                      && typeof row.repo === 'string' && (row.repo === '' || isValidRelRepoPath(row.repo))
+                      && ['merged', 'noop', 'failed'].includes(row.outcome)
+                      && (row.error === undefined || typeof row.error === 'string'))
+                    .slice(0, MAX_MIRROR_REPOS).map(row => ({ repo: row.repo, outcome: row.outcome, ...(row.error !== undefined ? { error: row.error.slice(0, 4000) } : {}) })) }
+                  : {}),
+              }
+            : {}),
         })
       }
     } else return fail('comments must be an array')

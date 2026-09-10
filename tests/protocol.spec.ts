@@ -904,6 +904,19 @@ describe('R4: task id charset gate (import + path building)', () => {
     }
   })
 
+  it('preserves localized system comments through JSON export and import', () => {
+    const comments = [
+      { id: 'c1', body: '中文回退', version: 1, createdAt: 1, systemKey: 'sys.execFailed', systemParams: { error: 'boom' } },
+      { id: 'c2', body: '合并回退', version: 1, createdAt: 2, systemKey: 'sys.mergeMulti', systemRows: [{ repo: '', outcome: 'merged' }, { repo: 'sub', outcome: 'failed', error: 'conflict' }] },
+    ]
+    const result = validateImportedTask(JSON.parse(JSON.stringify({ id: 't-localized', title: 'Test', workspaceId: 'ws-a', comments, executions: [] })), 3)
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.task.comments).toEqual(comments)
+    const invalid = validateImportedTask({ id: 't-invalid', title: 'Test', workspaceId: 'ws-a', executions: [], comments: [{ ...comments[0], systemParams: { error: 42 }, systemRows: [null, { repo: '../escape', outcome: 'merged' }] }] }, 3)
+    expect(invalid.ok).toBe(true)
+    if (invalid.ok) expect(invalid.task.comments[0]).toMatchObject({ systemParams: {}, systemRows: [] })
+  })
+
   it('validateImportedTask rejects traversal-shaped ids at the protocol boundary', () => {
     const base = { title: 'T', workspaceId: 'ws-a', status: 'todo', comments: [], executions: [] }
     // Length alone (the old check) let these into the ledger — they ride

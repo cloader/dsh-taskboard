@@ -247,7 +247,9 @@ describe('SchedulerService lifecycle', () => {
     scheduler.start()
 
     await vi.advanceTimersByTimeAsync(3_100)
-    expect(await waitFor(() => store.get('t-missed')?.execution.nextRunAt !== T0 - 6 * 60_000)).toBe(true)
+    // The store starts unloaded: undefined must not satisfy the wait before
+    // the catchup has loaded and durably advanced the schedule.
+    expect(await waitFor(() => store.get('t-missed')?.execution.nextRunAt === T0 + 60_000)).toBe(true)
     await settle(100)
     expect(runs).toHaveLength(0)
     const task = store.get('t-missed')
