@@ -70,7 +70,19 @@ async function fixture() {
     expect(service.inFlight()).toBe(0)
     now += 100
   }
-  const run = async (trigger: 'scheduled' | 'manual' = 'scheduled', service = svc) => {
+  // 0.7.x periodic semantics: a finished round lives in in_review while a
+  // fresh todo card carries the cron. The fixture keeps ONE card, so each
+  // scheduled run first re-arms it (todo + cron) — standing in for the
+  // successor card the host would mint — before triggering.
+  const run = async (trigger: 'scheduled' | 'manual' = 'scheduled', service = svc, ledger = store) => {
+    if (trigger === 'scheduled') {
+      await ledger.mutate('task-updated', l => {
+        const t = l.tasks.find(x => x.id === task.id)!
+        t.status = 'todo'
+        t.execution = { mode: 'scheduled', cron: '* * * * *' }
+        return [t]
+      })
+    }
     const result = await service.run(task.id, trigger)
     if (!result.ok) throw new Error(result.error)
     return result
@@ -108,7 +120,7 @@ describe('scheduled session reuse', () => {
     const store = new TaskStore({ file: f.store.location() })
     await store.load()
     const restarted = new ExecutionService({ ...f.deps, store })
-    const second = await f.run('scheduled', restarted)
+    const second = await f.run('scheduled', restarted, store)
     expect(second.sessionId).toBe(first.sessionId)
     expect(f.create).toHaveBeenCalledTimes(1)
     expect(f.resume).toHaveBeenCalledWith(expect.objectContaining({ resumeSessionId: first.sessionId }))
@@ -218,6 +230,8 @@ describe('scheduled session reuse', () => {
     await f.finish(first.sessionId)
     const second = await f.run()
     await f.finish(second.sessionId)
-    expect(f.store.get(f.task.id)!.comments.at(-1)!.systemKey).toBe('sys.endedNoHandoff')
+    const keys = f.store.get(f.task.id)!.comments.map(c => c.systemKey)
+    expect(keys).toContain('sys.endedNoHandoff')
+    expect(keys.at(-1)).toBe('sys.periodicHandoff')
   })
 })

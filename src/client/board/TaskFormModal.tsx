@@ -178,8 +178,20 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
   const [prompt, setPrompt] = useState(task?.prompt ?? prefill?.prompt ?? '')
   const [workspaceId, setWorkspaceId] = useState(task?.workspaceId ?? state.filters.workspaceId ?? state.workspaces[0]?.id ?? '')
   const [urgency, setUrgency] = useState<Urgency>(task?.urgency ?? (prefill?.urgency === 'urgent' || prefill?.urgency === 'relaxed' ? prefill.urgency : 'normal'))
-  const [mode, setMode] = useState<'claim' | 'scheduled'>(task?.execution.mode === 'scheduled' || prefill?.execution?.mode === 'scheduled' ? 'scheduled' : 'claim')
+  const initExec = task?.execution ?? prefill?.execution
+  const [mode, setMode] = useState<'claim' | 'once' | 'periodic'>(
+    initExec?.mode === 'scheduled' ? (initExec.cron !== undefined ? 'periodic' : 'once') : 'claim',
+  )
   const [cron, setCron] = useState(task?.execution.cron ?? prefill?.execution?.cron ?? '0 9 * * *')
+  // One-shot trigger (定时执行): datetime-local string; '' = unset.
+  const initRunAt = initExec?.mode === 'scheduled' && initExec.runAt !== undefined ? initExec.runAt : undefined
+  const [runAt, setRunAt] = useState(() => {
+    if (initRunAt === undefined) return ''
+    const d = new Date(initRunAt)
+    if (Number.isNaN(d.getTime())) return ''
+    const pad = (n: number): string => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  })
   const [catalog, setCatalog] = useState<CatalogModel[]>([])
 
   // Model & reasoning effort selection:
@@ -245,10 +257,19 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
   }, [controller, editing, task?.presetId, initialPreset])
 
   // Live cron validation + next-run preview (same math as the host).
-  const cronMatch = mode === 'scheduled' ? parseCron(cron.trim()) : null
+  const cronMatch = mode === 'periodic' ? parseCron(cron.trim()) : null
   const nextRun = cronMatch !== null ? nextCronTime(cronMatch, Date.now()) : null
-  const cronBad = mode === 'scheduled' && (cronMatch === null || nextRun === null)
-  const valid = title.trim().length > 0 && workspaceId !== '' && !cronBad
+  const cronBad = mode === 'periodic' && (cronMatch === null || nextRun === null)
+  const runAtMs = mode === 'once' && runAt !== '' ? new Date(runAt).getTime() : NaN
+  const runAtBad = mode === 'once' && (runAt === '' || Number.isNaN(runAtMs) || runAtMs <= Date.now())
+  const valid = title.trim().length > 0 && workspaceId !== '' && !cronBad && !runAtBad
+
+  /** Execution payload for submit: claim | periodic (cron) | one-shot (runAt ISO). */
+  const executionPayload = (): { mode: 'claim' | 'scheduled'; cron?: string; runAt?: string } => {
+    if (mode === 'periodic') return { mode: 'scheduled', cron: cron.trim() }
+    if (mode === 'once') return { mode: 'scheduled', runAt: new Date(runAt).toISOString() }
+    return { mode: 'claim' }
+  }
 
   // A task already in progress cannot be run again (host rejects it).
   const runBlocked = editing && task.status === 'in_progress'
@@ -309,7 +330,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
         prompt,
         urgency,
         workspaceId,
-        execution: mode === 'scheduled' ? { mode, cron: cron.trim() } : { mode },
+        execution: executionPayload(),
         // '' in edit mode clears the pinned model back to the default.
         model: picked ?? null,
         ...(isolationOut !== undefined && !isolationLocked ? { isolation: isolationOut } : {}),
@@ -324,7 +345,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
         urgency,
         description: description.length > 0 ? description : undefined,
         prompt: prompt.length > 0 ? prompt : undefined,
-        execution: mode === 'scheduled' ? { mode, cron: cron.trim() } : { mode },
+        execution: executionPayload(),
         model: picked,
         ...(isolationOut !== undefined ? { isolation: isolationOut } : {}),
         ...(presetOut !== undefined ? { presetId: presetOut } : {}),
@@ -351,7 +372,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
           prompt,
           urgency,
           workspaceId,
-          execution: mode === 'scheduled' ? { mode, cron: cron.trim() } : { mode },
+          execution: executionPayload(),
           model: picked ?? null,
           ...(isolationOut !== undefined && !isolationLocked ? { isolation: isolationOut } : {}),
           presetId: presetOut ?? null,
@@ -366,7 +387,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
           urgency,
           description: description.length > 0 ? description : undefined,
           prompt: prompt.length > 0 ? prompt : undefined,
-          execution: mode === 'scheduled' ? { mode, cron: cron.trim() } : { mode },
+          execution: executionPayload(),
           model: picked,
           ...(isolationOut !== undefined ? { isolation: isolationOut } : {}),
           ...(presetOut !== undefined ? { presetId: presetOut } : {}),
@@ -379,9 +400,15 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
   }
 
   const hint = !valid
-    ? (title.trim().length === 0 ? t('form.hint.needTitle') : workspaceId === '' ? t('form.hint.needProject') : t('form.hint.cronBad'))
-    : mode === 'scheduled' && nextRun !== null
+    ? (title.trim().length === 0
+        ? t('form.hint.needTitle')
+        : workspaceId === ''
+          ? t('form.hint.needProject')
+          : runAtBad ? t('form.hint.runAtBad') : t('form.hint.cronBad'))
+    : mode === 'periodic' && nextRun !== null
       ? t('form.hint.nextRun', { time: fmtTime(nextRun) })
+      : mode === 'once' && !Number.isNaN(runAtMs)
+        ? t('form.hint.onceAt', { time: fmtTime(runAtMs) })
       : editing
         ? t('form.hint.saveVersion', { v: task.version, next: task.version + 1 })
         : t('form.hint.createClaim')
@@ -521,14 +548,30 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
                   <span className="dsh-atb-mode-name">{t('form.mode.claim')}</span>
                   <span className="dsh-atb-mode-hint">{t('form.mode.claimHint')}</span>
                 </button>
-                <button type="button" className="dsh-atb-mode-opt" data-on={mode === 'scheduled'} onClick={() => setMode('scheduled')}>
-                  <span className="dsh-atb-mode-name">{t('form.mode.scheduled')}</span>
-                  <span className="dsh-atb-mode-hint">{t('form.mode.scheduledHint')}</span>
+                <button type="button" className="dsh-atb-mode-opt" data-on={mode === 'once'} onClick={() => setMode('once')}>
+                  <span className="dsh-atb-mode-name">{t('form.mode.once')}</span>
+                  <span className="dsh-atb-mode-hint">{t('form.mode.onceHint')}</span>
+                </button>
+                <button type="button" className="dsh-atb-mode-opt" data-on={mode === 'periodic'} onClick={() => setMode('periodic')}>
+                  <span className="dsh-atb-mode-name">{t('form.mode.periodic')}</span>
+                  <span className="dsh-atb-mode-hint">{t('form.mode.periodicHint')}</span>
                 </button>
               </div>
             </Field>
 
-            {mode === 'scheduled' && (
+            {mode === 'once' && (
+              <Field label={t('form.field.runAt')} required full>
+                <input
+                  type="datetime-local"
+                  className={runAtBad ? 'dsh-atb-input-bad' : undefined}
+                  value={runAt}
+                  onChange={e => setRunAt(e.target.value)}
+                  spellCheck={false}
+                />
+              </Field>
+            )}
+
+            {mode === 'periodic' && (
               <Field label={t('form.field.cron')} required full>
                 <input
                   className={cronBad ? 'dsh-atb-input-bad' : undefined}
@@ -653,7 +696,7 @@ interface TaskRecordLike {
   prompt: string
   workspaceId: string
   urgency: Urgency
-  execution: { mode: 'claim' | 'scheduled'; cron?: string }
+  execution: { mode: 'claim' | 'scheduled'; cron?: string; runAt?: number }
   model?: { provider: string; model: string; reasoningEffort?: string }
   isolation?: IsolationMode
   presetId?: string

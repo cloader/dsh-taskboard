@@ -15,8 +15,11 @@ import {
   newCommentId,
   newExecutionId,
   newTaskId,
+  nextCronTime,
   normalizeBody,
   normalizeTitle,
+  parseCron,
+  spawnNextCycle,
   type TaskRecord,
 } from '../shared/protocol.ts'
 import type { EventsFace } from './execution.ts'
@@ -604,8 +607,10 @@ export class ExternalSessionSyncService {
       if (task === undefined || task.trashedAt !== undefined) return undefined
 
       // Settle running execution
+      let scheduledTrigger = false
       for (const exec of task.executions) {
         if (exec.sessionId === sessionId && exec.outcome === 'running') {
+          scheduledTrigger = exec.trigger === 'scheduled'
           exec.endedAt = now
           if (isFailure) {
             exec.outcome = 'failed'
@@ -645,6 +650,35 @@ export class ExternalSessionSyncService {
             version: 1,
             createdAt: now,
           })
+          // Periodic scheduled success (定期执行): same handoff as the
+          // execution service — the finished card stays in review while a
+          // fresh todo card carries the cron onward.
+          if (scheduledTrigger && task.execution.cron !== undefined) {
+            const match = parseCron(task.execution.cron)
+            const next = match === null ? undefined : nextCronTime(match, now) ?? undefined
+            if (next !== undefined) {
+              const successor = spawnNextCycle(task, undefined, now)
+              task.execution = { mode: 'claim' }
+              task.comments.push({
+                id: newCommentId(),
+                body: normalizeBody(`[系统] 定期任务本轮执行完毕，定时已由新待办卡 ${successor.id} 承接，请审查本卡后验收。`),
+                systemKey: 'sys.periodicHandoff',
+                systemParams: { nextTaskId: successor.id },
+                version: 1,
+                createdAt: now,
+              })
+              ledger.tasks.push(successor)
+              return [task, successor]
+            }
+            task.execution = { mode: 'claim' }
+            task.comments.push({
+              id: newCommentId(),
+              body: normalizeBody('[系统] 定期表达式已无未来触发时间，本轮结束后定时停用；如需继续请重新设置。'),
+              systemKey: 'sys.cronDead',
+              version: 1,
+              createdAt: now,
+            })
+          }
         }
       }
       return [task]

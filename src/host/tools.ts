@@ -89,7 +89,7 @@ function taskDetail(t: TaskRecord & { effectivePrompt?: string }): string {
   const lines: string[] = [
     `任务 ${t.id} 「${t.title}」`,
     `状态: ${t.status} (v${t.version}) · 紧急度: ${t.urgency} · 项目: ${t.workspaceId}${t.blocked ? ' · 受阻' : ''}`,
-    `执行方式: ${t.execution.mode}${t.execution.cron !== undefined ? ` cron=${t.execution.cron}` : ''}`,
+    `执行方式: ${t.execution.mode}${t.execution.cron !== undefined ? ` 定期 cron=${t.execution.cron}` : ''}${t.execution.runAt !== undefined ? ` 定时(一次) runAt=${new Date(t.execution.runAt).toISOString()}` : ''}`,
     `隔离: ${t.isolation === 'none' ? '关闭（原目录执行）' : 'Git Worktree'}${t.branch !== undefined ? `（分支 ${t.branch}）` : ''}${t.branches !== undefined ? `（多仓库镜像 ${Object.keys(t.branches).length + (t.branch !== undefined ? 1 : 0)} 个仓库）` : ''}`,
   ]
   const holder = isClaimedBy(t)
@@ -379,7 +379,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
     description:
       'Create a task on the board. Required: title, workspaceId (project), urgency (urgent/normal/relaxed). '
       + 'Optional: description, prompt (sent to a fresh session on execution), status (default todo), '
-      + 'execution mode (claim|scheduled + cron), model {provider, model} to pin executions to a model. '
+      + 'execution mode (claim | scheduled+cron 定期重复 | scheduled+runAt 定时一次), model {provider, model} to pin executions to a model. '
       + 'Do not track trivial requests as tasks.',
     parameters: {
       title: { type: 'string', required: true, description: 'Short imperative line (1..200 chars).' },
@@ -391,10 +391,11 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       execution: {
         type: 'object',
         additionalProperties: false,
-        description: 'Execution config: { mode: "claim" } (default) or { mode: "scheduled", cron: "m h dom mon dow" }.',
+        description: 'Execution config: { mode: "claim" } (default) | { mode: "scheduled", cron } periodic (定期, repeats) | { mode: "scheduled", runAt } one-shot (定时, fires once).',
         properties: {
           mode: { type: 'string', description: 'claim | scheduled.' },
-          cron: { type: 'string', description: 'Five-field cron expression (scheduled only).' },
+          cron: { type: 'string', description: 'Five-field cron expression (scheduled periodic only).' },
+          runAt: { type: 'string', description: 'One-shot trigger time: epoch ms or ISO string (scheduled one-shot only; must be in the future).' },
         },
       },
       model: {
@@ -440,7 +441,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       status?: string
       description?: string
       prompt?: string
-      execution?: { mode?: string; cron?: string }
+      execution?: { mode?: string; cron?: string; runAt?: string | number }
       model?: { provider?: string; model?: string }
       isolation?: string
       permission?: string

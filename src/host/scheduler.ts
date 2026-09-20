@@ -92,28 +92,75 @@ export class SchedulerService {
     const now = this.deps.now()
     const ledger: TaskLedger = this.deps.store.snapshot()
     for (const task of ledger.tasks) {
-      if (task.execution.mode !== 'scheduled' || task.execution.cron === undefined) continue
-      if (task.execution.nextRunAt === undefined) continue
-      // Recurring runs normally settle in review and must keep firing there.
-      // Terminal/parked states retain cron so an explicit reopen can resume.
-      if ((task.status !== 'todo' && task.status !== 'in_review') || task.trashedAt !== undefined) continue
-      if (task.execution.nextRunAt > now) continue
+      if (task.execution.mode !== 'scheduled' || task.trashedAt !== undefined) continue
+      // Only todo fires. A finished periodic run settles in review (its cron
+      // moves to a freshly minted successor todo card), and terminal/parked
+      // states retain their config so an explicit reopen can resume — none
+      // of these ever refire from here.
+      if (task.status !== 'todo') continue
       // At the concurrency cap (S4: checked FRESH per task — runs register
       // only after agent creation, so a once-per-tick snapshot under-counted
-      // the startup window): leave nextRunAt in the past and retry next tick
-      // — advancing here would silently burn this window.
+      // the startup window): leave the due time in place and retry next tick
+      // — advancing/consuming here would silently burn this window.
       if (this.deps.execution.inFlight() >= (this.deps.maxConcurrent ?? DEFAULT_MAX_CONCURRENT)) continue
-      const missed = now - task.execution.nextRunAt > SKIP_AFTER_MS
 
-      // Advance the schedule AND record the trigger in ONE mutation (S13:
-      // one revision bump, one broadcast, and the two writes can no longer
-      // straddle a status change), then run unless the window was missed.
-      await this.advanceAndMark(task.id, now, missed ? undefined : task.execution.nextRunAt)
-      if (missed) continue
-      await this.deps.execution.run(task.id, 'scheduled').catch(error => {
-        console.error('[dsh-taskboard] scheduled run failed:', error)
-      })
+      if (task.execution.cron !== undefined) {
+        // Periodic (定期执行): refire at every cron match.
+        if (task.execution.nextRunAt === undefined) continue
+        if (task.execution.nextRunAt > now) continue
+        const missed = now - task.execution.nextRunAt > SKIP_AFTER_MS
+
+        // Advance the schedule AND record the trigger in ONE mutation (S13:
+        // one revision bump, one broadcast, and the two writes can no longer
+        // straddle a status change), then run unless the window was missed.
+        await this.advanceAndMark(task.id, now, missed ? undefined : task.execution.nextRunAt)
+        if (missed) continue
+        await this.deps.execution.run(task.id, 'scheduled').catch(error => {
+          console.error('[dsh-taskboard] scheduled run failed:', error)
+        })
+      } else if (task.execution.runAt !== undefined) {
+        // One-shot (定时执行): fire once at the instant, then consume it.
+        const due = task.execution.runAt
+        if (due > now) continue
+        const missed = now - due > SKIP_AFTER_MS
+
+        // Consume the one-shot AND record the trigger in ONE mutation, so a
+        // failure can never re-fire it (the settle path returns the card to
+        // todo with a comment, and the gone runAt keeps it there).
+        await this.consumeRunAt(task.id, now, missed ? due : undefined)
+        if (missed) continue
+        await this.deps.execution.run(task.id, 'scheduled').catch(error => {
+          console.error('[dsh-taskboard] scheduled run failed:', error)
+        })
+      }
     }
+  }
+
+  /**
+   * Consume a one-shot task's runAt in one serial-queue mutation: the field
+   * and nextRunAt are cleared the moment the trigger fires, so the task can
+   * never fire twice. A window missed while the host was down is consumed
+   * too, with a system comment instead of a silent drop.
+   */
+  private async consumeRunAt(taskId: string, now: number, missedDue: number | undefined): Promise<void> {
+    await this.deps.store.mutate('task-updated', (ledger) => {
+      const task = ledger.tasks.find(t => t.id === taskId)
+      if (task === undefined || task.execution.runAt === undefined) return undefined
+      if (task.status !== 'todo' || task.trashedAt !== undefined) return undefined
+      delete task.execution.runAt
+      task.execution.nextRunAt = undefined
+      task.execution.lastTriggeredAt = now
+      if (missedDue !== undefined) {
+        task.comments.push({
+          id: newCommentId(),
+          body: normalizeBody('[系统] 定时执行错过触发时间（主机当时未运行），本次不再补跑；可手动执行或修改定时。'),
+          systemKey: 'sys.runAtMissed',
+          version: 1,
+          createdAt: now,
+        })
+      }
+      return [task]
+    })
   }
 
   /**
@@ -128,7 +175,7 @@ export class SchedulerService {
     await this.deps.store.mutate('task-updated', (ledger) => {
       const task = ledger.tasks.find(t => t.id === taskId)
       if (task === undefined || task.execution.cron === undefined) return undefined
-      if ((task.status !== 'todo' && task.status !== 'in_review') || task.trashedAt !== undefined) return undefined
+      if (task.status !== 'todo' || task.trashedAt !== undefined) return undefined
       const match = parseCron(task.execution.cron)
       const next = match === null ? undefined : nextCronTime(match, now) ?? undefined
       if (next === undefined) {

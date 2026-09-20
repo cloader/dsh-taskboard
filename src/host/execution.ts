@@ -17,7 +17,10 @@ import {
   effectivePrompt,
   newCommentId,
   newExecutionId,
+  nextCronTime,
   normalizeBody,
+  parseCron,
+  spawnNextCycle,
   type ExecutionRecord,
   type ExecutionRepoEvidence,
   type IsolationMode,
@@ -383,8 +386,11 @@ export class ExecutionService {
       }
       // A status may change after the scheduler selected/advanced the task.
       // Recheck at the atomic execution gate so terminal tasks cannot be
-      // revived by that race. Manual reruns keep their existing semantics.
-      if (trigger === 'scheduled' && target.status !== 'todo' && target.status !== 'in_review') {
+      // revived by that race. Only todo fires scheduled (periodic or one-
+      // shot); an in_review card is finished work and never refires — a
+      // periodic run's successor todo card carries the schedule onward.
+      // Manual reruns keep their existing semantics.
+      if (trigger === 'scheduled' && target.status !== 'todo') {
         gate = `scheduled task is not actionable (${target.status})`
         return undefined
       }
@@ -662,6 +668,38 @@ export class ExecutionService {
             t.status = 'in_review'
             t.updatedAt = now
             t.updatedBy = { kind: 'system' }
+            // Periodic scheduled success (定期执行): the finished card stays
+            // here for acceptance while a fresh todo card minted from it
+            // carries the cron onward. The cron is consumed either way so
+            // the in_review card can never refire.
+            if (execution.trigger === 'scheduled' && t.execution.cron !== undefined) {
+              const match = parseCron(t.execution.cron)
+              const next = match === null ? undefined : nextCronTime(match, now) ?? undefined
+              if (next !== undefined) {
+                const successor = spawnNextCycle(t, executionId, now)
+                t.execution = { mode: 'claim' }
+                t.comments.push({
+                  id: newCommentId(),
+                  body: normalizeBody(`[系统] 定期任务本轮执行完毕，定时已由新待办卡 ${successor.id} 承接，请审查本卡后验收。`),
+                  systemKey: 'sys.periodicHandoff',
+                  systemParams: { nextTaskId: successor.id },
+                  version: 1,
+                  createdAt: now,
+                })
+                ledger.tasks.push(successor)
+                return [t, successor]
+              }
+              // Dead cron (no match within the scan window): consume it with
+              // a comment instead of letting the handoff die silently.
+              t.execution = { mode: 'claim' }
+              t.comments.push({
+                id: newCommentId(),
+                body: normalizeBody('[系统] 定期表达式已无未来触发时间，本轮结束后定时停用；如需继续请重新设置。'),
+                systemKey: 'sys.cronDead',
+                version: 1,
+                createdAt: now,
+              })
+            }
           }
           return [t]
         }

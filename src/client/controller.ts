@@ -693,7 +693,9 @@ export class BoardController {
         prompt: task.prompt.length > 0 ? task.prompt : undefined,
         execution: task.execution.mode === 'scheduled' && task.execution.cron !== undefined
           ? { mode: 'scheduled', cron: task.execution.cron }
-          : { mode: 'claim' },
+          : task.execution.mode === 'scheduled' && task.execution.runAt !== undefined && task.execution.runAt > Date.now()
+            ? { mode: 'scheduled', runAt: new Date(task.execution.runAt).toISOString() }
+            : { mode: 'claim' },
         model: task.model,
         isolation: task.isolation,
         ...(task.presetId !== undefined ? { presetId: task.presetId } : {}),
@@ -766,7 +768,9 @@ export class BoardController {
         urgency: task.urgency,
         execution: task.execution.mode === 'scheduled' && task.execution.cron !== undefined
           ? { mode: 'scheduled', cron: task.execution.cron }
-          : { mode: 'claim' },
+          : task.execution.mode === 'scheduled' && task.execution.runAt !== undefined
+            ? { mode: 'scheduled', runAt: new Date(task.execution.runAt).toISOString() }
+            : { mode: 'claim' },
         model: task.model,
         isolation: task.isolation,
         ...(task.presetId !== undefined ? { presetId: task.presetId } : {}),

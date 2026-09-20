@@ -220,8 +220,18 @@ export type ExecutionMode = 'claim' | 'scheduled'
  */
 export interface ExecutionConfig {
   mode: ExecutionMode
-  /** Five-field cron expression (minute hour day month weekday); required for `scheduled`. */
+  /**
+   * Five-field cron expression (minute hour day month weekday). Present on
+   * PERIODIC scheduled tasks (定期执行): the scheduler refires the task each
+   * time it comes due while the card sits in todo.
+   */
   cron?: string
+  /**
+   * One-shot trigger time (epoch ms). Present on ONE-SHOT scheduled tasks
+   * (定时执行): the scheduler fires the task once when due and consumes the
+   * field. Mutually exclusive with {@link cron}.
+   */
+  runAt?: number
   /** Next due time (epoch ms); maintained by the host scheduler. */
   nextRunAt?: number
   /** Last time the scheduler triggered this task (epoch ms). */
@@ -573,6 +583,13 @@ export type TaskRecord = {
   executions: ExecutionRecord[]
   /** How many older execution records were pruned by the retention cap. */
   executionsPruned?: number
+  /**
+   * Id of the task this card continues (0.7.x periodic execution): when a
+   * PERIODIC scheduled task succeeds, the finished card moves to in_review
+   * and a fresh todo card carrying the cron is minted to keep the cycle
+   * going. Absent on originally created tasks.
+   */
+  spawnedFrom?: string
   /** Soft-delete marker set by agent `taskboard_delete`; user confirms the purge. */
   trashedAt?: number
 }
@@ -591,6 +608,60 @@ export function pruneExecutions(task: TaskRecord): void {
   const dropped = task.executions.length - MAX_EXECUTIONS
   task.executions = task.executions.slice(-MAX_EXECUTIONS)
   task.executionsPruned = (task.executionsPruned ?? 0) + dropped
+}
+
+/**
+ * Mint the successor card of a PERIODIC scheduled task that just succeeded
+ * (0.7.x): the finished card goes to in_review for acceptance while this
+ * fresh todo card carries the cron onward, keeping the cycle alive. The
+ * next run is recomputed from `now` (no compensating catch-up burst).
+ * Pure: the caller pushes the returned record into the ledger.
+ * @param source - the finished periodic task (still carrying its cron).
+ * @param prevExecutionId - id of the execution that just succeeded.
+ * @param now - current epoch ms.
+ * @returns the successor task record.
+ */
+export function spawnNextCycle(source: TaskRecord, prevExecutionId: string | undefined, now: number): TaskRecord {
+  const cron = source.execution.cron
+  if (cron === undefined) throw new Error('spawnNextCycle: source task has no cron')
+  const match = parseCron(cron)
+  const next = match === null ? undefined : nextCronTime(match, now) ?? undefined
+  if (next === undefined) throw new Error('spawnNextCycle: cron has no upcoming match within 4 years')
+  return {
+    id: newTaskId(),
+    title: source.title,
+    description: source.description,
+    prompt: source.prompt,
+    workspaceId: source.workspaceId,
+    urgency: source.urgency,
+    status: 'todo',
+    blocked: false,
+    execution: { mode: 'scheduled', cron, nextRunAt: next },
+    ...(source.model !== undefined ? { model: structuredClone(source.model) } : {}),
+    ...(source.isolation !== undefined ? { isolation: source.isolation } : {}),
+    ...(source.presetId !== undefined ? { presetId: source.presetId } : {}),
+    ...(source.permission !== undefined ? { permission: source.permission } : {}),
+    ...(source.checklist !== undefined
+      ? { checklist: source.checklist.map(item => ({ ...item, checked: false, checkedBy: undefined, checkedAt: undefined, note: undefined })) }
+      : {}),
+    ...(source.branch !== undefined ? { branch: source.branch } : {}),
+    ...(source.branches !== undefined ? { branches: { ...source.branches } } : {}),
+    spawnedFrom: source.id,
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: { kind: 'system' },
+    updatedBy: { kind: 'system' },
+    comments: [{
+      id: newCommentId(),
+      body: normalizeBody(`[系统] 定期任务上一轮执行完毕（执行 ${prevExecutionId ?? '未知'}），本卡承接定时继续下一轮；上一轮成果见 ${source.id} 的待验收。`),
+      systemKey: 'sys.spawnedFrom',
+      systemParams: { sourceId: source.id, executionId: prevExecutionId ?? '' },
+      version: 1,
+      createdAt: now,
+    }],
+    executions: [],
+  }
 }
 
 /** The whole durable ledger. */
@@ -713,23 +784,51 @@ export function asStatus(raw: string): TaskStatus {
 }
 
 /**
+ * Parse a raw runAt input: epoch ms number or ISO date string → epoch ms.
+ * @param raw - untyped runAt value.
+ * @returns the epoch ms, or undefined when absent.
+ */
+function normalizeRunAt(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw)
+  if (typeof raw === 'string') {
+    const t = Date.parse(raw)
+    if (Number.isNaN(t)) throw new Error('execution.runAt is not a valid time (epoch ms or ISO string)')
+    return t
+  }
+  throw new Error('execution.runAt must be an epoch ms number or an ISO date string')
+}
+
+/**
  * Validate an execution config request from raw tool/route input.
- * `scheduled` requires a valid cron; computes the first `nextRunAt` from
- * `now`.
+ * `scheduled` requires either a valid cron (periodic, 定期执行) or a runAt
+ * instant (one-shot, 定时执行); the two are mutually exclusive. A cron's
+ * first `nextRunAt` is computed from `now`.
  * @param raw - raw execution input ({@link ExecutionConfig} fields, untyped).
  * @param now - current epoch ms.
+ * @param opts - `allowPastRunAt` lets the import path keep a historical
+ *   one-shot instant instead of rejecting it.
  * @returns the normalized config.
  */
 export function normalizeExecution(
-  raw: { mode?: string; cron?: string },
+  raw: { mode?: string; cron?: string; runAt?: unknown },
   now: number,
+  opts?: { allowPastRunAt?: boolean },
 ): ExecutionConfig {
   const mode = raw.mode ?? 'claim'
   if (mode !== 'claim' && mode !== 'scheduled') {
     throw new Error("execution.mode must be 'claim' or 'scheduled'")
   }
   if (mode === 'claim') return { mode }
+  const runAt = normalizeRunAt(raw.runAt)
   const cron = (raw.cron ?? '').trim()
+  if (cron.length > 0 && runAt !== undefined) {
+    throw new Error('execution: cron and runAt are mutually exclusive (periodic vs one-shot)')
+  }
+  if (runAt !== undefined) {
+    if (!opts?.allowPastRunAt && runAt <= now) throw new Error('execution.runAt must be in the future')
+    return { mode, runAt, nextRunAt: runAt }
+  }
   const match = parseCron(cron)
   if (match === null) throw new Error('execution.cron is not a valid 5-field cron expression')
   const next = nextCronTime(match, now)
@@ -1055,8 +1154,9 @@ export function validateImportedTask(raw: unknown, now: number): { ok: true; tas
   if (!isValidTaskId(id)) return fail('missing/invalid id (must match ^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$)')
   try {
     const execution = normalizeExecution(
-      typeof e.execution === 'object' && e.execution !== null ? e.execution as { mode?: string; cron?: string } : {},
+      typeof e.execution === 'object' && e.execution !== null ? e.execution as { mode?: string; cron?: string; runAt?: unknown } : {},
       now,
+      { allowPastRunAt: true },
     )
     const comments: CommentRecord[] = []
     if (Array.isArray(e.comments)) {
