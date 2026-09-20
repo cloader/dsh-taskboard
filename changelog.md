@@ -1,5 +1,21 @@
 # 更新日志 / Changelog
 
+### 0.7.4
+
+**新特性：**
+
+- 执行方式拆分为三档：**认领制**、**定时执行**（新增，指定 runAt 时间点只执行一次，触发即消费；错过超过 5 分钟窗口不补跑，留系统评论提示）与**定期执行**（原 cron 定时执行）。
+- **定期任务接棒机制**：每轮执行成功后，原卡正常进入「待验收」并摘除 cron，同时系统自动新建一张全新 todo 接棒卡承接 cron 继续周期（nextRunAt 从结算时刻重算，不补偿连跑），新卡 spawnedFrom 指回原卡并以系统评论互相链接；验收走原卡，周期不断。
+- 调度器与执行原子门禁一律只认 todo：in_review 卡片不再被定时触发（原「循环任务在 in_review 继续运行」语义由接棒卡取代）；存量停在 in_review 的 cron 卡需手动移回待办。失败结算仍回 todo 且周期由接棒卡承接，不受影响。
+
+**English:**
+
+**New features:**
+
+- Execution modes now come in three flavors: **claim**, **one-shot scheduled** (new — a runAt instant that fires exactly once and is consumed; windows missed by more than 5 minutes are skipped with a system comment) and **periodic scheduled** (the former cron mode).
+- **Periodic hand-off**: after each successful round the finished card settles in review with its cron stripped, while a fresh todo successor card is minted to carry the cron onward (nextRunAt recomputed from settlement — no compensating catch-up burst). The successor links back via spawnedFrom and system comments on both cards; acceptance happens on the finished card and the cycle never stalls.
+- The scheduler and the atomic execution gate now only fire todo cards: in_review cards are never triggered again (the previous "recurring runs from in_review" behavior is replaced by the successor card). Legacy periodic cards parked in in_review must be moved back to todo manually. Failure settlement still returns to todo and the cycle continues on the successor, so it is unaffected.
+
 ### 0.7.3
 
 **修复：**

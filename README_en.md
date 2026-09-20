@@ -235,6 +235,13 @@ node scripts/screenshot.mjs     # regenerate img/ screenshots (needs local Edge)
 
 ## Changelog
 
+### 0.7.4
+
+**New features:**
+
+- **Three execution modes**: claim, one-shot scheduled (new — fires once at a set time and is consumed; missed windows are skipped), and periodic scheduled (the former cron mode).
+- **Periodic hand-off**: each successful round moves the finished card to review for acceptance while a fresh todo successor card carries the cron into the next cycle; the scheduler only fires todo cards, so in_review cards are never re-triggered.
+
 ### 0.7.3
 
 **Fixes:**
