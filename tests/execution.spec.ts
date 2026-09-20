@@ -113,6 +113,17 @@ const workspaces = {
 }
 
 describe('ExecutionService', () => {
+  it('refuses a scheduled start after the task entered a non-actionable state', async () => {
+    const stopped = task({ status: 'done', execution: { mode: 'scheduled', cron: '* * * * *', nextRunAt: 999 } })
+    const store = await storeWith(stopped)
+    const svc = new ExecutionService({ store, agents: fakeAgents(), workspaces, events: fakeEvents(), now: () => 1_000 })
+
+    const result = await svc.run(stopped.id, 'scheduled')
+    expect(result).toEqual({ ok: false, error: 'scheduled task is not actionable (done)' })
+    expect(store.get(stopped.id)!.status).toBe('done')
+    expect(store.get(stopped.id)!.executions).toHaveLength(0)
+  })
+
   it('runs a task in a fresh in-project session with the pinned model', async () => {
     const store = await storeWith(task({ model: { provider: 'deepseek', model: 'reasoner' } }))
     const agents = fakeAgents()

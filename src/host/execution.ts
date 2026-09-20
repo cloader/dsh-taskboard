@@ -381,6 +381,13 @@ export class ExecutionService {
         gate = `no task ${taskId}`
         return undefined
       }
+      // A status may change after the scheduler selected/advanced the task.
+      // Recheck at the atomic execution gate so terminal tasks cannot be
+      // revived by that race. Manual reruns keep their existing semantics.
+      if (trigger === 'scheduled' && target.status !== 'todo' && target.status !== 'in_review') {
+        gate = `scheduled task is not actionable (${target.status})`
+        return undefined
+      }
       if (target.status === 'in_progress' || target.executions.some(e => e.outcome === 'running')
         || [...this.runs.values()].some(e => target.executions.some(x => x.sessionId === e.sessionId))) {
         gate = 'task is already in progress'

@@ -235,6 +235,12 @@ node scripts/screenshot.mjs     # 重新生成 img/ 截图（需本机 Edge）
 
 ## 升级日志
 
+### 0.7.3
+
+**修复：**
+
+- **定时任务默认权限与终态调度（[#28](https://github.com/cloader/dsh-taskboard/issues/28)）**：agent 使用 `taskboard_create` 时会物化看板默认权限，并可通过创建/更新工具显式设置权限；`done`、`canceled`、`archived` 不再被 cron 重新拉起，循环任务仍可在 `in_review` 下按计划继续运行；支持用户将误标为 `done` 的任务重开到 `todo`。
+
 ### 0.7.2
 
 **新特性：**

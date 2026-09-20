@@ -52,7 +52,7 @@ const TRANSITIONS: Readonly<Record<TaskStatus, readonly TaskStatus[]>> = {
   todo: ['in_progress', 'backlog', 'canceled'],
   in_progress: ['in_review', 'todo', 'canceled'],
   in_review: ['in_progress', 'todo', 'done', 'canceled'],
-  done: ['archived'],
+  done: ['archived', 'todo'],
   canceled: ['archived', 'todo'],
   archived: [],
 }

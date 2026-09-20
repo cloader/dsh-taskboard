@@ -94,7 +94,9 @@ export class SchedulerService {
     for (const task of ledger.tasks) {
       if (task.execution.mode !== 'scheduled' || task.execution.cron === undefined) continue
       if (task.execution.nextRunAt === undefined) continue
-      if (task.status === 'in_progress' || task.trashedAt !== undefined) continue
+      // Recurring runs normally settle in review and must keep firing there.
+      // Terminal/parked states retain cron so an explicit reopen can resume.
+      if ((task.status !== 'todo' && task.status !== 'in_review') || task.trashedAt !== undefined) continue
       if (task.execution.nextRunAt > now) continue
       // At the concurrency cap (S4: checked FRESH per task — runs register
       // only after agent creation, so a once-per-tick snapshot under-counted
@@ -126,7 +128,7 @@ export class SchedulerService {
     await this.deps.store.mutate('task-updated', (ledger) => {
       const task = ledger.tasks.find(t => t.id === taskId)
       if (task === undefined || task.execution.cron === undefined) return undefined
-      if (task.status === 'in_progress' || task.trashedAt !== undefined) return undefined
+      if ((task.status !== 'todo' && task.status !== 'in_review') || task.trashedAt !== undefined) return undefined
       const match = parseCron(task.execution.cron)
       const next = match === null ? undefined : nextCronTime(match, now) ?? undefined
       if (next === undefined) {

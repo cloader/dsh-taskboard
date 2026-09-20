@@ -244,6 +244,36 @@ describe('taskboard_create default isolation (0.5.0 board settings)', () => {
   })
 })
 
+describe('taskboard permission settings (Issue #28)', () => {
+  it('materializes the board default on create and allows explicit create/update overrides', async () => {
+    const { disposers, tool, exec, store } = await setup()
+    await store.mutate('settings-updated', ledger => {
+      ledger.settings = { ...ledger.settings, defaultPermission: 'danger-full-access' }
+      return []
+    })
+
+    const inherited = await tool('taskboard_create').execute(
+      { title: 'Inherited permission', workspaceId: 'ws-a', urgency: 'normal' }, exec,
+    ) as { task: { id: string } }
+    expect(store.get(inherited.task.id)!.permission).toBe('danger-full-access')
+
+    const explicit = await tool('taskboard_create').execute(
+      { title: 'Explicit permission', workspaceId: 'ws-a', urgency: 'normal', permission: 'read-only' }, exec,
+    ) as { task: { id: string } }
+    expect(store.get(explicit.task.id)!.permission).toBe('read-only')
+
+    await tool('taskboard_update').execute(
+      { id: explicit.task.id, ifVersion: 1, permission: 'workspace-write' }, exec,
+    )
+    expect(store.get(explicit.task.id)!.permission).toBe('workspace-write')
+    await expect(tool('taskboard_update').execute(
+      { id: explicit.task.id, ifVersion: 2, permission: 'root' }, exec,
+    )).rejects.toThrow('permission must be')
+
+    for (const dispose of disposers) dispose()
+  })
+})
+
 describe('R1 regression: writes guard inside the serial queue', () => {
   it('two simultaneous comments both land (no blind overwrite of a pre-read clone)', async () => {
     const { store, disposers, tool, exec } = await setup()

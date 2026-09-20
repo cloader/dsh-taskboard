@@ -27,11 +27,13 @@ import { defineTool } from './sdk.ts'
 import {
   MAX_CHECKLIST_ITEMS,
   asIsolation,
+  asPermission,
   asStatus,
   asUrgency,
   canTransition,
   checklistFromTexts,
   defaultIsolationOf,
+  defaultPermissionOf,
   effectivePrompt,
   isClaim,
   isClaimedBy,
@@ -409,6 +411,10 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
         type: 'string',
         description: 'Code isolation for executions: "worktree" (each run gets a fresh git worktree on branch task/<标题>+<taskId>) or "none" (run in the project directory, zero git interaction). Omitted → the board default (看板设置 → 默认执行隔离; factory default "none").',
       },
+      permission: {
+        type: 'string',
+        description: 'Execution permission: "read-only", "workspace-write", or "danger-full-access". Omitted → the board default (看板设置 → 默认权限; factory default "workspace-write").',
+      },
       presetId: {
         type: 'string',
         description: 'Agent preset the execution session is composed from (its tool set / persona); default = the deployment default preset. Optional.',
@@ -437,6 +443,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       execution?: { mode?: string; cron?: string }
       model?: { provider?: string; model?: string }
       isolation?: string
+      permission?: string
       presetId?: string
       checklist?: string[]
     }, exec: unknown) {
@@ -457,6 +464,9 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
         // (看板设置) at creation, so later setting changes never rewrite
         // existing tasks.
         const isolation = args.isolation === undefined ? defaultIsolationOf(store.snapshot().settings) : asIsolation(args.isolation)
+        // Match the GUI create route: freeze the current board default onto
+        // the task so later settings changes do not silently alter a schedule.
+        const permission = args.permission === undefined ? defaultPermissionOf(store.snapshot().settings) : asPermission(args.permission)
         const presetId = args.presetId?.trim() || undefined
         // T9: match the GUI create route — trim and drop blank lines instead
         // of failing the whole call over one empty string.
@@ -475,6 +485,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           execution,
           model,
           isolation,
+          permission,
           ...(presetId !== undefined ? { presetId } : {}),
           ...(checklist !== undefined ? { checklist } : {}),
           version: 1,
@@ -498,7 +509,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
   disposers.push(register(defineTool({
     name: 'taskboard_update',
     description:
-      'Update a task\'s title/description/prompt/urgency/blocked. Requires ifVersion (read first). '
+      'Update a task\'s title/description/prompt/urgency/blocked/permission. Requires ifVersion (read first). '
       + 'The model and execution config are read-only through this tool (they belong to the task owner/user).',
     parameters: {
       id: { type: 'string', required: true, description: 'Task id.' },
@@ -508,6 +519,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       prompt: { type: 'string', description: 'New execution prompt.' },
       urgency: { type: 'string', description: 'urgent | normal | relaxed.' },
       blocked: { type: 'boolean', description: 'Blocked marker (work cannot continue right now).' },
+      permission: { type: 'string', description: 'Execution permission: read-only | workspace-write | danger-full-access.' },
     },
     output: {
       schema: JSON_OUT,
@@ -525,6 +537,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       prompt?: string
       urgency?: string
       blocked?: boolean
+      permission?: string
     }, exec: unknown) {
       try {
         const { actor } = caller(exec as ToolRunContext)
@@ -542,6 +555,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           if (args.prompt !== undefined) next.prompt = normalizePrompt(args.prompt)
           if (args.urgency !== undefined) next.urgency = asUrgency(args.urgency)
           if (args.blocked !== undefined) next.blocked = args.blocked
+          if (args.permission !== undefined) next.permission = asPermission(args.permission)
           next.version = task.version + 1
           next.updatedAt = deps.now()
           next.updatedBy = actor

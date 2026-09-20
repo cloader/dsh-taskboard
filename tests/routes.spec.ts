@@ -356,6 +356,8 @@ describe('taskboard routes', () => {
     expect(review.json.value.status).toBe('in_review')
     const done = await post(`/dsh-taskboard/tasks/${id}/move`, { ifVersion: 3, status: 'done' })
     expect(done.json.value.status).toBe('done')
+    const reopened = await post(`/dsh-taskboard/tasks/${id}/move`, { ifVersion: 4, status: 'todo' })
+    expect(reopened.json.value.status).toBe('todo')
   })
 
   it('rejects stale versions with 409', async () => {
@@ -400,7 +402,7 @@ describe('taskboard routes', () => {
     expect(full3.value.status).toBe('in_review')
     expect(full3.value.comments.length).toBe(1)
 
-    // Illegal source (done → todo is not in the state machine): 400.
+    // Reject is specifically an in_review action; done reopens through move.
     await post(`/dsh-taskboard/tasks/${id}/move`, { ifVersion: 9, status: 'done' })
     const illegal = await post(`/dsh-taskboard/tasks/${id}/reject`, { ifVersion: 10 })
     expect(illegal.status).toBe(400)

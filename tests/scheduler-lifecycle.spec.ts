@@ -228,6 +228,20 @@ describe('SchedulerService lifecycle', () => {
     expect(store.get('t-busy')?.execution.nextRunAt).toBe(T0 - 30_000)
   })
 
+  it.each(['backlog', 'done', 'canceled', 'archived'] as const)(
+    'a %s task is skipped without consuming its scheduled window',
+    async status => {
+      store = await seed([scheduledTask(`t-${status}`, { mode: 'scheduled', cron: '* * * * *', nextRunAt: T0 - 30_000 }, { status })])
+      scheduler = makeScheduler()
+      scheduler.start()
+
+      await vi.advanceTimersByTimeAsync(3_100)
+      await settle(100)
+      expect(runs).toHaveLength(0)
+      expect(store.get(`t-${status}`)?.execution.nextRunAt).toBe(T0 - 30_000)
+    },
+  )
+
   it('a trashed task is skipped (and its schedule is NOT advanced)', async () => {
     store = await seed([scheduledTask('t-trashed', { mode: 'scheduled', cron: '* * * * *', nextRunAt: T0 - 30_000 }, { trashedAt: T0 - 1_000 })])
     scheduler = makeScheduler()

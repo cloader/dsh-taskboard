@@ -1,5 +1,21 @@
 # 更新日志 / Changelog
 
+### 0.7.3
+
+**修复：**
+
+- 修复 agent 通过 `taskboard_create` 创建任务时没有物化看板默认权限的问题（[#28](https://github.com/cloader/dsh-taskboard/issues/28)）：创建工具新增可选 `permission`，省略时读取并写入当前 `settings.defaultPermission`；`taskboard_update` 同步支持修改权限。定时执行不再意外回退到工厂默认的 `workspace-write`。
+- 修复 `done`、`canceled`、`archived` 等终态任务仍会被 cron 重新拉起的问题：调度扫描和执行原子门禁共同限制可触发状态，保留循环任务在 `in_review` 下继续运行的既有语义；终态任务保留 cron 配置但不消耗调度窗口，显式重开后可恢复。新增用户侧 `done → todo` 重开路径，评审“拒绝”操作仍只接受 `in_review`。
+- 同步插件版本常量与 lockfile，避免 0.7.2 包元数据和界面版本显示不一致。
+
+**English:**
+
+**Fixes:**
+
+- Fix agent-created tasks failing to materialize the board's default permission ([#28](https://github.com/cloader/dsh-taskboard/issues/28)): `taskboard_create` now accepts an optional `permission` and persists `settings.defaultPermission` when omitted; `taskboard_update` can also change it. Scheduled runs no longer fall back unexpectedly to the factory `workspace-write` default.
+- Prevent cron from reviving terminal `done`, `canceled`, or `archived` tasks. Both scheduler selection and the atomic execution gate enforce eligible states while preserving recurring execution from `in_review`. Terminal tasks retain their cron without consuming windows and resume after an explicit reopen. Users can reopen `done → todo`; review rejection remains restricted to `in_review`.
+- Synchronize the plugin version constant and lockfile so package metadata and the displayed version agree.
+
 ### 0.7.2
 
 **新特性：**

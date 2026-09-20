@@ -68,6 +68,7 @@ describe('state machine', () => {
       expect(canTransition(from, 'canceled')).toBe(true)
     }
     expect(canTransition('done', 'archived')).toBe(true)
+    expect(canTransition('done', 'todo')).toBe(true)
     expect(canTransition('canceled', 'archived')).toBe(true)
     expect(canTransition('archived', 'todo')).toBe(false)
   })

@@ -235,6 +235,12 @@ node scripts/screenshot.mjs     # regenerate img/ screenshots (needs local Edge)
 
 ## Changelog
 
+### 0.7.3
+
+**Fixes:**
+
+- **Scheduled-task default permission and terminal-state scheduling ([#28](https://github.com/cloader/dsh-taskboard/issues/28))**: agent-created tasks now materialize the board's default permission and creation/update tools accept an explicit permission; cron no longer revives `done`, `canceled`, or `archived` tasks, while recurring tasks continue normally from `in_review`; users can reopen an accidentally completed task to `todo`.
+
 ### 0.7.2
 
 **New features:**
