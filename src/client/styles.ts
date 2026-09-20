@@ -609,6 +609,11 @@ button.dsh-atb-chip2.dsh-atb-chip-btn:hover {
 .dsh-atb-urgency-opt[data-on="true"][data-urgency="relaxed"] { border-color: rgba(62,99,221,.65); background: rgba(62,99,221,.1); }
 
 .dsh-atb-mode-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+/* Execution mode has THREE options (认领 / 定时 / 定期): keep them on one row. */
+.dsh-atb-mode-picker[data-exec="true"] { grid-template-columns: repeat(3, 1fr); }
+.dsh-atb-mode-picker[data-exec="true"] .dsh-atb-mode-opt { padding: 7px 8px; }
+.dsh-atb-mode-picker[data-exec="true"] .dsh-atb-mode-name { font-size: 12px; }
+.dsh-atb-mode-picker[data-exec="true"] .dsh-atb-mode-hint { font-size: 10px; }
 .dsh-atb-mode-opt {
   display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
   padding: 8px 10px; border-radius: 9px; cursor: pointer;

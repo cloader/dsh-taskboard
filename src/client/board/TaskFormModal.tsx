@@ -543,7 +543,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
             </Field>
 
             <Field label={t('form.field.mode')} full>
-              <div className="dsh-atb-mode-picker">
+              <div className="dsh-atb-mode-picker" data-exec="true">
                 <button type="button" className="dsh-atb-mode-opt" data-on={mode === 'claim'} onClick={() => setMode('claim')}>
                   <span className="dsh-atb-mode-name">{t('form.mode.claim')}</span>
                   <span className="dsh-atb-mode-hint">{t('form.mode.claimHint')}</span>
