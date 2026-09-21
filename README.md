@@ -239,7 +239,7 @@ node scripts/screenshot.mjs     # 重新生成 img/ 截图（需本机 Edge）
 
 **新特性：**
 
-- 增加已归档和已删除卡片的批量删除或清理功能。
+- 增加已归档和已删除卡片的批量删除或清理功能（[#29](https://github.com/cloader/dsh-taskboard/issues/29)）。
 
 ### 0.7.4
 

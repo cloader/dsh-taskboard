@@ -239,7 +239,7 @@ node scripts/screenshot.mjs     # regenerate img/ screenshots (needs local Edge)
 
 **New features:**
 
-- Add batch delete / purge for archived and deleted cards.
+- Add batch delete / purge for archived and deleted cards ([#29](https://github.com/cloader/dsh-taskboard/issues/29)).
 
 ### 0.7.4
 

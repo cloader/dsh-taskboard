@@ -4,13 +4,13 @@
 
 **新特性：**
 
-- 增加已归档和已删除卡片的批量删除或清理功能。
+- 增加已归档和已删除卡片的批量删除或清理功能（[#29](https://github.com/cloader/dsh-taskboard/issues/29)）。
 
 **English:**
 
 **New features:**
 
-- Add batch delete / purge for archived and deleted cards.
+- Add batch delete / purge for archived and deleted cards ([#29](https://github.com/cloader/dsh-taskboard/issues/29)).
 
 ### 0.7.4
 
