@@ -1,5 +1,17 @@
 # 更新日志 / Changelog
 
+### 0.7.5
+
+**新特性：**
+
+- 增加已归档和已删除卡片的批量删除或清理功能。
+
+**English:**
+
+**New features:**
+
+- Add batch delete / purge for archived and deleted cards.
+
 ### 0.7.4
 
 **新特性：**

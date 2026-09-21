@@ -235,6 +235,12 @@ node scripts/screenshot.mjs     # regenerate img/ screenshots (needs local Edge)
 
 ## Changelog
 
+### 0.7.5
+
+**New features:**
+
+- Add batch delete / purge for archived and deleted cards.
+
 ### 0.7.4
 
 **New features:**

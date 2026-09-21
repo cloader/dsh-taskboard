@@ -83,6 +83,16 @@ export const en: TaskboardDict = {
   'board.empty': 'No tasks',
   'board.secondary.empty': 'No canceled / archived / deleted tasks',
   'board.group.trashed': 'Deleted',
+  'board.batch.trashArchived': 'Batch delete',
+  'board.batch.trashArchivedTip': 'Enter selection mode, then batch-mark picked cards for purge',
+  'board.batch.purgeTrashed': 'Batch purge',
+  'board.batch.purgeTrashedTip': 'Enter selection mode, then physically purge picked cards; irreversible',
+  'board.batch.confirm': 'Confirm',
+  'board.batch.confirmTip': 'Confirm the batch operation on the selected cards',
+  'board.batch.confirmCancelTip': 'Cancel this batch operation',
+  'board.batch.cancel': 'Cancel',
+  'board.batch.noneSelected': 'Select cards first',
+  'board.batch.selectAll': 'Select all / none',
 
   // ── diagnostics panel (TaskBoard) ─────────────────────────────────
   'diag.title': 'Health diagnostics',

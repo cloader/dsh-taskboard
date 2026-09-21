@@ -85,6 +85,16 @@ export const zh = {
   'board.empty': '无任务',
   'board.secondary.empty': '无已取消 / 已归档 / 已删除任务',
   'board.group.trashed': '已删除',
+  'board.batch.trashArchived': '批量删除',
+  'board.batch.trashArchivedTip': '进入选择模式，勾选后批量标记为待清除',
+  'board.batch.purgeTrashed': '批量清理',
+  'board.batch.purgeTrashedTip': '进入选择模式，勾选后物理清除，不可恢复',
+  'board.batch.confirm': '确认执行',
+  'board.batch.confirmTip': '确认对本列选中卡片执行批量操作',
+  'board.batch.confirmCancelTip': '取消本次批量操作',
+  'board.batch.cancel': '取消',
+  'board.batch.noneSelected': '请先勾选要操作的卡片',
+  'board.batch.selectAll': '全选 / 全不选',
 
   // ── diagnostics panel (TaskBoard) ─────────────────────────────────
   'diag.title': '健康诊断',

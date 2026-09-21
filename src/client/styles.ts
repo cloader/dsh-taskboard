@@ -198,6 +198,12 @@ body[data-ds-dark-theme] .dsh-atb-modal-body select option {
 .dsh-atb-column { display: flex; flex-direction: column; min-width: 200px; min-height: 0; border-radius: 10px; background: var(--dsw-bg-inset, rgba(128,128,128,.07)); padding: 8px; gap: 8px; }
 .dsh-atb-colhead { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; padding: 2px 4px; }
 .dsh-atb-colcount { font-size: 11px; font-weight: 400; color: var(--dsw-text-secondary, gray); }
+.dsh-atb-colhead .dsh-atb-btn { margin-left: auto; padding: 1px 8px; font-size: 11px; }
+.dsh-atb-colhead .dsh-atb-btn + .dsh-atb-btn { margin-left: 0; }
+.dsh-atb-colhead .dsh-atb-selectall { flex: none; margin: 0 2px 0 6px; cursor: pointer; }
+.dsh-atb-selrow { display: flex; align-items: flex-start; gap: 4px; }
+.dsh-atb-selrow .dsh-atb-card, .dsh-atb-selrow > div { flex: 1; min-width: 0; }
+.dsh-atb-selbox { flex: none; margin: 4px 0 0 0; cursor: pointer; }
 .dsh-atb-cards { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; flex: 1; padding: 2px; }
 
 .dsh-atb-card {
