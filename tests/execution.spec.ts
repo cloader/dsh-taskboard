@@ -381,6 +381,17 @@ describe('ExecutionService', () => {
     expect((await svc.run('t-4', 'manual')).ok).toBe(true)
   })
 
+  it('reads a changed concurrency setting for each new execution gate', async () => {
+    const store = await storeWith(task({ id: 't-1' }), task({ id: 't-2' }))
+    const agents = fakeAgents()
+    let cap = 1
+    const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: () => 1_000, maxConcurrent: () => cap })
+    expect((await svc.run('t-1', 'manual')).ok).toBe(true)
+    expect((await svc.run('t-2', 'manual')).ok).toBe(false)
+    cap = 2
+    expect((await svc.run('t-2', 'manual')).ok).toBe(true)
+  })
+
   it('renders {{lastExecution}} and {{lastComments}} template variables', async () => {
     const templated = task({
       prompt: '上次结果：{{lastExecution}}\n最近评论：{{lastComments}}',
@@ -991,8 +1002,8 @@ describe('SchedulerService', () => {
     expect(runs).toEqual([])
   })
 
-  it('holds due tasks (without burning their window) while at the concurrency cap', async () => {
-    const now = 1_000_000
+  it('durably queues a due task at capacity and dispatches it after the old missed window', async () => {
+    let now = 1_000_000
     const due = task({
       id: 't-due',
       execution: { mode: 'scheduled', cron: '* * * * *', nextRunAt: now - 1 },
@@ -1008,16 +1019,51 @@ describe('SchedulerService', () => {
       },
       now: () => now,
     })
-    // At capacity: the window is NOT advanced (nextRunAt stays in the past so
-    // the next tick retries) and nothing runs.
+    // At capacity the original window is persisted as queued, rather than
+    // being left to become a false offline-missed window five minutes later.
     await scheduler.tick()
     expect(runs).toEqual([])
-    expect(store.get('t-due')!.execution.nextRunAt).toBe(now - 1)
-    // Capacity frees up → the same window fires.
+    expect(store.get('t-due')!.execution.queuedRunAt).toBe(now - 1)
+    // Capacity frees up after the old five-minute missed threshold: the same
+    // queued window still fires.
+    now += 6 * 60_000
     inflight = 0
     await scheduler.tick()
     expect(runs).toEqual(['t-due'])
-    expect(store.get('t-due')!.execution.nextRunAt).toBeGreaterThan(now)
+    expect(store.get('t-due')!.execution.queuedRunAt).toBeUndefined()
+  })
+
+  it('dispatches same-window backlog in stable FIFO batches', async () => {
+    const now = 1_000_000
+    const due = now - 1
+    const store = await storeWith(
+      task({ id: 't-c', execution: { mode: 'scheduled', cron: '* * * * *', nextRunAt: due } }),
+      task({ id: 't-a', execution: { mode: 'scheduled', cron: '* * * * *', nextRunAt: due } }),
+      task({ id: 't-b', execution: { mode: 'scheduled', cron: '* * * * *', nextRunAt: due } }),
+    )
+    const runs: string[] = []
+    let inflight = 2
+    const scheduler = new SchedulerService({
+      store,
+      execution: {
+        run: async id => { runs.push(id); inflight += 1; return { ok: true, executionId: id, sessionId: id } },
+        inFlight: () => inflight,
+      },
+      now: () => now,
+      maxConcurrent: 2,
+    })
+    await scheduler.tick()
+    expect(runs).toEqual([])
+    expect(store.snapshot().tasks.every(t => t.execution.queuedRunAt === due)).toBe(true)
+
+    inflight = 0
+    await scheduler.tick()
+    expect(runs).toEqual(['t-a', 't-b'])
+    expect(store.get('t-c')!.execution.queuedRunAt).toBe(due)
+
+    inflight = 0
+    await scheduler.tick()
+    expect(runs).toEqual(['t-a', 't-b', 't-c'])
   })
 })
 

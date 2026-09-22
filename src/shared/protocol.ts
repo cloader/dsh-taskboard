@@ -121,6 +121,15 @@ export type IsolationMode = 'worktree' | 'none'
  */
 export const DEFAULT_ISOLATION: IsolationMode = 'none'
 
+/** Factory default and safe UI/API range for concurrent task executions. */
+export const DEFAULT_MAX_CONCURRENT = 3
+export const MIN_MAX_CONCURRENT = 1
+export const MAX_MAX_CONCURRENT = 100
+/** Factory default and safe UI/API range for offline missed-window handling. */
+export const DEFAULT_SCHEDULE_MISSED_AFTER_MINUTES = 5
+export const MIN_SCHEDULE_MISSED_AFTER_MINUTES = 1
+export const MAX_SCHEDULE_MISSED_AFTER_MINUTES = 1_440
+
 /** Validate an isolation value. */
 export function asIsolation(raw: string): IsolationMode {
   if (raw !== 'worktree' && raw !== 'none') {
@@ -169,6 +178,10 @@ export type BoardSettings = {
   syncExternalSessions?: boolean
   /** Default permission preset applied when a NEW task is created without an explicit choice (0.5.5, default: 'workspace-write'). */
   defaultPermission?: PermissionMode
+  /** Global cap for simultaneously running taskboard executions. */
+  maxConcurrent?: number
+  /** Only never-queued windows older than this are classified as offline misses. */
+  scheduleMissedAfterMinutes?: number
 }
 
 /** Validate raw input into sanitized {@link BoardSettings} (unknown fields dropped). */
@@ -193,6 +206,20 @@ export function asBoardSettings(raw: unknown): BoardSettings {
   if (e.defaultPermission !== undefined) {
     out.defaultPermission = asPermission(e.defaultPermission)
   }
+  if (e.maxConcurrent !== undefined) {
+    if (typeof e.maxConcurrent !== 'number' || !Number.isSafeInteger(e.maxConcurrent)
+      || e.maxConcurrent < MIN_MAX_CONCURRENT || e.maxConcurrent > MAX_MAX_CONCURRENT) {
+      throw new Error(`maxConcurrent must be an integer from ${MIN_MAX_CONCURRENT} to ${MAX_MAX_CONCURRENT}`)
+    }
+    out.maxConcurrent = e.maxConcurrent
+  }
+  if (e.scheduleMissedAfterMinutes !== undefined) {
+    if (typeof e.scheduleMissedAfterMinutes !== 'number' || !Number.isSafeInteger(e.scheduleMissedAfterMinutes)
+      || e.scheduleMissedAfterMinutes < MIN_SCHEDULE_MISSED_AFTER_MINUTES || e.scheduleMissedAfterMinutes > MAX_SCHEDULE_MISSED_AFTER_MINUTES) {
+      throw new Error(`scheduleMissedAfterMinutes must be an integer from ${MIN_SCHEDULE_MISSED_AFTER_MINUTES} to ${MAX_SCHEDULE_MISSED_AFTER_MINUTES}`)
+    }
+    out.scheduleMissedAfterMinutes = e.scheduleMissedAfterMinutes
+  }
   return out
 }
 
@@ -209,6 +236,16 @@ export function defaultSyncExternalSessionsOf(settings?: BoardSettings): boolean
 /** The effective default permission preset for NEW tasks (board setting → factory default 'workspace-write'). */
 export function defaultPermissionOf(settings?: BoardSettings): PermissionMode {
   return settings?.defaultPermission ?? DEFAULT_PERMISSION
+}
+
+/** Effective global execution cap (board setting → supplied deployment default). */
+export function maxConcurrentOf(settings: BoardSettings | undefined, fallback = DEFAULT_MAX_CONCURRENT): number {
+  return settings?.maxConcurrent ?? fallback
+}
+
+/** Effective offline missed-window threshold in minutes (board setting → factory default). */
+export function scheduleMissedAfterMinutesOf(settings?: BoardSettings): number {
+  return settings?.scheduleMissedAfterMinutes ?? DEFAULT_SCHEDULE_MISSED_AFTER_MINUTES
 }
 
 /** How a task may run. */
@@ -234,6 +271,16 @@ export interface ExecutionConfig {
   runAt?: number
   /** Next due time (epoch ms); maintained by the host scheduler. */
   nextRunAt?: number
+  /**
+   * Original due window of a scheduled dispatch waiting for global capacity.
+   * Its presence is durable: a host restart must not reclassify an already
+   * online-and-queued run as a window missed while the host was down.
+   */
+  queuedRunAt?: number
+  /** When the scheduler put {@link queuedRunAt} into its durable FIFO queue. */
+  queuedAt?: number
+  /** A queue entry reserved for an execution gate but not yet running. */
+  dispatchingRunAt?: number
   /** Last time the scheduler triggered this task (epoch ms). */
   lastTriggeredAt?: number
 }
@@ -1153,11 +1200,26 @@ export function validateImportedTask(raw: unknown, now: number): { ok: true; tas
   // filesystem use of a task id.
   if (!isValidTaskId(id)) return fail('missing/invalid id (must match ^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$)')
   try {
+    const rawExecution = typeof e.execution === 'object' && e.execution !== null
+      ? e.execution as { mode?: string; cron?: string; runAt?: unknown; queuedRunAt?: unknown; queuedAt?: unknown; dispatchingRunAt?: unknown }
+      : {}
     const execution = normalizeExecution(
-      typeof e.execution === 'object' && e.execution !== null ? e.execution as { mode?: string; cron?: string; runAt?: unknown } : {},
+      rawExecution,
       now,
       { allowPastRunAt: true },
     )
+    // Queue markers are scheduler-owned, but must survive export/import: an
+    // online-and-queued window is not equivalent to an offline missed window.
+    const queuedWindow = typeof rawExecution.queuedRunAt === 'number' && Number.isFinite(rawExecution.queuedRunAt)
+      ? rawExecution.queuedRunAt
+      : typeof rawExecution.dispatchingRunAt === 'number' && Number.isFinite(rawExecution.dispatchingRunAt)
+        ? rawExecution.dispatchingRunAt
+        : undefined
+    if (execution.mode === 'scheduled' && queuedWindow !== undefined && typeof rawExecution.queuedAt === 'number'
+      && Number.isFinite(rawExecution.queuedAt)) {
+      execution.queuedRunAt = queuedWindow
+      execution.queuedAt = rawExecution.queuedAt
+    }
     const comments: CommentRecord[] = []
     if (Array.isArray(e.comments)) {
       for (const c of e.comments) {

@@ -1087,14 +1087,14 @@ describe('taskboard routes 0.5.0 (board settings → default isolation)', () => 
     const badType = await post('/dsh-taskboard/settings/update', { defaultIsolation: 42 })
     expect(badType.status).toBe(400)
 
-    const ok = await post('/dsh-taskboard/settings/update', { defaultIsolation: 'worktree' })
+    const ok = await post('/dsh-taskboard/settings/update', { defaultIsolation: 'worktree', maxConcurrent: 8, scheduleMissedAfterMinutes: 15 })
     expect(ok.status).toBe(200)
-    expect(ok.json.value).toEqual({ defaultIsolation: 'worktree' })
+    expect(ok.json.value).toEqual({ defaultIsolation: 'worktree', maxConcurrent: 8, scheduleMissedAfterMinutes: 15 })
 
     const after = await (await fetch(`${base}/dsh-taskboard/settings`)).json()
-    expect(after.value).toEqual({ defaultIsolation: 'worktree' })
+    expect(after.value).toEqual({ defaultIsolation: 'worktree', maxConcurrent: 8, scheduleMissedAfterMinutes: 15 })
     const state = await (await fetch(`${base}/dsh-taskboard/state`)).json()
-    expect(state.value.settings).toEqual({ defaultIsolation: 'worktree' })
+    expect(state.value.settings).toEqual({ defaultIsolation: 'worktree', maxConcurrent: 8, scheduleMissedAfterMinutes: 15 })
   })
 
   it('create materializes the board default on omitted isolation; explicit wins; earlier tasks unaffected', async () => {

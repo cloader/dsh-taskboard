@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from 'react'
 import type { BoardController } from '../controller.ts'
-import { DEFAULT_ISOLATION, defaultPermissionOf, defaultSyncExternalSessionsOf, type IsolationMode, type PermissionMode } from '../../shared/protocol.ts'
+import { DEFAULT_ISOLATION, DEFAULT_MAX_CONCURRENT, DEFAULT_SCHEDULE_MISSED_AFTER_MINUTES, defaultPermissionOf, defaultSyncExternalSessionsOf, maxConcurrentOf, scheduleMissedAfterMinutesOf, type IsolationMode, type PermissionMode } from '../../shared/protocol.ts'
 import { useT, type Translate } from '../i18n/runtime.ts'
 
 /** The isolation options with one-line hints (mirrors the task form; translated per render). */
@@ -28,13 +28,22 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
   const currentIso = state.ledger.settings?.defaultIsolation ?? DEFAULT_ISOLATION
   const currentSync = defaultSyncExternalSessionsOf(state.ledger.settings)
   const currentPerm = defaultPermissionOf(state.ledger.settings)
+  const currentMaxConcurrent = maxConcurrentOf(state.ledger.settings)
+  const currentMissedAfterMinutes = scheduleMissedAfterMinutesOf(state.ledger.settings)
   const [draftIso, setDraftIso] = useState<IsolationMode>(currentIso)
   const [draftSync, setDraftSync] = useState<boolean>(currentSync)
   const [draftPerm, setDraftPerm] = useState<PermissionMode>(currentPerm)
+  const [draftMaxConcurrent, setDraftMaxConcurrent] = useState(String(currentMaxConcurrent))
+  const [draftMissedAfterMinutes, setDraftMissedAfterMinutes] = useState(String(currentMissedAfterMinutes))
   const [storagePath, setStoragePath] = useState(state.storage?.currentDirectory ?? '')
   const [storageTouched, setStorageTouched] = useState(false)
   const [storageBusy, setStorageBusy] = useState(false)
+  const maxConcurrent = Number(draftMaxConcurrent)
+  const missedAfterMinutes = Number(draftMissedAfterMinutes)
+  const scheduleValid = Number.isSafeInteger(maxConcurrent) && maxConcurrent >= 1 && maxConcurrent <= 100
+    && Number.isSafeInteger(missedAfterMinutes) && missedAfterMinutes >= 1 && missedAfterMinutes <= 1440
   const dirty = draftIso !== currentIso || draftSync !== currentSync || draftPerm !== currentPerm
+    || draftMaxConcurrent !== String(currentMaxConcurrent) || draftMissedAfterMinutes !== String(currentMissedAfterMinutes)
   const effectiveStoragePath = storagePath.trim().length === 0 ? state.storage?.defaultDirectory ?? '' : storagePath.trim()
   const storageDirty = state.storage !== undefined && effectiveStoragePath !== state.storage.currentDirectory
 
@@ -47,6 +56,8 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
       defaultIsolation: draftIso,
       syncExternalSessions: draftSync,
       defaultPermission: draftPerm,
+      maxConcurrent,
+      scheduleMissedAfterMinutes: missedAfterMinutes,
     }).then(ok => {
       if (ok) controller.closeSettings()
     })
@@ -155,6 +166,22 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
           </section>
 
           <section className="dsh-atb-diag-sec">
+            <h4>{t('set.schedule.heading')}</h4>
+            <p className="dsh-atb-isolation-note">{t('set.schedule.hint')}</p>
+            <div className="dsh-atb-settings-numbers">
+              <label>
+                <span>{t('set.schedule.concurrent')}</span>
+                <input className="dsh-atb-input" type="number" min="1" max="100" step="1" value={draftMaxConcurrent} onChange={e => setDraftMaxConcurrent(e.target.value)} />
+              </label>
+              <label>
+                <span>{t('set.schedule.missedAfter')}</span>
+                <input className="dsh-atb-input" type="number" min="1" max="1440" step="1" value={draftMissedAfterMinutes} onChange={e => setDraftMissedAfterMinutes(e.target.value)} />
+              </label>
+            </div>
+            {!scheduleValid && <span className="dsh-atb-storage-error">{t('set.schedule.invalid')}</span>}
+          </section>
+
+          <section className="dsh-atb-diag-sec">
             <h4>{t('set.storage.heading')}</h4>
             <p className="dsh-atb-isolation-note">{t('set.storage.hint')}</p>
             <input
@@ -222,7 +249,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
           <span className="dsh-atb-modal-hint">{dirty ? t('set.foot.dirty') : t('set.foot.clean')}</span>
           <span className="dsh-atb-modal-footbtns">
             <button type="button" className="dsh-atb-btn" onClick={() => controller.closeSettings()}>{t('shared.cancel')}</button>
-            <button type="button" className="dsh-atb-btn" data-primary="true" disabled={!dirty} onClick={save}>{t('set.action.save')}</button>
+            <button type="button" className="dsh-atb-btn" data-primary="true" disabled={!dirty || !scheduleValid} onClick={save}>{t('set.action.save')}</button>
           </span>
         </div>
       </div>

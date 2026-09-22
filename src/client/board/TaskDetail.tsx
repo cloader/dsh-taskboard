@@ -614,6 +614,7 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
             {task.execution.mode === 'scheduled' && (
               <Chip icon="⏰">{t('detail.chip.nextRun', { cron: task.execution.cron ?? '', time: fmtTime(task.execution.nextRunAt) })}</Chip>
             )}
+            {task.execution.queuedRunAt !== undefined && <Chip icon="⏳" tone="urgent">{t('detail.chip.queuedRun', { time: fmtTime(task.execution.queuedRunAt) })}</Chip>}
             {task.blocked && <Chip icon="⛔" tone="urgent">{t('shared.blocked')}</Chip>}
             {task.checklist !== undefined && task.checklist.length > 0 && (
               <Chip icon="☑" tone={task.status === 'in_review' && task.checklist.some(i => !i.checked) ? 'urgent' : undefined}>

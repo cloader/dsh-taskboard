@@ -235,6 +235,13 @@ node scripts/screenshot.mjs     # regenerate img/ screenshots (needs local Edge)
 
 ## Changelog
 
+### 0.7.6
+
+**Fixes:**
+
+- **Scheduled-task concurrency queue ([#30](https://github.com/cloader/dsh-taskboard/issues/30))**: due tasks enter a durable FIFO queue while concurrency is saturated and continue after a slot frees, rather than being silently lost after the former five-minute threshold; genuinely offline-missed periodic windows leave a system comment.
+- **Scheduling settings**: configure maximum concurrent executions (1–100) and the offline missed-window timeout (1–1440 minutes) in **🛠 Settings**. Saved values apply immediately and never expire already queued work.
+
 ### 0.7.5
 
 **New features:**

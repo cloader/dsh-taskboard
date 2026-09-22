@@ -897,6 +897,9 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
 .dsh-atb-set { max-width: 620px; width: min(620px, 92vw); }
 .dsh-atb-set .dsh-atb-mode-picker { margin-top: 8px; }
 .dsh-atb-set .dsh-atb-isolation-note { margin-top: 10px; }
+.dsh-atb-settings-numbers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 10px; }
+.dsh-atb-settings-numbers label { display: grid; gap: 5px; font-size: 12px; color: var(--dsw-alias-label-secondary, #888); }
+.dsh-atb-settings-numbers input { width: 100%; }
 .dsh-atb-storage-path { width: 100%; margin-top: 10px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .dsh-atb-storage-meta { display: grid; gap: 4px; margin-top: 8px; color: var(--dsh-atb-muted); font-size: 12px; overflow-wrap: anywhere; }
 .dsh-atb-storage-error { color: var(--dsh-atb-danger); }

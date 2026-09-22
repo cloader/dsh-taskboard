@@ -221,6 +221,10 @@ export type UpdateSettingsBody = {
   syncExternalSessions?: boolean
   /** Default permission preset for NEW tasks ('workspace-write' | 'read-only' | 'danger-full-access'). */
   defaultPermission?: string
+  /** Global simultaneous execution cap (1–100). */
+  maxConcurrent?: number
+  /** Offline missed-window threshold in whole minutes (1–1440). */
+  scheduleMissedAfterMinutes?: number
 }
 
 /** Prompt completion item for skills and slash commands (0.5.5). */

@@ -14,6 +14,7 @@
 import {
   DEFAULT_PERMISSION,
   effectiveIsolation,
+  DEFAULT_MAX_CONCURRENT,
   effectivePrompt,
   newCommentId,
   newExecutionId,
@@ -33,9 +34,6 @@ import { isLegacySingle, prepareMirror, type PreparedMirror, type PreparedMirror
 import { createRepoScanner, type RepoScanner } from './repos.ts'
 import { MessageId } from './sdk.ts'
 import type { TaskStore } from './store.ts'
-
-/** Default cap on concurrently running executions (env-overridable). */
-export const DEFAULT_MAX_CONCURRENT = 3
 
 /** Narrow agents face (the registry's create, structurally). */
 export interface AgentsFace {
@@ -101,7 +99,7 @@ export interface ExecutionDeps {
   /** Best-effort session rename (pins the session list title to the task title). */
   renameSession?: (sessionId: string, title: string) => void
   /** Max concurrently running executions across all tasks (default 3). */
-  maxConcurrent?: number
+  maxConcurrent?: number | (() => number)
   /**
    * Git face for worktree isolation (0.3.0). Absent → every worktree-mode
    * task degrades to the original directory with an isolationNote.
@@ -157,6 +155,11 @@ export interface RunOptions {
    * main HEAD. Falls back to a fresh preparation when none is alive.
    */
   reuseWorktree?: boolean
+  /**
+   * Scheduler-only dispatch token. The execution gate consumes the matching
+   * durable queue entry in the same mutation that creates the running record.
+   */
+  scheduledWindow?: number
 }
 
 /** One live execution tracked for settlement and cancellation. */
@@ -353,7 +356,7 @@ export class ExecutionService {
    * @returns the immediate result; settlement lands in the ledger.
    */
   async run(taskId: string, trigger: ExecutionRecord['trigger'], options?: RunOptions): Promise<RunRequestResult> {
-    const max = this.deps.maxConcurrent ?? DEFAULT_MAX_CONCURRENT
+    const max = typeof this.deps.maxConcurrent === 'function' ? this.deps.maxConcurrent() : this.deps.maxConcurrent ?? DEFAULT_MAX_CONCURRENT
     if (this.runs.size >= max) {
       return { ok: false, error: `execution concurrency limit reached (${this.runs.size}/${max} running)` }
     }
@@ -394,6 +397,11 @@ export class ExecutionService {
         gate = `scheduled task is not actionable (${target.status})`
         return undefined
       }
+      if (trigger === 'scheduled' && options?.scheduledWindow !== undefined
+        && target.execution.dispatchingRunAt !== options.scheduledWindow) {
+        gate = 'scheduled dispatch is no longer queued'
+        return undefined
+      }
       if (target.status === 'in_progress' || target.executions.some(e => e.outcome === 'running')
         || [...this.runs.values()].some(e => target.executions.some(x => x.sessionId === e.sessionId))) {
         gate = 'task is already in progress'
@@ -414,6 +422,11 @@ export class ExecutionService {
         outcome: 'running',
         ...(isolation === 'none' ? { isolation: 'none' as const } : { isolation: 'worktree' as const, branch }),
       })
+      if (options?.scheduledWindow !== undefined) {
+        delete target.execution.dispatchingRunAt
+        delete target.execution.queuedAt
+        target.execution.lastTriggeredAt = options.scheduledWindow
+      }
       target.status = 'in_progress'
       target.updatedAt = this.deps.now()
       target.updatedBy = { kind: 'system' }

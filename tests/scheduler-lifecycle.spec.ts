@@ -160,6 +160,9 @@ describe('SchedulerService lifecycle', () => {
 
     await vi.advanceTimersByTimeAsync(3_100) // catchup: run #1, nextRunAt → T0+60s
     expect(await waitFor(() => runs.length >= 1)).toBe(true)
+    // The scheduler now durably reserves then dispatches the queue entry;
+    // wait for that serial mutation before advancing fake time into tick #2.
+    await settle(50)
 
     // Crosses the interval's first firing at exactly T0 + 60s, where
     // nextRunAt (T0+60s) <= now makes the task due again: run #2.
@@ -180,6 +183,7 @@ describe('SchedulerService lifecycle', () => {
     scheduler.start()
     await vi.advanceTimersByTimeAsync(3_100)
     expect(await waitFor(() => runs.length >= 1)).toBe(true)
+    await settle(50)
     await vi.advanceTimersByTimeAsync(60_000)
     expect(await waitFor(() => runs.length >= 2)).toBe(true)
 
@@ -269,5 +273,6 @@ describe('SchedulerService lifecycle', () => {
     const task = store.get('t-missed')
     expect(task?.execution.nextRunAt).toBe(T0 + 60_000)
     expect(task?.execution.lastTriggeredAt).toBeUndefined()
+    expect(task?.comments.some(c => c.systemKey === 'sys.cronMissed')).toBe(true)
   })
 })

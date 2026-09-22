@@ -20,7 +20,8 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-agent'
 import { PROTOCOL_SECTION_NAME, PROTOCOL_SECTION_ORDER, TASKBOARD_PROTOCOL } from './host/protocol-text.ts'
-import { DEFAULT_MAX_CONCURRENT, ExecutionService, type EventsFace } from './host/execution.ts'
+import { ExecutionService, type EventsFace } from './host/execution.ts'
+import { DEFAULT_MAX_CONCURRENT, maxConcurrentOf, scheduleMissedAfterMinutesOf } from './shared/protocol.ts'
 import { scheduledSessionResumer, type ScheduledSessionDeps } from './host/scheduled-session.ts'
 import { createGitFace } from './host/git.ts'
 import { createRepoScanner } from './host/repos.ts'
@@ -74,7 +75,9 @@ export function apply(ctx: Context): void {
   void storeReady.then(() => assets.cleanup(JSON.stringify(store.snapshot())))
   const now = () => Date.now()
   // Global execution concurrency cap (DSH_TASKBOARD_MAX_CONCURRENT overrides).
-  const maxConcurrent = Math.max(1, Number.parseInt(process.env.DSH_TASKBOARD_MAX_CONCURRENT ?? '', 10) || DEFAULT_MAX_CONCURRENT)
+  const deploymentMaxConcurrent = Math.max(1, Number.parseInt(process.env.DSH_TASKBOARD_MAX_CONCURRENT ?? '', 10) || DEFAULT_MAX_CONCURRENT)
+  const maxConcurrent = () => maxConcurrentOf(store.snapshot().settings, deploymentMaxConcurrent)
+  const skipAfterMs = () => scheduleMissedAfterMinutesOf(store.snapshot().settings) * 60_000
 
   // Agent workflow protocol (claim discipline, retry rules, done-gate).
   const disposeSection = ctx.systemPrompt.section({
@@ -364,7 +367,7 @@ export function apply(ctx: Context): void {
 
       // Host-side cron scheduler: due scheduled tasks execute even with no
       // browser open. Shares the execution concurrency cap.
-      const scheduler = new SchedulerService({ store, execution, now, maxConcurrent })
+      const scheduler = new SchedulerService({ store, execution, now, maxConcurrent, skipAfterMs })
       scheduler.start()
       agentDisposers.push(() => scheduler.dispose())
       // Detach the settlement listener with the plugin — a hot reload must

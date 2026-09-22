@@ -1,5 +1,19 @@
 # 更新日志 / Changelog
 
+### 0.7.6
+
+**修复：**
+
+- 修复定时任务在并发满载后排队超过旧 5 分钟阈值会被误判为离线错过、静默跳过且永不补跑的问题（[#30](https://github.com/cloader/dsh-taskboard/issues/30)）。到期窗口现持久化进入 FIFO 队列，槽位释放后继续执行；真正离线错过的周期任务会留下系统评论。
+- 在「设置」中增加最大并发执行数（1–100）和「离线错过超时后不补任务」（1–1440 分钟）。保存后立即作用于后续调度与执行门禁；已排队任务不受该超时影响。
+
+**English:**
+
+**Fixes:**
+
+- Fix scheduled tasks being silently skipped forever when they waited for a saturated concurrency cap beyond the former five-minute threshold ([#30](https://github.com/cloader/dsh-taskboard/issues/30)). Due windows now enter a durable FIFO queue and run after capacity frees; genuinely offline-missed periodic windows leave a system comment.
+- Add Settings controls for maximum concurrent executions (1–100) and the offline missed-window timeout (1–1440 minutes). Changes apply to subsequent scheduler and execution gates immediately; queued work is unaffected by this timeout.
+
 ### 0.7.5
 
 **新特性：**

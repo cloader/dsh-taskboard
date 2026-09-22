@@ -21,6 +21,8 @@ import {
   defaultIsolationOf,
   defaultPermissionOf,
   defaultSyncExternalSessionsOf,
+  maxConcurrentOf,
+  scheduleMissedAfterMinutesOf,
   effectiveIsolation,
   emptyLedger,
   isClaim,
@@ -266,7 +268,7 @@ describe('board settings & default isolation (0.5.0)', () => {
   })
 
   it('asBoardSettings sanitizes; defaultIsolationOf, defaultSyncExternalSessionsOf, and defaultPermissionOf resolve setting → factory', () => {
-    expect(asBoardSettings({ defaultIsolation: 'worktree', syncExternalSessions: true, defaultPermission: 'read-only', junk: 1 })).toEqual({ defaultIsolation: 'worktree', syncExternalSessions: true, defaultPermission: 'read-only' })
+    expect(asBoardSettings({ defaultIsolation: 'worktree', syncExternalSessions: true, defaultPermission: 'read-only', maxConcurrent: 8, scheduleMissedAfterMinutes: 15, junk: 1 })).toEqual({ defaultIsolation: 'worktree', syncExternalSessions: true, defaultPermission: 'read-only', maxConcurrent: 8, scheduleMissedAfterMinutes: 15 })
     expect(asBoardSettings({ syncExternalSessions: false })).toEqual({ syncExternalSessions: false })
     expect(asBoardSettings({ defaultPermission: 'fullAccess' })).toEqual({ defaultPermission: 'danger-full-access' })
     expect(asBoardSettings({})).toEqual({})
@@ -274,6 +276,9 @@ describe('board settings & default isolation (0.5.0)', () => {
     expect(() => asBoardSettings({ defaultIsolation: 42 })).toThrow("defaultIsolation must be")
     expect(() => asBoardSettings({ syncExternalSessions: 'yes' })).toThrow("syncExternalSessions must be a boolean")
     expect(() => asBoardSettings({ defaultPermission: 'super-user' })).toThrow("permission must be")
+    expect(() => asBoardSettings({ maxConcurrent: 0 })).toThrow('maxConcurrent')
+    expect(() => asBoardSettings({ maxConcurrent: 1.5 })).toThrow('maxConcurrent')
+    expect(() => asBoardSettings({ scheduleMissedAfterMinutes: 0 })).toThrow('scheduleMissedAfterMinutes')
     expect(() => asBoardSettings(null)).toThrow('object')
     expect(defaultIsolationOf(undefined)).toBe('none')
     expect(defaultIsolationOf({})).toBe('none')
@@ -287,6 +292,10 @@ describe('board settings & default isolation (0.5.0)', () => {
     expect(defaultPermissionOf(undefined)).toBe('workspace-write')
     expect(defaultPermissionOf({})).toBe('workspace-write')
     expect(defaultPermissionOf({ defaultPermission: 'read-only' })).toBe('read-only')
+    expect(maxConcurrentOf(undefined)).toBe(3)
+    expect(maxConcurrentOf({ maxConcurrent: 8 })).toBe(8)
+    expect(scheduleMissedAfterMinutesOf(undefined)).toBe(5)
+    expect(scheduleMissedAfterMinutesOf({ scheduleMissedAfterMinutes: 15 })).toBe(15)
   })
 
   it('asPermission normalizes camelCase and kebab-case aliases', () => {

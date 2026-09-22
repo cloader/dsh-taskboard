@@ -575,7 +575,13 @@ describe('client half', () => {
     expect(saveBtn().disabled).toBe(false)
     saveBtn().click()
     await new Promise(r => setTimeout(r, 20))
-    expect(saved).toEqual([{ defaultIsolation: 'none', syncExternalSessions: true, defaultPermission: 'workspace-write' }])
+    expect(saved).toEqual([{
+      defaultIsolation: 'none',
+      syncExternalSessions: true,
+      defaultPermission: 'workspace-write',
+      maxConcurrent: 3,
+      scheduleMissedAfterMinutes: 5,
+    }])
 
     const storageInput = host.querySelector<HTMLInputElement>('.dsh-atb-storage-path')!
     expect(storageInput.value).toBe('C:\\old')
