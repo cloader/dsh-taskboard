@@ -239,9 +239,7 @@ node scripts/screenshot.mjs     # 重新生成 img/ 截图（需本机 Edge）
 
 ### 0.8.0
 
-**新特性：**
-
-- **官方 Slot API 挂载（双轨兼容）**：dsh ≥ 0.1.7 的 slot 系统 shell 上，看板改由官方 `sidebar.panellist` + `main` 注册为一等侧边栏面板——侧栏行、激活态、面板切换全部由宿主拥有，行右缘保留与旧版入口同款的实时统计（宽侧栏：待办｜进行中｜待验收 三色计数；折叠轨道：待办角标）；旧版 shell 自动回落 0.7.x 的 DOM 注入路径，注册失败亦即时降级，两条路径严格互斥。
+1. **新版本增强兼容性（[#31](https://github.com/cloader/dsh-taskboard/issues/31)）**：侧边栏的注入在 dsh ≥ v0.1.7 使用官方 API（`sidebar.panellist` + `main` 注册一等侧边栏面板），同时兼容 dsh < v0.1.7 版本使用 DOM 注入。
 
 **修复：**
 
