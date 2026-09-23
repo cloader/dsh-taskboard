@@ -53,13 +53,21 @@ export const STYLES = `
  * path never sets). */
 /* Main-panel occupant: fills the central column like .dsh-atb-view does. */
 .dsh-atb-panel-root { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-/* Sidebar row glyph (inside the shell-owned panelRow): icon + live counts. */
-.dsh-atb-pglyph { position: relative; display: inline-flex; align-items: center; gap: 5px; }
+/* Sidebar row glyph (inside the shell-owned panelRow): static flex layer —
+ * the icon wrapper carries the badge; the strip anchors to the row. */
+.dsh-atb-pglyph { display: inline-flex; align-items: center; }
+.dsh-atb-picon { position: relative; display: inline-flex; }
+/* Legacy parity: the stats strip sat at the entry row's right edge
+ * (margin-left:auto) with | separators. The shell's row button becomes the
+ * positioning context via :has(); the strip pins to its right edge. */
+button[class*="panelRow"]:has(.dsh-atb-pglyph) { position: relative; }
 .dsh-atb-pstats {
+  position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
   display: inline-flex; align-items: center; gap: 3px;
-  font-size: 10.5px; line-height: 1; font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  font-size: 11px; line-height: 1; color: var(--dsw-text-secondary, gray);
+  font-variant-numeric: tabular-nums; white-space: nowrap; cursor: help;
 }
+.dsh-atb-psep { opacity: .5; }
 .dsh-atb-pstats [data-stat="todo"] { color: #3e63dd; }
 .dsh-atb-pstats [data-stat="in_progress"] { color: #d9822b; }
 .dsh-atb-pstats [data-stat="in_review"] { color: #8e4ec6; }

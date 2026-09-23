@@ -136,34 +136,47 @@ function makePanelIcon(controller: BoardController): (props: { size?: number } &
   const title = translate('shared.stats.title', { todo: counts.todo, doing: counts.doing, review: counts.review })
   return React.createElement(
     'span',
-    { className: 'dsh-atb-pglyph', title, ref: glyphRef },
+    { className: 'dsh-atb-pglyph', ref: glyphRef },
+    // Icon + corner badge live in their own positioning layer: the badge
+    // anchors to the ICON, while the stats strip (below, absolute) anchors
+    // to the shell ROW through the stylesheet's :has() rule — the glyph
+    // itself stays static so it never becomes the strip's containing block.
     React.createElement(
-      'svg',
-      {
-        width: size,
-        height: size,
-        viewBox: '0 0 16 16',
-        fill: 'none',
-        stroke: 'currentColor',
-        'stroke-width': 1.3,
-        'stroke-linecap': 'round',
-        'stroke-linejoin': 'round',
-        'aria-hidden': true,
-      },
-      React.createElement('rect', { x: 2, y: 2, width: 12, height: 12, rx: 2 }),
-      React.createElement('path', { d: 'M6 2v12M10 2v12' }),
+      'span',
+      { className: 'dsh-atb-picon' },
+      React.createElement(
+        'svg',
+        {
+          width: size,
+          height: size,
+          viewBox: '0 0 16 16',
+          fill: 'none',
+          stroke: 'currentColor',
+          'stroke-width': 1.3,
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          'aria-hidden': true,
+        },
+        React.createElement('rect', { x: 2, y: 2, width: 12, height: 12, rx: 2 }),
+        React.createElement('path', { d: 'M6 2v12M10 2v12' }),
+      ),
+      !wide && counts.todo > 0
+        ? React.createElement('span', { className: 'dsh-atb-pbadge', title, 'aria-hidden': true }, counts.todo)
+        : null,
     ),
+    // Stats at the ROW's right edge (legacy parity: margin-left:auto in the
+    // injected entry), with the legacy | separators.
     wide && (counts.todo > 0 || counts.doing > 0 || counts.review > 0)
       ? React.createElement(
         'span',
-        { className: 'dsh-atb-pstats', 'aria-hidden': true },
+        { className: 'dsh-atb-pstats', title, 'aria-hidden': true },
         React.createElement('span', { 'data-stat': 'todo' }, counts.todo),
+        React.createElement('span', { className: 'dsh-atb-psep' }, '|'),
         React.createElement('span', { 'data-stat': 'in_progress' }, counts.doing),
+        React.createElement('span', { className: 'dsh-atb-psep' }, '|'),
         React.createElement('span', { 'data-stat': 'in_review' }, counts.review),
       )
-      : counts.todo > 0
-        ? React.createElement('span', { className: 'dsh-atb-pbadge', 'aria-hidden': true }, counts.todo)
-        : null,
+      : null,
   )
   }
 }
