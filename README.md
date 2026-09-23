@@ -43,6 +43,8 @@ DeepSeek Harness 的**任务看板插件**：人建卡、agent 认领执行、�
 | Node.js | ≥ 20 | 仅 GitHub 源安装构建时需要 |
 | git | 可选 | Worktree 隔离需要；缺失时自动降级原目录执行 |
 
+> **双轨挂载（0.8.0）**：dsh ≥ 0.1.7（带官方 slot 系统）时，看板作为**一等侧边栏面板**注册（`sidebar.panellist` + `main`，宿主拥有侧栏行与面板切换，从根本上消除「看板打开后其他面板点不动」这类问题，[#31](https://github.com/cloader/dsh-taskboard/issues/31)）；旧版 shell 自动回落到原有的 DOM 注入方式，行为与 0.7.x 完全一致。两条路径运行时自动互斥选择，无需配置。
+
 ## 安装
 
 ```bash
@@ -235,7 +237,11 @@ node scripts/screenshot.mjs     # 重新生成 img/ 截图（需本机 Edge）
 
 ## 升级日志
 
-### 0.7.6
+### 0.8.0
+
+**新特性：**
+
+- **官方 Slot API 挂载（双轨兼容）**：dsh ≥ 0.1.7 的 slot 系统 shell 上，看板改由官方 `sidebar.panellist` + `main` 注册为一等侧边栏面板——侧栏行、激活态、面板切换全部由宿主拥有，入口旁保留三色实时统计（宽侧栏）/待办角标（折叠轨道）；旧版 shell 自动回落 0.7.x 的 DOM 注入路径，注册失败亦即时降级，两条路径严格互斥。
 
 **修复：**
 

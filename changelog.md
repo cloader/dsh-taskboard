@@ -1,5 +1,21 @@
 # 更新日志 / Changelog
 
+### 0.8.0
+
+**新特性：**
+
+- **官方 Slot API 挂载（双轨兼容）**：dsh ≥ 0.1.7（官方 slot 系统）上，看板通过 `sidebar.panellist` + `main` 注册为一等侧边栏面板：侧栏行与面板切换由宿主拥有，从机制上消除「看板打开后其他侧边栏面板无响应」这类残留问题（[#31](https://github.com/cloader/dsh-taskboard/issues/31) 的根因不再存在于新路径）。入口图标带实时统计：宽侧栏显示待办/进行/待验三色计数，折叠轨道显示待办角标，悬停显示完整分布。
+- 旧版 shell（无 slot 系统）自动回落原 DOM 注入路径，行为与 0.7.x 完全一致；官方注册失败（如 slot 声明缺失、注册抛错）即时降级，两条路径严格互斥、绝不共存。
+- 会话跳转成功后的收起在官方模式下改走 `layout.selectPanel(null)`，由宿主交还主区域。
+
+**English:**
+
+**New features:**
+
+- **Official slot-API mounting (dual-track compatibility)**: on dsh ≥ 0.1.7 (the official slot system), the board registers as a first-class sidebar panel via `sidebar.panellist` + `main`: the shell owns the row, active state, and panel switching, structurally eliminating the panel-switch residue class behind issue [#31](https://github.com/cloader/dsh-taskboard/issues/31). The row icon carries live stats: tri-color counts (todo / in progress / in review) in the wide sidebar, a todo corner badge on the collapsed rail, and the full breakdown on hover.
+- Shells without the slot system fall back to the legacy DOM-injection path unchanged from 0.7.x; a failed official registration (missing slot declarations, throwing register) degrades immediately — the two paths are strictly mutually exclusive and never coexist.
+- The post-session-jump close now routes through `layout.selectPanel(null)` in official mode, letting the host hand the main area back.
+
 ### 0.7.6
 
 **修复：**

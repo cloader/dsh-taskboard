@@ -47,6 +47,31 @@ export const STYLES = `
   .dsh-atb-roll .dsh-atb-rn { transition: none; }
 }
 
+/* 0.8.0: official slot-API panel mode (dsh 0.1.7+). These rules are inert
+ * on the legacy path (nothing carries the classes) and vice versa (the
+ * legacy hide rules key on html[data-dsh-atb-active], which the official
+ * path never sets). */
+/* Main-panel occupant: fills the central column like .dsh-atb-view does. */
+.dsh-atb-panel-root { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+/* Sidebar row glyph (inside the shell-owned panelRow): icon + live counts. */
+.dsh-atb-pglyph { position: relative; display: inline-flex; align-items: center; gap: 5px; }
+.dsh-atb-pstats {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10.5px; line-height: 1; font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.dsh-atb-pstats [data-stat="todo"] { color: #3e63dd; }
+.dsh-atb-pstats [data-stat="in_progress"] { color: #d9822b; }
+.dsh-atb-pstats [data-stat="in_review"] { color: #8e4ec6; }
+/* Collapsed-rail fallback: compact todo-count corner badge on the icon. */
+.dsh-atb-pbadge {
+  position: absolute; top: -5px; right: -8px;
+  min-width: 13px; height: 13px; padding: 0 3px;
+  border-radius: 7px; background: #3e63dd; color: #fff;
+  font-size: 9px; line-height: 13px; text-align: center;
+  font-variant-numeric: tabular-nums; pointer-events: none;
+}
+
 /* 0.4.3: collapsed rail. Collapsing the sidebar narrows it to an icon rail
  * (layout frame carries data-sidebar-collapsed; the sidebar root toggles its
  * CSS-Module *_collapsed class — dual signals, per the 0.4.2 shell doctrine).

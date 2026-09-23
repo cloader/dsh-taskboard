@@ -15,8 +15,7 @@ import { createClient } from './api.ts'
 import { BoardController } from './controller.ts'
 import { disposeI18n, initI18n } from './i18n/runtime.ts'
 import { injectStyles } from './styles.ts'
-import { mountSidebarEntry } from './sidebar-entry.ts'
-import { mountBoard } from './board-mount.tsx'
+import { mountBoardCompat } from './official-panel.tsx'
 import { createSessionJumper, type SessionsServiceFace, type WorkspacesServiceFace } from './session-jump.ts'
 
 /** Client plugin name. */
@@ -270,8 +269,9 @@ export function apply(ctx: ClientContextFace): void {
     controller.start()
     const disposers: Array<() => void> = []
     try {
-      disposers.push(mountSidebarEntry(controller))
-      disposers.push(mountBoard(controller))
+      // 0.8.0: official slot-API panel when the shell supports it (dsh
+      // 0.1.7+), legacy forced-DOM injection otherwise — mutually exclusive.
+      disposers.push(mountBoardCompat(ctx, controller))
     } catch (error) {
       // DOM failures degrade the board, never the GUI.
       console.error('[dsh-taskboard] mount failed:', error)

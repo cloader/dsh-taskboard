@@ -2238,4 +2238,180 @@ describe('client half', () => {
       defaultId: 'standard',
     })
   })
+
+  it('0.8.0 回归：官方 slot 系统可用时走官方面板注册（不注入 DOM、不设 active 属性、注册 id/key 正确）', async () => {
+    localStorage.clear()
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { mountBoardCompat, OFFICIAL_PANEL_ID } = await import('../src/client/official-panel.tsx')
+    const { injectStyles } = await import('../src/client/styles.ts')
+    injectStyles()
+
+    const client = {
+      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [] }),
+      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
+      stream: () => () => {},
+      templates: async () => ({ templates: [] }),
+    }
+    const controller = new BoardController(client as never)
+    controller.start()
+    await new Promise(r => setTimeout(r, 10))
+
+    // Fake official slots service: records registrations, declares the two
+    // slots (spec() non-undefined), mirrors the guardedSlots proxy surface.
+    const registrations: Array<{ slot: string, options: Record<string, unknown> }> = []
+    const injectEffects: Array<() => unknown> = []
+    const slots = {
+      inject: (key: string, callback: () => unknown) => {
+        injectEffects.push(callback)
+        return () => {}
+      },
+      register: (options: Record<string, unknown>) => {
+        registrations.push({ slot: options.name as string, options })
+        return () => {}
+      },
+      spec: (key: string) => (key === 'main' || key === 'sidebar.panellist' ? { kind: 'stub' } : undefined),
+    }
+    const selectPanelCalls: Array<unknown> = []
+    const ctx = {
+      get: (name: string) => name === 'slots' ? slots : name === 'layout' ? { selectPanel: (id: unknown) => { selectPanelCalls.push(id) } } : undefined,
+    }
+
+    const dispose = mountBoardCompat(ctx as never, controller)
+    // The inject() callbacks run synchronously in the real service when the
+    // declaration exists — run them here the same way.
+    for (const run of injectEffects.splice(0)) run()
+
+    // Both official registrations landed with the shared panel id.
+    const main = registrations.find(r => r.slot === 'main')
+    const row = registrations.find(r => r.slot === 'sidebar.panellist')
+    expect(main).toBeDefined()
+    expect(main!.options.key).toBe(OFFICIAL_PANEL_ID)
+    expect(main!.options.key).toBe('dsh-taskboard')
+    expect(row).toBeDefined()
+    expect(row!.options.id).toBe(OFFICIAL_PANEL_ID)
+    expect(typeof row!.options.order).toBe('number')
+    expect(typeof row!.options.label).toBe('function')
+
+    // Official mode injects NO legacy DOM and never sets the hide attribute.
+    expect(document.querySelector('[data-dsh-atb-entry]')).toBeNull()
+    expect(document.querySelector('[data-dsh-atb-view]')).toBeNull()
+    expect(document.documentElement.hasAttribute('data-dsh-atb-active')).toBe(false)
+
+    // Close bridge: closeBoard routes to layout.selectPanel(null) without
+    // setting the legacy hide attribute (the host owns visibility).
+    controller.openBoard()
+    await new Promise(r => setTimeout(r, 10))
+    expect(document.documentElement.hasAttribute('data-dsh-atb-active')).toBe(false)
+    controller.closeBoard()
+    expect(selectPanelCalls).toEqual([null])
+
+    dispose()
+    controller.dispose()
+    localStorage.clear()
+  })
+
+  it('0.8.0 回归：slot 系统缺失时回退 legacy 注入路径', async () => {
+    localStorage.clear()
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { mountBoardCompat } = await import('../src/client/official-panel.tsx')
+    const { BOARD_VIEW_SELECTOR } = await import('../src/client/board-mount.tsx')
+    const { injectStyles } = await import('../src/client/styles.ts')
+    injectStyles()
+
+    const client = {
+      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [] }),
+      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
+      stream: () => () => {},
+      templates: async () => ({ templates: [] }),
+    }
+    const controller = new BoardController(client as never)
+    controller.start()
+    await new Promise(r => setTimeout(r, 10))
+
+    // Legacy shell shape (data-pane columns, no slots service on ctx).
+    const column = document.createElement('div')
+    column.dataset.pane = 'sidebar'
+    const logoRow = document.createElement('div')
+    logoRow.className = 'x_logoRow'
+    const newSession = document.createElement('button')
+    newSession.className = 'x_newSession'
+    logoRow.append(newSession)
+    column.append(logoRow)
+    const conversation = document.createElement('div')
+    conversation.dataset.pane = 'conversation'
+    document.body.append(column, conversation)
+
+    // No 'slots' on ctx at all → immediate legacy mounting.
+    const dispose = mountBoardCompat({} as never, controller)
+    await new Promise(r => setTimeout(r, 20))
+
+    expect(document.querySelector('[data-dsh-atb-entry]')).not.toBeNull()
+    const view = document.querySelector<HTMLElement>(BOARD_VIEW_SELECTOR)
+    expect(view).not.toBeNull()
+    expect(view!.parentElement).toBe(conversation)
+
+    // …and the legacy open path still flips the hide attribute (untouched).
+    controller.openBoard()
+    await new Promise(r => setTimeout(r, 10))
+    expect(document.documentElement.hasAttribute('data-dsh-atb-active')).toBe(true)
+    controller.closeBoard()
+
+    dispose()
+    column.remove()
+    conversation.remove()
+    controller.dispose()
+    localStorage.clear()
+  })
+
+  it('0.8.0 回归：官方注册抛错时降级 legacy（不出现双看板）', async () => {
+    localStorage.clear()
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { mountBoardCompat } = await import('../src/client/official-panel.tsx')
+    const { injectStyles } = await import('../src/client/styles.ts')
+    injectStyles()
+
+    const client = {
+      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [] }),
+      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
+      stream: () => () => {},
+      templates: async () => ({ templates: [] }),
+    }
+    const controller = new BoardController(client as never)
+    controller.start()
+    await new Promise(r => setTimeout(r, 10))
+
+    const column = document.createElement('div')
+    column.dataset.pane = 'sidebar'
+    const logoRow = document.createElement('div')
+    logoRow.className = 'x_logoRow'
+    const newSession = document.createElement('button')
+    newSession.className = 'x_newSession'
+    logoRow.append(newSession)
+    column.append(logoRow)
+    const conversation = document.createElement('div')
+    conversation.dataset.pane = 'conversation'
+    document.body.append(column, conversation)
+
+    // Slots present and declared, but register() throws mid-flight. The
+    // real service runs an inject() callback synchronously when the slot is
+    // already declared — the fake mirrors that.
+    const slots = {
+      inject: (_key: string, callback: () => unknown) => { void callback(); return () => {} },
+      register: () => { throw new Error('boom') },
+      spec: () => ({ kind: 'stub' }),
+    }
+    const dispose = mountBoardCompat({ get: (name: string) => name === 'slots' ? slots : undefined } as never, controller)
+    await new Promise(r => setTimeout(r, 20))
+
+    // Degraded to legacy: the injected entry exists and exactly ONE board
+    // view (the throwing official path cleaned up before falling back).
+    expect(document.querySelector('[data-dsh-atb-entry]')).not.toBeNull()
+    expect(document.querySelectorAll('[data-dsh-atb-view]')).toHaveLength(1)
+
+    dispose()
+    column.remove()
+    conversation.remove()
+    controller.dispose()
+    localStorage.clear()
+  })
 })

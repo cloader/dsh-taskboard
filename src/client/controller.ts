@@ -115,6 +115,8 @@ export class BoardController {
   private state: ControllerState = initialState()
   private readonly subscribers = new Set<() => void>()
   private disposed = false
+  /** External close bridge (official panel mode); undefined in legacy mode. */
+  private closeRequester: (() => void) | undefined
   private disposeStream: (() => void) | undefined
   private refreshInFlight: Promise<void> | undefined
   /** Newest change-frame revision seen on the SSE stream (S16 refresh chase). */
@@ -215,8 +217,27 @@ export class BoardController {
   /** Open the board (sidebar entry). */
   openBoard(): void { this.setState({ boardOpen: true }) }
 
-  /** Close the board. */
-  closeBoard(): void { this.setState({ boardOpen: false }) }
+  /**
+   * Close the board. Official panel mode routes through the installed
+   * close requester (layout.selectPanel(null) — the host owns visibility);
+   * legacy mode flips the local boardOpen state as before.
+   */
+  closeBoard(): void {
+    if (this.closeRequester !== undefined) {
+      this.closeRequester()
+      return
+    }
+    this.setState({ boardOpen: false })
+  }
+
+  /**
+   * Install (or clear) the external close bridge. Set by the official
+   * panel mount; the legacy mount leaves it unset.
+   * @param fn - the close bridge, or undefined to restore legacy behavior.
+   */
+  installCloseRequester(fn: (() => void) | undefined): void {
+    this.closeRequester = fn
+  }
 
   /** Toggle the board. */
   toggleBoard(): void { this.setState({ boardOpen: !this.state.boardOpen }) }
