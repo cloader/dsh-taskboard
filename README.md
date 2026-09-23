@@ -241,6 +241,8 @@ node scripts/screenshot.mjs     # 重新生成 img/ 截图（需本机 Edge）
 
 1. **新版本增强兼容性（[#31](https://github.com/cloader/dsh-taskboard/issues/31)）**：侧边栏的注入在 dsh ≥ v0.1.7 使用官方 API（`sidebar.panellist` + `main` 注册一等侧边栏面板），同时兼容 dsh < v0.1.7 版本使用 DOM 注入。
 
+### 0.7.6
+
 **修复：**
 
 - **定时任务并发排队（[#30](https://github.com/cloader/dsh-taskboard/issues/30)）**：到期任务在并发满载时会持久化进入 FIFO 队列，释放槽位后继续执行，不再因排队超过旧 5 分钟阈值而静默丢失；真正离线错过的周期任务会留下系统评论。
