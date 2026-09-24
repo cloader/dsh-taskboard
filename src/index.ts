@@ -21,7 +21,7 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-agent'
 import { PROTOCOL_SECTION_NAME, PROTOCOL_SECTION_ORDER, TASKBOARD_PROTOCOL } from './host/protocol-text.ts'
 import { ExecutionService, type EventsFace } from './host/execution.ts'
-import { DEFAULT_MAX_CONCURRENT, maxConcurrentOf, scheduleMissedAfterMinutesOf } from './shared/protocol.ts'
+import { dispatchIntervalMsOf, DEFAULT_MAX_CONCURRENT, maxConcurrentOf, queueMaxAgeMinutesOf, scheduleMissedAfterMinutesOf } from './shared/protocol.ts'
 import { scheduledSessionResumer, type ScheduledSessionDeps } from './host/scheduled-session.ts'
 import { createGitFace } from './host/git.ts'
 import { createRepoScanner } from './host/repos.ts'
@@ -78,6 +78,8 @@ export function apply(ctx: Context): void {
   const deploymentMaxConcurrent = Math.max(1, Number.parseInt(process.env.DSH_TASKBOARD_MAX_CONCURRENT ?? '', 10) || DEFAULT_MAX_CONCURRENT)
   const maxConcurrent = () => maxConcurrentOf(store.snapshot().settings, deploymentMaxConcurrent)
   const skipAfterMs = () => scheduleMissedAfterMinutesOf(store.snapshot().settings) * 60_000
+  const queueMaxAgeMs = () => queueMaxAgeMinutesOf(store.snapshot().settings) * 60_000
+  const dispatchIntervalMs = () => dispatchIntervalMsOf(store.snapshot().settings)
 
   // Agent workflow protocol (claim discipline, retry rules, done-gate).
   const disposeSection = ctx.systemPrompt.section({
@@ -253,6 +255,13 @@ export function apply(ctx: Context): void {
         maxConcurrent,
       })
 
+      // Host-side cron scheduler: due scheduled tasks execute even with no
+      // browser open. It starts before the routes so queue clearing never
+      // reports a successful no-op while the scheduler is unavailable.
+      const scheduler = new SchedulerService({ store, execution, now, maxConcurrent, skipAfterMs, queueMaxAgeMs, dispatchIntervalMs })
+      scheduler.start()
+      agentDisposers.push(() => scheduler.dispose())
+
       // /dsh-taskboard routes (the run action reaches the execution service).
       let disposeRoutes: (() => void) | undefined
       agentCtx.inject(['webServer'], (webCtx: Context) => {
@@ -260,6 +269,8 @@ export function apply(ctx: Context): void {
           store,
           workspaces: workspaceFace(wsCtx.workspaceRegistry),
           now,
+          maxConcurrent,
+          clearQueue: () => scheduler.clearQueue(),
           run: (taskId: string, runOptions?: { reuseWorktree?: boolean }) => execution.run(taskId, 'manual', runOptions),
           cancel: (taskId: string) => execution.cancel(taskId),
           modelProviders,
@@ -365,11 +376,6 @@ export function apply(ctx: Context): void {
       // settlement watchers died with that process).
       void execution.reconcile()
 
-      // Host-side cron scheduler: due scheduled tasks execute even with no
-      // browser open. Shares the execution concurrency cap.
-      const scheduler = new SchedulerService({ store, execution, now, maxConcurrent, skipAfterMs })
-      scheduler.start()
-      agentDisposers.push(() => scheduler.dispose())
       // Detach the settlement listener with the plugin — a hot reload must
       // not leave stale services reacting to turn/end errors (review P1).
       agentDisposers.push(() => execution.dispose())

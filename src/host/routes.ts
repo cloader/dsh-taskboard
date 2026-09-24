@@ -79,6 +79,10 @@ export interface TaskboardRoutesOptions {
   store: TaskStore
   workspaces: RoutesWorkspaceFace
   now: () => number
+  /** Current scheduler concurrency limit, for queue observability only. */
+  maxConcurrent?: () => number
+  /** Drop every durable queue entry (board queue panel); absent → 501. */
+  clearQueue?: () => Promise<number>
   /** Manual-run hook (the execution service); absent → 501. Options carry `reuseWorktree` (续跑). */
   run?: (taskId: string, options?: { reuseWorktree?: boolean }) => Promise<{ ok: true; executionId: string; sessionId: string } | { ok: false; error: string }>
   /** Cancel hook (the execution service); absent → 501. */
@@ -272,6 +276,26 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
   const subscribers = new Set<ServerResponse>()
   let heartbeat: NodeJS.Timeout | undefined
 
+  const queueSummary = (ledger: TaskLedger) => {
+    let depth = 0
+    let dispatching = 0
+    let oldestQueuedAt: number | undefined
+    for (const task of ledger.tasks) {
+      if (task.execution.queuedRunAt !== undefined) {
+        depth += 1
+        if (task.execution.queuedAt !== undefined && (oldestQueuedAt === undefined || task.execution.queuedAt < oldestQueuedAt)) oldestQueuedAt = task.execution.queuedAt
+      }
+      if (task.execution.dispatchingRunAt !== undefined) dispatching += 1
+    }
+    const now = options.now()
+    return {
+      depth,
+      dispatching,
+      ...(oldestQueuedAt === undefined ? {} : { oldestQueuedAt, oldestWaitMinutes: Math.max(0, Math.floor((now - oldestQueuedAt) / 60_000)) }),
+      maxConcurrent: options.maxConcurrent?.() ?? 0,
+    }
+  }
+
   /** R4③: a cleanup/purge target must resolve INSIDE <ws>/.dsh-worktrees — string joining alone is never trusted with an rm. */
   const insideWorktreeScope = (wsPath: string, target: string): boolean => {
     const scope = resolve(wsPath, WORKTREE_DIR)
@@ -421,7 +445,8 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
         }
         if (pathname === `${ROUTE_PREFIX}/state`) {
           await store.load()
-          json(res, { ok: true, value: { ...store.snapshot(), capabilities: { archiveSessions: typeof workspaces.archiveSession === 'function' } } })
+          const ledger = store.snapshot()
+          json(res, { ok: true, value: { ...ledger, capabilities: { archiveSessions: typeof workspaces.archiveSession === 'function' }, queue: queueSummary(ledger) } })
           return
         }
         if (pathname === `${ROUTE_PREFIX}/workspaces`) {
@@ -435,6 +460,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
         }
         if (pathname === `${ROUTE_PREFIX}/diagnostics`) {
           const ledger = store.snapshot()
+          const queue = queueSummary(ledger)
           let staleRunning = 0
           for (const t of ledger.tasks) {
             for (const e of t.executions) if (e.outcome === 'running') staleRunning += 1
@@ -445,6 +471,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
               revision: ledger.revision,
               tasks: ledger.tasks.length,
               staleRunning,
+              queue,
               orphanWorktrees: await listOrphanWorktrees(),
               gitIgnoreSuggestions: await listGitignoreSuggestions(),
             },
@@ -1129,6 +1156,23 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
           }
           const f = fail('not_found', `unknown action ${action}`)
           json(res, f.res, f.status)
+        } catch (error) {
+          const f = toFail(error)
+          json(res, f.res, f.status)
+        }
+        return
+      }
+
+      // ----------------------------------- POST /queue/clear (board queue panel)
+      if (pathname === `${ROUTE_PREFIX}/queue/clear`) {
+        if (options.clearQueue === undefined) {
+          const f = fail('invalid_input', 'scheduler queue clear unavailable')
+          json(res, f.res, 501)
+          return
+        }
+        try {
+          const cleared = await options.clearQueue()
+          json(res, { ok: true, value: { cleared } })
         } catch (error) {
           const f = toFail(error)
           json(res, f.res, f.status)

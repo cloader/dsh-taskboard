@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from 'react'
 import type { BoardController } from '../controller.ts'
-import { DEFAULT_ISOLATION, DEFAULT_MAX_CONCURRENT, DEFAULT_SCHEDULE_MISSED_AFTER_MINUTES, defaultPermissionOf, defaultSyncExternalSessionsOf, maxConcurrentOf, scheduleMissedAfterMinutesOf, type IsolationMode, type PermissionMode } from '../../shared/protocol.ts'
+import { DEFAULT_DISPATCH_INTERVAL_MS, DEFAULT_ISOLATION, DEFAULT_MAX_CONCURRENT, DEFAULT_QUEUE_MAX_AGE_MINUTES, DEFAULT_SCHEDULE_MISSED_AFTER_MINUTES, defaultPermissionOf, defaultSyncExternalSessionsOf, dispatchIntervalMsOf, maxConcurrentOf, queueMaxAgeMinutesOf, scheduleMissedAfterMinutesOf, type IsolationMode, type PermissionMode } from '../../shared/protocol.ts'
 import { useT, type Translate } from '../i18n/runtime.ts'
 
 /** The isolation options with one-line hints (mirrors the task form; translated per render). */
@@ -30,20 +30,29 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
   const currentPerm = defaultPermissionOf(state.ledger.settings)
   const currentMaxConcurrent = maxConcurrentOf(state.ledger.settings)
   const currentMissedAfterMinutes = scheduleMissedAfterMinutesOf(state.ledger.settings)
+  const currentQueueMaxAgeMinutes = queueMaxAgeMinutesOf(state.ledger.settings)
+  const currentDispatchIntervalMs = dispatchIntervalMsOf(state.ledger.settings)
   const [draftIso, setDraftIso] = useState<IsolationMode>(currentIso)
   const [draftSync, setDraftSync] = useState<boolean>(currentSync)
   const [draftPerm, setDraftPerm] = useState<PermissionMode>(currentPerm)
   const [draftMaxConcurrent, setDraftMaxConcurrent] = useState(String(currentMaxConcurrent))
   const [draftMissedAfterMinutes, setDraftMissedAfterMinutes] = useState(String(currentMissedAfterMinutes))
+  const [draftQueueMaxAgeMinutes, setDraftQueueMaxAgeMinutes] = useState(String(currentQueueMaxAgeMinutes))
+  const [draftDispatchIntervalMs, setDraftDispatchIntervalMs] = useState(String(currentDispatchIntervalMs))
   const [storagePath, setStoragePath] = useState(state.storage?.currentDirectory ?? '')
   const [storageTouched, setStorageTouched] = useState(false)
   const [storageBusy, setStorageBusy] = useState(false)
   const maxConcurrent = Number(draftMaxConcurrent)
   const missedAfterMinutes = Number(draftMissedAfterMinutes)
+  const queueMaxAgeMinutes = Number(draftQueueMaxAgeMinutes)
+  const dispatchIntervalMs = Number(draftDispatchIntervalMs)
   const scheduleValid = Number.isSafeInteger(maxConcurrent) && maxConcurrent >= 1 && maxConcurrent <= 100
     && Number.isSafeInteger(missedAfterMinutes) && missedAfterMinutes >= 1 && missedAfterMinutes <= 1440
+    && Number.isSafeInteger(queueMaxAgeMinutes) && queueMaxAgeMinutes >= 0 && queueMaxAgeMinutes <= 10080
+    && Number.isSafeInteger(dispatchIntervalMs) && dispatchIntervalMs >= 0 && dispatchIntervalMs <= 60000
   const dirty = draftIso !== currentIso || draftSync !== currentSync || draftPerm !== currentPerm
     || draftMaxConcurrent !== String(currentMaxConcurrent) || draftMissedAfterMinutes !== String(currentMissedAfterMinutes)
+    || draftQueueMaxAgeMinutes !== String(currentQueueMaxAgeMinutes) || draftDispatchIntervalMs !== String(currentDispatchIntervalMs)
   const effectiveStoragePath = storagePath.trim().length === 0 ? state.storage?.defaultDirectory ?? '' : storagePath.trim()
   const storageDirty = state.storage !== undefined && effectiveStoragePath !== state.storage.currentDirectory
 
@@ -58,6 +67,8 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
       defaultPermission: draftPerm,
       maxConcurrent,
       scheduleMissedAfterMinutes: missedAfterMinutes,
+      queueMaxAgeMinutes,
+      dispatchIntervalMs,
     }).then(ok => {
       if (ok) controller.closeSettings()
     })
@@ -176,6 +187,14 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
               <label>
                 <span>{t('set.schedule.missedAfter')}</span>
                 <input className="dsh-atb-input" type="number" min="1" max="1440" step="1" value={draftMissedAfterMinutes} onChange={e => setDraftMissedAfterMinutes(e.target.value)} />
+              </label>
+              <label>
+                <span>{t('set.schedule.queueMaxAge')}</span>
+                <input className="dsh-atb-input" type="number" min="0" max="10080" step="1" value={draftQueueMaxAgeMinutes} onChange={e => setDraftQueueMaxAgeMinutes(e.target.value)} />
+              </label>
+              <label>
+                <span>{t('set.schedule.dispatchInterval')}</span>
+                <input className="dsh-atb-input" type="number" min="0" max="60000" step="1" value={draftDispatchIntervalMs} onChange={e => setDraftDispatchIntervalMs(e.target.value)} />
               </label>
             </div>
             {!scheduleValid && <span className="dsh-atb-storage-error">{t('set.schedule.invalid')}</span>}

@@ -8,7 +8,7 @@ import type { SessionArchiveResult } from '../shared/api.ts'
  *
  * @module dsh-taskboard/client/controller
  */
-import type { AttachmentUpload, ChangeEvent, DiagnosticsResponse, DiffResponse, ImportCommitResponse, ImportPreviewResponse, MergeRepoResult, PromptCompletionsResponse, StorageStatus, TaskTemplate, TaskTemplateSpec, UpdateTaskBody, WorkspaceView } from '../shared/api.ts'
+import type { AttachmentUpload, ChangeEvent, DiagnosticsResponse, QueueClearResponse, QueueSummary, DiffResponse, ImportCommitResponse, ImportPreviewResponse, MergeRepoResult, PromptCompletionsResponse, StorageStatus, TaskTemplate, TaskTemplateSpec, UpdateTaskBody, WorkspaceView } from '../shared/api.ts'
 import type { ChecklistItem, TaskLedger, TaskRecord, Urgency } from '../shared/protocol.ts'
 import { emptyLedger } from '../shared/protocol.ts'
 import type { TaskboardClient } from './api.ts'
@@ -70,6 +70,10 @@ export interface ControllerState {
   diagOpen: boolean
   /** Last fetched diagnostics payload (⚙ panel). */
   diagnostics?: DiagnosticsResponse
+  /** Execution-queue popup (in-progress column chip) visible. */
+  queueOpen: boolean
+  /** Latest queue summary (refreshed on every state fetch). */
+  queue?: QueueSummary
   /** Task templates (0.4.0), lazy-loaded when the new-task menu opens. */
   templates: TaskTemplate[]
   /** Template manager modal visible. */
@@ -101,6 +105,7 @@ function initialState(): ControllerState {
     composerOpen: false,
     secondaryOpen: false,
     diagOpen: false,
+    queueOpen: false,
     templates: [],
     tplManagerOpen: false,
     importOpen: false,
@@ -194,7 +199,7 @@ export class BoardController {
           if (this.state.selectedId !== undefined) {
             selected = ledger.tasks.find(t => t.id === this.state.selectedId)
           }
-          this.setState({ archiveSessionsSupported: ledger.capabilities?.archiveSessions === true, ledger, workspaces, error: undefined, selectedId: selected === undefined ? undefined : this.state.selectedId })
+          this.setState({ archiveSessionsSupported: ledger.capabilities?.archiveSessions === true, ledger, workspaces, queue: ledger.queue, error: undefined, selectedId: selected === undefined ? undefined : this.state.selectedId })
           if (this.seenRevision === undefined || ledger.revision >= this.seenRevision) break
         }
       } catch (error) {
@@ -620,6 +625,30 @@ export class BoardController {
 
   /** Close the ⚙ diagnostics panel. */
   closeDiagnostics(): void { this.setState({ diagOpen: false }) }
+
+  /** Open the execution-queue popup (in-progress column chip). */
+  openQueuePanel(): void {
+    this.setState({ queueOpen: true })
+    void this.refresh()
+  }
+
+  /** Close the execution-queue popup. */
+  closeQueuePanel(): void { this.setState({ queueOpen: false }) }
+
+  /**
+   * Drop every durable queue entry (board queue panel, double-confirm gated).
+   * @returns the clear result, or undefined on failure.
+   */
+  async clearQueue(): Promise<QueueClearResponse | undefined> {
+    try {
+      const value = await this.client.clearQueue()
+      await this.refresh()
+      return value
+    } catch (error) {
+      this.setState({ error: error instanceof Error ? error.message : String(error) })
+      return undefined
+    }
+  }
 
   /** Open the board-settings modal (0.5.0). */
   openSettings(): void {

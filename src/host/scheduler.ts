@@ -22,6 +22,10 @@ export interface SchedulerDeps {
   maxConcurrent?: number | (() => number)
   /** Offline missed-window threshold in milliseconds. Queued work never uses it. */
   skipAfterMs?: number | (() => number)
+  /** Optional shelf life for a durable queue entry in milliseconds; zero keeps it indefinitely. */
+  queueMaxAgeMs?: number | (() => number)
+  /** Minimum time between scheduler-created sessions; zero preserves legacy burst dispatch. */
+  dispatchIntervalMs?: number | (() => number)
   /** Timer face (injectable for tests). The timeout pair is optional so
    *  older injections keep working; gaps fall back to the globals. */
   timers?: {
@@ -50,6 +54,12 @@ export class SchedulerService {
   private timers: Required<SchedulerTimers> = DEFAULT_TIMERS
   /** Reservations actively being handed to this scheduler instance's gate. */
   private readonly dispatching = new Set<string>()
+  /** The one active pass: interval and catchup must never dispatch in parallel. */
+  private ticking: Promise<void> | undefined
+  /** Earliest time a new scheduled session may be opened. */
+  private nextDispatchAt = 0
+  private disposed = false
+  private dispatchWait: { handle: unknown; resolve: () => void } | undefined
 
   /** @param deps - store + execution + clock. */
   constructor(private readonly deps: SchedulerDeps) {}
@@ -62,8 +72,17 @@ export class SchedulerService {
     return typeof this.deps.skipAfterMs === 'function' ? this.deps.skipAfterMs() : this.deps.skipAfterMs ?? 5 * 60_000
   }
 
+  private queueMaxAgeMs(): number {
+    return typeof this.deps.queueMaxAgeMs === 'function' ? this.deps.queueMaxAgeMs() : this.deps.queueMaxAgeMs ?? 0
+  }
+
+  private dispatchIntervalMs(): number {
+    return typeof this.deps.dispatchIntervalMs === 'function' ? this.deps.dispatchIntervalMs() : this.deps.dispatchIntervalMs ?? 0
+  }
+
   /** Start ticking. */
   start(): void {
+    this.disposed = false
     // Fill optional timer slots from the globals so a legacy injection that
     // only carries the interval pair still works end to end.
     this.timers = this.deps.timers === undefined ? DEFAULT_TIMERS : { ...DEFAULT_TIMERS, ...this.deps.timers }
@@ -81,6 +100,12 @@ export class SchedulerService {
 
   /** Stop ticking. */
   dispose(): void {
+    this.disposed = true
+    if (this.dispatchWait !== undefined) {
+      this.timers.clearTimeout(this.dispatchWait.handle)
+      this.dispatchWait.resolve()
+      this.dispatchWait = undefined
+    }
     if (this.catchup !== undefined) {
       this.timers.clearTimeout(this.catchup)
       this.catchup = undefined
@@ -92,6 +117,16 @@ export class SchedulerService {
 
   /** One scheduler pass (exported for tests). */
   async tick(): Promise<void> {
+    if (this.ticking !== undefined) return this.ticking
+    let pass: Promise<void>
+    pass = this.tickOnce().finally(() => {
+      if (this.ticking === pass) this.ticking = undefined
+    })
+    this.ticking = pass
+    return pass
+  }
+
+  private async tickOnce(): Promise<void> {
     // Load once before reading: snapshot() does not trigger a load, and the
     // scheduler may be the first consumer after a host restart (otherwise it
     // would tick over an empty ledger until something else loads it).
@@ -144,9 +179,21 @@ export class SchedulerService {
       .sort((a, b) => (a.execution.queuedRunAt! - b.execution.queuedRunAt!)
         || ((a.execution.queuedAt ?? 0) - (b.execution.queuedAt ?? 0)) || a.id.localeCompare(b.id))
     for (const task of queued) {
-      if (this.deps.execution.inFlight() >= this.maxConcurrent()) break
       const queuedWindow = task.execution.queuedRunAt!
+      if (this.isExpired(task.execution.queuedAt, now)) {
+        await this.expireQueued(task.id, queuedWindow)
+        continue
+      }
+      if (this.deps.execution.inFlight() >= this.maxConcurrent()) break
+      await this.waitForDispatchSlot()
+      if (this.disposed || this.deps.execution.inFlight() >= this.maxConcurrent()) break
+      // Time may have advanced while waiting for a rate slot.
+      if (this.isExpired(task.execution.queuedAt, this.deps.now())) {
+        await this.expireQueued(task.id, queuedWindow)
+        continue
+      }
       if (!await this.reserveDispatch(task.id, queuedWindow)) continue
+      this.nextDispatchAt = this.deps.now() + this.dispatchIntervalMs()
       const key = `${task.id}:${queuedWindow}`
       this.dispatching.add(key)
       try {
@@ -168,6 +215,24 @@ export class SchedulerService {
         this.dispatching.delete(key)
       }
     }
+  }
+
+  private isExpired(queuedAt: number | undefined, now: number): boolean {
+    const maxAge = this.queueMaxAgeMs()
+    return maxAge > 0 && queuedAt !== undefined && now - queuedAt >= maxAge
+  }
+
+  /** Yield until the scheduler-wide dispatch rate gate opens; never block Node's event loop. */
+  private async waitForDispatchSlot(): Promise<void> {
+    const wait = this.nextDispatchAt - this.deps.now()
+    if (wait <= 0 || this.disposed) return
+    await new Promise<void>(resolve => {
+      const handle = this.timers.setTimeout(() => {
+        if (this.dispatchWait?.handle === handle) this.dispatchWait = undefined
+        resolve()
+      }, wait)
+      this.dispatchWait = { handle, resolve }
+    })
   }
 
   /** Queue one periodic window and advance its next cron time atomically. */
@@ -198,6 +263,55 @@ export class SchedulerService {
       task.execution.queuedAt = now
       return [task]
     })
+  }
+
+  /** Consume a durable queue entry without creating an execution: either an
+   *  overdue shelf-life drop or a manual queue clear from the board. */
+  private async expireQueued(taskId: string, queuedWindow: number, reason: 'expired' | 'cleared' = 'expired'): Promise<void> {
+    const now = this.deps.now()
+    await this.deps.store.mutate('task-updated', ledger => {
+      const task = ledger.tasks.find(t => t.id === taskId)
+      if (task === undefined || task.execution.queuedRunAt !== queuedWindow) return undefined
+      if (reason !== 'cleared' && !this.isExpired(task.execution.queuedAt, now)) return undefined
+      delete task.execution.queuedRunAt
+      delete task.execution.queuedAt
+      task.comments.push({
+        id: newCommentId(),
+        body: normalizeBody(reason === 'cleared'
+          ? '[系统] 已被手动清出执行队列，本次不再补跑；可手动执行或修改定时。'
+          : '[系统] 排队中的定时执行已超过保留时长，本次不再补跑；可手动执行或修改定时。'),
+        systemKey: reason === 'cleared' ? 'sys.queueCleared' : 'sys.queuedExpired',
+        version: 1,
+        createdAt: now,
+      })
+      return [task]
+    })
+  }
+
+  /** Drop every currently queued entry in one durable mutation; dispatching work is untouched. */
+  async clearQueue(): Promise<number> {
+    await this.deps.store.load()
+    let cleared = 0
+    const now = this.deps.now()
+    await this.deps.store.mutate('task-updated', ledger => {
+      const changed = []
+      for (const task of ledger.tasks) {
+        if (task.execution.queuedRunAt === undefined) continue
+        delete task.execution.queuedRunAt
+        delete task.execution.queuedAt
+        task.comments.push({
+          id: newCommentId(),
+          body: normalizeBody('[系统] 已被手动清出执行队列，本次不再补跑；可手动执行或修改定时。'),
+          systemKey: 'sys.queueCleared',
+          version: 1,
+          createdAt: now,
+        })
+        changed.push(task)
+        cleared += 1
+      }
+      return changed.length === 0 ? undefined : changed
+    })
+    return cleared
   }
 
   /** Finalize a queue entry when a lightweight execution adapter accepted it. */

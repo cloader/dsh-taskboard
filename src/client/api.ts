@@ -12,6 +12,7 @@ import type {
   CreateTaskBody,
   DeleteTaskBody,
   DiagnosticsResponse,
+  QueueClearResponse,
   DiffResponse,
   ImportCommitResponse,
   ImportPreviewResponse,
@@ -99,6 +100,8 @@ export interface TaskboardClient {
   worktreeRemove(id: string, body: WorktreeRemoveBody): Promise<{ removed: true; branchDeleted: boolean; branchError?: string }>
   /** Health diagnostics (⚙ panel). */
   diagnostics(): Promise<DiagnosticsResponse>
+  /** Drop every durable queue entry (board queue panel). */
+  clearQueue(): Promise<QueueClearResponse>
   /** Clean up one orphan worktree directory (task no longer in the ledger). */
   worktreeCleanup(workspaceId: string, taskId: string): Promise<{ cleaned: true; path: string }>
   /** Diff view: one execution's commit or changed path (read-only, capped). */
@@ -149,6 +152,7 @@ export function createClient(): TaskboardClient {
     mergeBranch: id => post(`/dsh-taskboard/tasks/${encodeURIComponent(id)}/merge`, {}),
     worktreeRemove: (id, body) => post(`/dsh-taskboard/tasks/${encodeURIComponent(id)}/worktree-remove`, body),
     diagnostics: () => get<DiagnosticsResponse>('/dsh-taskboard/diagnostics'),
+    clearQueue: () => post<QueueClearResponse>('/dsh-taskboard/queue/clear', {}),
     worktreeCleanup: (workspaceId, taskId) => post('/dsh-taskboard/worktree-cleanup', { workspaceId, taskId }),
     diff: (taskId, query) => {
       const params = new URLSearchParams({ execution: query.execution })

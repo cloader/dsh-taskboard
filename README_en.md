@@ -235,6 +235,11 @@ node scripts/screenshot.mjs     # regenerate img/ screenshots (needs local Edge)
 
 ## Changelog
 
+### 0.8.1
+
+- **Scheduled-queue safeguards and observability ([#32](https://github.com/cloader/dsh-taskboard/issues/32))**: the board shows queue depth, oldest wait, and the concurrency cap, and can double-confirm clearing entries that have not yet been dispatched. Optional queue shelf life and scheduled-session start spacing preserve the former replay behavior by default; a single-flight scheduler tick and dispatch gate prevent overlapping ticks from releasing the queue in parallel.
+- **No enforced client-size budget**: removes the DSH STORE size budget and its dedicated test. Client minification remains an ordinary build optimization.
+
 ### 0.7.6
 
 **Fixes:**

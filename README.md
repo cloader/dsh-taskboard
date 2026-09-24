@@ -237,6 +237,11 @@ node scripts/screenshot.mjs     # 重新生成 img/ 截图（需本机 Edge）
 
 ## 升级日志
 
+### 0.8.1
+
+- **定时队列止损与可观测性（[#32](https://github.com/cloader/dsh-taskboard/issues/32)）**：看板展示队列深度、最久等待和并发上限，可二次确认清空尚未派发的队列项；新增可选队列保质期和定时会话启动间隔，默认值保持既有补跑行为。调度器以单飞与派发闸门避免重叠 tick 并行放行队列。
+- **不再强制客户端体积预算**：移除 DSH STORE 的大小预算及专用测试；客户端压缩继续作为普通构建优化。
+
 ### 0.8.0
 
 1. **新版本增强兼容性（[#31](https://github.com/cloader/dsh-taskboard/issues/31)）**：侧边栏的注入在 dsh ≥ v0.1.7 使用官方 API（`sidebar.panellist` + `main` 注册一等侧边栏面板），同时兼容 dsh < v0.1.7 版本使用 DOM 注入。

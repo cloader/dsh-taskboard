@@ -581,6 +581,8 @@ describe('client half', () => {
       defaultPermission: 'workspace-write',
       maxConcurrent: 3,
       scheduleMissedAfterMinutes: 5,
+      queueMaxAgeMinutes: 0,
+      dispatchIntervalMs: 0,
     }])
 
     const storageInput = host.querySelector<HTMLInputElement>('.dsh-atb-storage-path')!

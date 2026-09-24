@@ -33,6 +33,8 @@ let store: InstanceType<typeof TaskStore>
 /** The live template store behind the forwarding face; swapped in beforeEach. */
 let templates: InstanceType<typeof TemplateStore>
 let cancelCalls: string[]
+/** Mutable queue-clear hook target (tests reassign the behavior). */
+let clearQueueImpl: () => Promise<number> = async () => 0
 let runCalls: Array<{ id: string; runOptions?: { reuseWorktree?: boolean } }>
 let dir: string
 /** Per-test store file counter (unique names keep a fresh store from ever
@@ -189,6 +191,7 @@ beforeAll(async () => {
     now: () => 5_000,
     run: async (id, runOptions) => { runCalls.push({ id, runOptions }); return { ok: true, executionId: 'e-x', sessionId: 's-x' } },
     cancel: async id => { cancelCalls.push(id); return { ok: true, executionId: 'e-x' } },
+    clearQueue: () => clearQueueImpl(),
     modelProviders: () => ['prov-a'],
     git: gitFace,
     scanner: scannerFace,
@@ -293,6 +296,7 @@ describe('taskboard routes', () => {
     const body = await res.json()
     expect(body.ok).toBe(true)
     expect(body.value.tasks).toEqual([])
+    expect(body.value.queue).toEqual({ depth: 0, dispatching: 0, maxConcurrent: 0 })
   })
 
   it('lists workspaces for the picker (with git availability)', async () => {
@@ -833,6 +837,20 @@ describe('taskboard routes', () => {
       gitBehavior.removeError = undefined
     }
   })
+
+  it('POST /queue/clear: reports the cleared count; hook errors surface as structured failures', async () => {
+    clearQueueImpl = async () => 3
+    const ok = await post('/dsh-taskboard/queue/clear', {})
+    expect(ok.status).toBe(200)
+    expect(ok.json).toEqual({ ok: true, value: { cleared: 3 } })
+
+    clearQueueImpl = async () => { throw new Error('Error: not_found: no scheduler') }
+    const bad = await post('/dsh-taskboard/queue/clear', {})
+    expect(bad.status).toBe(404)
+    expect(bad.json.ok).toBe(false)
+    clearQueueImpl = async () => 0
+  })
+
 
   it('run action passes reuse through to the execution service (续跑)', async () => {
     const created = await post('/dsh-taskboard/tasks', { title: 'Reuse me', workspaceId: 'ws-a', urgency: 'normal' })

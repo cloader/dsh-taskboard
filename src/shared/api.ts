@@ -38,7 +38,18 @@ export type ApiResult<T> = ApiOk<T> | ApiFail
 // ---------------------------------------------------------------------------
 
 /** Full-state response (the reconnect baseline after an SSE gap). */
-export type StateResponse = TaskLedger & { capabilities?: { archiveSessions: boolean } }
+export type QueueSummary = {
+  depth: number
+  dispatching: number
+  oldestQueuedAt?: number
+  oldestWaitMinutes?: number
+  maxConcurrent: number
+}
+
+export type StateResponse = TaskLedger & { capabilities?: { archiveSessions: boolean }; queue?: QueueSummary }
+
+/** Result of dropping every durable queue entry (board queue panel). */
+export type QueueClearResponse = { cleared: number }
 
 /**
  * Workspace listing for the UI pickers. `repoCount` (0.6.3): how many repos a
@@ -158,6 +169,7 @@ export type DiagnosticsResponse = {
   tasks: number
   /** Executions currently marked `running`. */
   staleRunning: number
+  queue: QueueSummary
   /** Worktree directories whose task no longer exists in the ledger. */
   orphanWorktrees: OrphanWorktree[]
   /** Git workspaces whose .gitignore does not ignore the worktree dir. */
@@ -225,6 +237,10 @@ export type UpdateSettingsBody = {
   maxConcurrent?: number
   /** Offline missed-window threshold in whole minutes (1–1440). */
   scheduleMissedAfterMinutes?: number
+  /** Drop queued work after this many minutes; 0 retains it indefinitely. */
+  queueMaxAgeMinutes?: number
+  /** Minimum milliseconds between scheduled session starts; 0 preserves burst dispatch. */
+  dispatchIntervalMs?: number
 }
 
 /** Prompt completion item for skills and slash commands (0.5.5). */

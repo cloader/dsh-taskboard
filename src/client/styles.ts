@@ -19,25 +19,20 @@ export const STYLES = `
 .dsh-atb-entry:hover { background: var(--dsw-hover, rgba(128,128,128,.12)); color: var(--dsw-text-primary, inherit); }
 .dsh-atb-entry[data-active="true"] { background: var(--dsw-active, rgba(128,128,128,.18)); color: var(--dsw-text-primary, inherit); font-weight: 500; }
 .dsh-atb-entry svg { flex: none; }
-/* Status strip on the entry row's right: todo|in_progress|in_review counts. */
 .dsh-atb-entry-stats {
   margin-left: auto; display: inline-flex; align-items: center; gap: 3px;
   font-size: 11px; line-height: 1; color: var(--dsw-text-secondary, gray);
   font-variant-numeric: tabular-nums; white-space: nowrap; cursor: help;
 }
 .dsh-atb-entry-sep { opacity: .5; }
-/* Each rolling count wears its status color (todo blue | in_progress orange |
-   in_review purple); the separators stay in the strip's neutral gray. */
 .dsh-atb-roll[data-stat="todo"] { color: #3e63dd; }
 .dsh-atb-roll[data-stat="in_progress"] { color: #d9822b; }
 .dsh-atb-roll[data-stat="in_review"] { color: #8e4ec6; }
-/* One rolling number: fixed one-line window, overflow hidden. */
 .dsh-atb-roll {
   position: relative; display: inline-block; overflow: hidden;
   height: 12px; min-width: 1ch; text-align: center; vertical-align: middle;
 }
 .dsh-atb-rn { display: block; height: 12px; line-height: 12px; text-align: center; }
-/* The incoming value sits just outside the window (below for up-scroll). */
 .dsh-atb-rn-next { position: absolute; left: 0; right: 0; top: 100%; }
 .dsh-atb-roll[data-dir="down"] .dsh-atb-rn-next { top: auto; bottom: 100%; }
 .dsh-atb-roll .dsh-atb-rn { transition: transform .3s cubic-bezier(.25, .1, .25, 1); }
@@ -47,19 +42,9 @@ export const STYLES = `
   .dsh-atb-roll .dsh-atb-rn { transition: none; }
 }
 
-/* 0.8.0: official slot-API panel mode (dsh 0.1.7+). These rules are inert
- * on the legacy path (nothing carries the classes) and vice versa (the
- * legacy hide rules key on html[data-dsh-atb-active], which the official
- * path never sets). */
-/* Main-panel occupant: fills the central column like .dsh-atb-view does. */
 .dsh-atb-panel-root { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-/* Sidebar row glyph (inside the shell-owned panelRow): static flex layer —
- * the icon wrapper carries the badge; the strip anchors to the row. */
 .dsh-atb-pglyph { display: inline-flex; align-items: center; }
 .dsh-atb-picon { position: relative; display: inline-flex; }
-/* Legacy parity: the stats strip sat at the entry row's right edge
- * (margin-left:auto) with | separators. The shell's row button becomes the
- * positioning context via :has(); the strip pins to its right edge. */
 button[class*="panelRow"]:has(.dsh-atb-pglyph) { position: relative; }
 .dsh-atb-pstats {
   position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
@@ -71,7 +56,6 @@ button[class*="panelRow"]:has(.dsh-atb-pglyph) { position: relative; }
 .dsh-atb-pstats [data-stat="todo"] { color: #3e63dd; }
 .dsh-atb-pstats [data-stat="in_progress"] { color: #d9822b; }
 .dsh-atb-pstats [data-stat="in_review"] { color: #8e4ec6; }
-/* Collapsed-rail fallback: compact todo-count corner badge on the icon. */
 .dsh-atb-pbadge {
   position: absolute; top: -5px; right: -8px;
   min-width: 13px; height: 13px; padding: 0 3px;
@@ -80,11 +64,6 @@ button[class*="panelRow"]:has(.dsh-atb-pglyph) { position: relative; }
   font-variant-numeric: tabular-nums; pointer-events: none;
 }
 
-/* 0.4.3: collapsed rail. Collapsing the sidebar narrows it to an icon rail
- * (layout frame carries data-sidebar-collapsed; the sidebar root toggles its
- * CSS-Module *_collapsed class — dual signals, per the 0.4.2 shell doctrine).
- * The entry then mirrors the native rail geometry (36×36 icon button, no
- * label/stats) — matches .hHd-Xa_collapsed .hHd-Xa_newSession. */
 [data-sidebar-collapsed] [data-dsh-atb-entry],
 [class*="_collapsed"] [data-dsh-atb-entry] {
   width: 36px; height: 36px; min-width: 36px;
@@ -95,16 +74,12 @@ button[class*="panelRow"]:has(.dsh-atb-pglyph) { position: relative; }
 [data-sidebar-collapsed] [data-dsh-atb-entry] .dsh-atb-entry-stats,
 [class*="_collapsed"] [data-dsh-atb-entry] .dsh-atb-entry-label,
 [class*="_collapsed"] [data-dsh-atb-entry] .dsh-atb-entry-stats { display: none; }
-/* Native rail icons render ~16-20px; scale ours up from 14px to read at parity. */
 [data-sidebar-collapsed] [data-dsh-atb-entry] svg,
 [class*="_collapsed"] [data-dsh-atb-entry] svg { width: 16px; height: 16px; }
 
 .dsh-atb-search { width: 130px; }
 .dsh-atb-badge[data-kind="stale"] { background: rgba(217,130,43,.15); color: #d9822b; }
 
-/* Triple-generation column matching — dev shell's data-pane pane, the
- * official layout shell's CSS-Module hashed centerCol (0.4.2), or DSH
- * Desktop's non-compat extended frame surface (0.5.2, see board-mount.tsx). */
 html[data-dsh-atb-active] [data-pane="conversation"] > *:not([data-dsh-atb-view]),
 html[data-dsh-atb-active] [class*="centerCol"] > *:not([data-dsh-atb-view]),
 html[data-dsh-atb-active] .dshDesktopConversationSurface > *:not([data-dsh-atb-view]) { display: none !important; }
@@ -112,23 +87,10 @@ html[data-dsh-atb-active] .dshDesktopConversationSurface > *:not([data-dsh-atb-v
 html[data-dsh-atb-active] .dsh-atb-view { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 
 .dsh-atb-board { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 12px 16px; gap: 10px; box-sizing: border-box; }
-/* #20: native Windows caption controls overlay older Desktop content. Reserve
- * their vertical band, including wrapped toolbar rows. New Desktop layouts
- * already start below it: subtract the actual view top to avoid double insets.
- * Electron exposes titlebar-area env values; 36px covers the Desktop frame
- * when that API is unavailable. Ordinary Web/macOS views never match. */
 .dsh-atb-view[data-dsh-atb-windows] > .dsh-atb-board {
   padding-top: max(12px, calc(env(titlebar-area-y, 0px) + env(titlebar-area-height, 36px) + 8px - var(--dsh-atb-viewport-top, 0px)));
 }
 .dsh-atb-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-/* 0.6.5 / #19: dsh-better-sidebar 钉在视口右上角的常驻按钮簇（2×28px + 4px
- * gap，right:10px → 占视口右边 10~70px）。它对 DSH 原生会话头的避让契约是
- * body[data-dsh-sidebar-collapsed] 下给 header padding-right:78px（其
- * layout.css）；看板隐藏该会话头并占据同一条顶带，工具条右端便沉到簇下面。
- * 镜像避让：面板收起（body 属性存在）且看板激活时，工具条右侧预留
- * 70px 足迹 + 8px 间隙 − 16px（.dsh-atb-board 自身 padding）= 62px；
- * padding 作用于容器所有换行行，配合 flex-wrap，任何宽度都不进簇区。
- * 未装 better-sidebar 或面板展开时属性不存在，规则零生效。 */
 html[data-dsh-atb-active] body[data-dsh-sidebar-collapsed] .dsh-atb-toolbar { padding-right: 62px; }
 .dsh-atb-title { font-size: 15px; font-weight: 600; margin: 0; }
 .dsh-atb-count { font-size: 12px; color: var(--dsw-text-secondary, gray); }
@@ -197,9 +159,6 @@ body[data-ds-dark-theme] .dsh-atb-modal-body select option {
 .dsh-atb-dot[data-urgency="urgent"] { background: #e5484d; }
 .dsh-atb-dot[data-urgency="normal"] { background: #8e4ec6; }
 .dsh-atb-dot[data-urgency="relaxed"] { background: #3e63dd; }
-/* Status dots (column heads): one fixed color per lifecycle status, matching
-   the detail pane's status pills. Canceled/archived share the resting gray;
-   trashed (pending purge) keeps the red of the 待清除 badge. */
 .dsh-atb-dot[data-status="backlog"] { background: #8a8f98; }
 .dsh-atb-dot[data-status="todo"] { background: #3e63dd; }
 .dsh-atb-dot[data-status="in_progress"] { background: #d9822b; }
@@ -277,7 +236,6 @@ body[data-ds-dark-theme] .dsh-atb-modal-body select option {
   color: var(--dsw-alias-label-primary, inherit);
 }
 
-/* ---------- card quick review (in_review column) ---------- */
 .dsh-atb-quick { display: flex; gap: 6px; margin-top: 7px; }
 .dsh-atb-quickbtn {
   flex: 1; font-size: 11.5px; padding: 3px 8px; border-radius: 6px; cursor: pointer;
@@ -295,7 +253,6 @@ body[data-ds-dark-theme] .dsh-atb-modal-body select option {
 .dsh-atb-error { font-size: 12px; color: #e5484d; padding: 4px 8px; border-radius: 6px; background: rgba(229,72,77,.1); }
 .dsh-atb-empty { font-size: 12px; color: var(--dsw-text-secondary, gray); padding: 10px 4px; }
 
-/* ---------- detail pane (polished) ---------- */
 .dsh-atb-detail {
   display: flex; flex-direction: column; gap: 12px; overflow-y: auto; min-height: 0; flex: 1;
   padding: 2px; position: relative;
@@ -510,7 +467,6 @@ button.dsh-atb-chip2.dsh-atb-chip-btn:hover {
   border-top: 1px dashed var(--dsw-border, rgba(128,128,128,.25));
 }
 
-/* ---------- task form modal (create + edit, polished) ---------- */
 .dsh-atb-modal-backdrop {
   position: fixed; inset: 0; z-index: 80;
   background: var(--dsw-alias-bg-mask-drop, rgba(28,30,36,.4)); backdrop-filter: var(--dsw-mask-blur, blur(2px));
@@ -614,9 +570,6 @@ button.dsh-atb-chip2.dsh-atb-chip-btn:hover {
   color: var(--dsw-alias-label-secondary, gray);
 }
 .dsh-atb-req { color: var(--dsw-alias-state-error-primary, #e5484d); font-style: normal; }
-/* Checkbox 排除：整行宽输入样式（width:100% + padding/border）特异性 (0,1,1) 高于
-   .dsh-atb-cke-box (0,1,0)，曾把编辑表单清单行的勾选框拉满整行（勾选框画在行
-   中央）、文本框挤扁。清单勾选框保持原生外观与 15px 布局。 */
 .dsh-atb-modal-body input:not([type="checkbox"]), .dsh-atb-modal-body textarea, .dsh-atb-modal-body select {
   font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 8px;
   width: 100%; box-sizing: border-box;
@@ -648,7 +601,6 @@ button.dsh-atb-chip2.dsh-atb-chip-btn:hover {
 .dsh-atb-urgency-opt[data-on="true"][data-urgency="relaxed"] { border-color: rgba(62,99,221,.65); background: rgba(62,99,221,.1); }
 
 .dsh-atb-mode-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-/* Execution mode has THREE options (认领 / 定时 / 定期): keep them on one row. */
 .dsh-atb-mode-picker[data-exec="true"] { grid-template-columns: repeat(3, 1fr); }
 .dsh-atb-mode-picker[data-exec="true"] .dsh-atb-mode-opt { padding: 7px 8px; }
 .dsh-atb-mode-picker[data-exec="true"] .dsh-atb-mode-name { font-size: 12px; }
@@ -688,7 +640,6 @@ button.dsh-atb-chip2.dsh-atb-chip-btn:hover {
 .dsh-atb-link { color: var(--dsw-alias-state-business-primary, #3e63dd); cursor: pointer; text-decoration: none; }
 .dsh-atb-link:hover { text-decoration: underline; }
 
-/* ---------- alert modal ---------- */
 .dsh-atb-alert-backdrop {
   position: fixed; inset: 0; z-index: 90;
   background: var(--dsw-alias-bg-mask-drop, rgba(28,30,36,.4)); backdrop-filter: var(--dsw-mask-blur, blur(2px));
@@ -711,7 +662,6 @@ button.dsh-atb-chip2.dsh-atb-chip-btn:hover {
 }
 .dsh-atb-alert .dsh-atb-btn { padding: 6px 28px; font-size: 13px; }
 
-/* ---------- 0.3.0 isolation ---------- */
 .dsh-atb-isolation-note { display: block; margin-top: 6px; font-size: 11px; color: var(--dsw-alias-label-tertiary, gray); }
 .dsh-atb-mode-picker[data-disabled="true"] .dsh-atb-mode-opt { cursor: not-allowed; opacity: .55; }
 .dsh-atb-iso-none { font-size: 12.5px; color: var(--dsw-alias-label-secondary, inherit); }
@@ -742,7 +692,6 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
 .dsh-atb-iso-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .dsh-atb-iso-hint { font-size: 11px; color: var(--dsw-alias-label-tertiary, gray); }
 
-/* ---------- 0.3.0 diagnostics ---------- */
 .dsh-atb-diag { max-width: 520px; width: min(520px, 92vw); }
 .dsh-atb-diag-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
 .dsh-atb-diag-item {
@@ -763,7 +712,6 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
 }
 .dsh-atb-diag-orphan-path { font-size: 11.5px; font-family: ui-monospace, Consolas, monospace; word-break: break-all; }
 
-/* ---------- 0.4.0 checklist ---------- */
 .dsh-atb-cke { display: flex; flex-direction: column; gap: 6px; }
 .dsh-atb-cke-row { display: flex; align-items: center; gap: 8px; }
 .dsh-atb-cke-box { flex-shrink: 0; width: 15px; height: 15px; cursor: pointer; }
@@ -803,7 +751,6 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
 .dsh-atb-cl-meta { flex-shrink: 0; font-size: 10.5px; color: var(--dsw-alias-label-tertiary, gray); display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
 .dsh-atb-cl-note { max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--dsw-alias-label-secondary, inherit); }
 
-/* ---------- 0.4.0 report ---------- */
 .dsh-atb-rpt-summary { font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; margin-bottom: 8px; }
 .dsh-atb-rpt-sec { margin-bottom: 8px; }
 .dsh-atb-rpt-label { font-size: 11px; color: var(--dsw-alias-label-tertiary, gray); margin-bottom: 4px; }
@@ -815,7 +762,6 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
   border-radius: 8px; padding: 6px 10px;
 }
 
-/* ---------- 0.4.0 diff viewer ---------- */
 .dsh-atb-iso-commit { display: flex; flex-direction: column; gap: 3px; }
 .dsh-atb-iso-commit-btn {
   display: flex; gap: 8px; font-size: 11.5px; align-items: baseline; text-align: left;
@@ -856,7 +802,6 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
   white-space: pre; color: var(--dsw-alias-label-secondary, inherit);
 }
 
-/* ---------- 0.4.0 new-task menu + template manager + import ---------- */
 .dsh-atb-newmenu { position: relative; display: inline-flex; }
 .dsh-atb-newmenu-backdrop { position: fixed; inset: 0; z-index: 40; }
 .dsh-atb-newmenu-list {
@@ -926,7 +871,6 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
 .dsh-atb-imp-row-status { font-size: 10.5px; color: var(--dsw-alias-label-tertiary, gray); flex-shrink: 0; }
 .dsh-atb-imp-result { font-size: 12px; color: var(--dsw-alias-state-success-primary, #30a46c); margin-top: 10px; }
 .dsh-atb-badge[data-kind="checklist"] { color: var(--dsw-alias-label-secondary, inherit); }
-/* ---------- 0.5.0 board settings ---------- */
 .dsh-atb-set { max-width: 620px; width: min(620px, 92vw); }
 .dsh-atb-set .dsh-atb-mode-picker { margin-top: 8px; }
 .dsh-atb-set .dsh-atb-isolation-note { margin-top: 10px; }
@@ -941,7 +885,6 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
 .dsh-atb-storage-notice-ok { color: var(--dsw-alias-state-success-primary, #2e7d32); padding: 4px 8px; border-radius: 6px; background: rgba(46,125,50,.1); }
 .dsh-atb-storage-notice-warn { color: var(--dsw-alias-state-warning-primary, #b8860b); padding: 4px 8px; border-radius: 6px; background: rgba(184,134,11,.1); word-break: break-word; }
 
-/* ---------- 0.5.5 SlashPromptInput & Permission Picker ---------- */
 .dsh-atb-perm-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 4px; }
 .dsh-atb-perm-opt {
   display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
@@ -978,10 +921,6 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-brand-primary, #1f2328) 18%, transparent);
 }
 
-/* Slash Autocomplete Popup. Fixed positioning (left/top/width/maxHeight/z-index)
- * is set INLINE by SlashPromptInput: the popup is portaled to document.body and
- * anchored to the textarea's viewport rect, so the scrollable modal body can no
- * longer clip its top (0.6.0 field report). Only the visual shell lives here. */
 .dsh-atb-slash-popup {
   display: flex; flex-direction: column; overflow: hidden; border-radius: 10px;
   background: var(--dsw-alias-bg-overlay, #fff); color: var(--dsw-alias-label-primary, inherit);
@@ -1012,10 +951,24 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
 .dsh-atb-slash-param { font-size: 11px; color: var(--dsw-alias-label-tertiary, gray); font-family: monospace; }
 .dsh-atb-slash-desc { font-size: 11px; color: var(--dsw-alias-label-secondary, gray); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; }
 
-/* Prompt Foot Toolbar */
 .dsh-atb-prompt-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .dsh-atb-prompt-tip { font-size: 11px; color: var(--dsw-alias-label-tertiary, gray); }
 .dsh-atb-prompt-tip code { font-size: 10.5px; padding: 1px 4px; border-radius: 4px; background: rgba(128,128,128,.14); }
+
+.dsh-atb-queuechip {
+    margin-left: auto; padding: 1px 7px; border: none; border-radius: 9px;
+    font-size: 11px; line-height: 16px; cursor: pointer; pointer-events: auto;
+    background: var(--dsw-bg-tertiary, rgba(127,127,127,.15)); color: var(--dsw-text-secondary, gray);
+    font-variant-numeric: tabular-nums;
+  }
+.dsh-atb-queuechip[data-bad="true"] { background: rgba(217,130,43,.18); color: #d9822b; }
+.dsh-atb-queuechip:hover { filter: brightness(1.1); }
+
+  .dsh-atb-queuepanel { width: 480px; max-width: 92vw; }
+  .dsh-atb-queuepanel-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .dsh-atb-queuepanel-actions .dsh-atb-btn[data-armed="true"] {
+    background: rgba(200,49,49,.85); color: #fff; border-color: transparent;
+  }
 `
 
 /** Style element id (stable since 0.1.x: hook for tests and debugging). */

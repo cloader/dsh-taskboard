@@ -129,6 +129,12 @@ export const MAX_MAX_CONCURRENT = 100
 export const DEFAULT_SCHEDULE_MISSED_AFTER_MINUTES = 5
 export const MIN_SCHEDULE_MISSED_AFTER_MINUTES = 1
 export const MAX_SCHEDULE_MISSED_AFTER_MINUTES = 1_440
+/** A queued entry's optional shelf life. Zero deliberately preserves durable replay. */
+export const DEFAULT_QUEUE_MAX_AGE_MINUTES = 0
+export const MAX_QUEUE_MAX_AGE_MINUTES = 10_080
+/** Minimum time between scheduler-created sessions. Zero preserves burst dispatch. */
+export const DEFAULT_DISPATCH_INTERVAL_MS = 0
+export const MAX_DISPATCH_INTERVAL_MS = 60_000
 
 /** Validate an isolation value. */
 export function asIsolation(raw: string): IsolationMode {
@@ -182,6 +188,10 @@ export type BoardSettings = {
   maxConcurrent?: number
   /** Only never-queued windows older than this are classified as offline misses. */
   scheduleMissedAfterMinutes?: number
+  /** Drop an already queued window after this many minutes; zero keeps it indefinitely. */
+  queueMaxAgeMinutes?: number
+  /** Minimum delay between scheduled session starts; zero allows the legacy burst. */
+  dispatchIntervalMs?: number
 }
 
 /** Validate raw input into sanitized {@link BoardSettings} (unknown fields dropped). */
@@ -220,6 +230,20 @@ export function asBoardSettings(raw: unknown): BoardSettings {
     }
     out.scheduleMissedAfterMinutes = e.scheduleMissedAfterMinutes
   }
+  if (e.queueMaxAgeMinutes !== undefined) {
+    if (typeof e.queueMaxAgeMinutes !== 'number' || !Number.isSafeInteger(e.queueMaxAgeMinutes)
+      || e.queueMaxAgeMinutes < DEFAULT_QUEUE_MAX_AGE_MINUTES || e.queueMaxAgeMinutes > MAX_QUEUE_MAX_AGE_MINUTES) {
+      throw new Error(`queueMaxAgeMinutes must be an integer from ${DEFAULT_QUEUE_MAX_AGE_MINUTES} to ${MAX_QUEUE_MAX_AGE_MINUTES}`)
+    }
+    out.queueMaxAgeMinutes = e.queueMaxAgeMinutes
+  }
+  if (e.dispatchIntervalMs !== undefined) {
+    if (typeof e.dispatchIntervalMs !== 'number' || !Number.isSafeInteger(e.dispatchIntervalMs)
+      || e.dispatchIntervalMs < DEFAULT_DISPATCH_INTERVAL_MS || e.dispatchIntervalMs > MAX_DISPATCH_INTERVAL_MS) {
+      throw new Error(`dispatchIntervalMs must be an integer from ${DEFAULT_DISPATCH_INTERVAL_MS} to ${MAX_DISPATCH_INTERVAL_MS}`)
+    }
+    out.dispatchIntervalMs = e.dispatchIntervalMs
+  }
   return out
 }
 
@@ -246,6 +270,16 @@ export function maxConcurrentOf(settings: BoardSettings | undefined, fallback = 
 /** Effective offline missed-window threshold in minutes (board setting → factory default). */
 export function scheduleMissedAfterMinutesOf(settings?: BoardSettings): number {
   return settings?.scheduleMissedAfterMinutes ?? DEFAULT_SCHEDULE_MISSED_AFTER_MINUTES
+}
+
+/** Effective queued-work shelf life in minutes; zero means durable replay. */
+export function queueMaxAgeMinutesOf(settings?: BoardSettings): number {
+  return settings?.queueMaxAgeMinutes ?? DEFAULT_QUEUE_MAX_AGE_MINUTES
+}
+
+/** Effective minimum spacing between scheduled session starts. */
+export function dispatchIntervalMsOf(settings?: BoardSettings): number {
+  return settings?.dispatchIntervalMs ?? DEFAULT_DISPATCH_INTERVAL_MS
 }
 
 /** How a task may run. */

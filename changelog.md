@@ -1,5 +1,23 @@
 # 更新日志 / Changelog
 
+### 0.8.1
+
+**修复 / 调度：**
+
+- **同点批量定时任务补跑节流（[#32](https://github.com/cloader/dsh-taskboard/issues/32)）**：持久 FIFO 队列现提供排队深度、最久等待时间和最大并发数；看板增加队列入口及二次确认的清空操作。清空只移除尚未派发的队列项，已运行会话不受影响。
+- 新增可选的队列保质期（`queueMaxAgeMinutes`，默认 `0`，继续保留跨重启补跑）与定时会话启动间隔（`dispatchIntervalMs`，默认 `0`，保持原行为）。
+- 调度器以单飞 tick 和全局派发闸门避免 interval/catchup 重叠时并行放行队列。
+- 移除 DSH STORE 的客户端产物大小预算与专用测试；仍保留客户端压缩作为常规构建优化，而非发布门槛。
+
+**English:**
+
+**Fixes / Scheduling:**
+
+- **Replay throttling for concurrent scheduled tasks ([#32](https://github.com/cloader/dsh-taskboard/issues/32))**: the durable FIFO queue now exposes its depth, oldest wait, and concurrency cap; the board adds a queue entry point and double-confirm clear action. Clearing only removes entries that have not been dispatched; running sessions are unaffected.
+- Adds optional queue shelf life (`queueMaxAgeMinutes`, default `0`, retaining restart replay) and scheduled-session start spacing (`dispatchIntervalMs`, default `0`, preserving prior behavior).
+- The scheduler uses a single-flight tick and global dispatch gate to prevent interval/catchup overlap from releasing queued work in parallel.
+- Removes the DSH STORE client-artifact size budget and its dedicated test. Client minification remains a normal build optimization, not a release gate.
+
 ### 0.8.0
 
 1. **新版本增强兼容性（[#31](https://github.com/cloader/dsh-taskboard/issues/31)）**：侧边栏的注入在 dsh ≥ v0.1.7 使用官方 API（`sidebar.panellist` + `main` 注册一等侧边栏面板），同时兼容 dsh < v0.1.7 版本使用 DOM 注入。

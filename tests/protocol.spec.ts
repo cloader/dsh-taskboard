@@ -21,7 +21,9 @@ import {
   defaultIsolationOf,
   defaultPermissionOf,
   defaultSyncExternalSessionsOf,
+  dispatchIntervalMsOf,
   maxConcurrentOf,
+  queueMaxAgeMinutesOf,
   scheduleMissedAfterMinutesOf,
   effectiveIsolation,
   emptyLedger,
@@ -268,7 +270,7 @@ describe('board settings & default isolation (0.5.0)', () => {
   })
 
   it('asBoardSettings sanitizes; defaultIsolationOf, defaultSyncExternalSessionsOf, and defaultPermissionOf resolve setting → factory', () => {
-    expect(asBoardSettings({ defaultIsolation: 'worktree', syncExternalSessions: true, defaultPermission: 'read-only', maxConcurrent: 8, scheduleMissedAfterMinutes: 15, junk: 1 })).toEqual({ defaultIsolation: 'worktree', syncExternalSessions: true, defaultPermission: 'read-only', maxConcurrent: 8, scheduleMissedAfterMinutes: 15 })
+    expect(asBoardSettings({ defaultIsolation: 'worktree', syncExternalSessions: true, defaultPermission: 'read-only', maxConcurrent: 8, scheduleMissedAfterMinutes: 15, queueMaxAgeMinutes: 60, dispatchIntervalMs: 1_500, junk: 1 })).toEqual({ defaultIsolation: 'worktree', syncExternalSessions: true, defaultPermission: 'read-only', maxConcurrent: 8, scheduleMissedAfterMinutes: 15, queueMaxAgeMinutes: 60, dispatchIntervalMs: 1_500 })
     expect(asBoardSettings({ syncExternalSessions: false })).toEqual({ syncExternalSessions: false })
     expect(asBoardSettings({ defaultPermission: 'fullAccess' })).toEqual({ defaultPermission: 'danger-full-access' })
     expect(asBoardSettings({})).toEqual({})
@@ -279,6 +281,8 @@ describe('board settings & default isolation (0.5.0)', () => {
     expect(() => asBoardSettings({ maxConcurrent: 0 })).toThrow('maxConcurrent')
     expect(() => asBoardSettings({ maxConcurrent: 1.5 })).toThrow('maxConcurrent')
     expect(() => asBoardSettings({ scheduleMissedAfterMinutes: 0 })).toThrow('scheduleMissedAfterMinutes')
+    expect(() => asBoardSettings({ queueMaxAgeMinutes: -1 })).toThrow('queueMaxAgeMinutes')
+    expect(() => asBoardSettings({ dispatchIntervalMs: 60_001 })).toThrow('dispatchIntervalMs')
     expect(() => asBoardSettings(null)).toThrow('object')
     expect(defaultIsolationOf(undefined)).toBe('none')
     expect(defaultIsolationOf({})).toBe('none')
@@ -296,6 +300,10 @@ describe('board settings & default isolation (0.5.0)', () => {
     expect(maxConcurrentOf({ maxConcurrent: 8 })).toBe(8)
     expect(scheduleMissedAfterMinutesOf(undefined)).toBe(5)
     expect(scheduleMissedAfterMinutesOf({ scheduleMissedAfterMinutes: 15 })).toBe(15)
+    expect(queueMaxAgeMinutesOf(undefined)).toBe(0)
+    expect(queueMaxAgeMinutesOf({ queueMaxAgeMinutes: 15 })).toBe(15)
+    expect(dispatchIntervalMsOf(undefined)).toBe(0)
+    expect(dispatchIntervalMsOf({ dispatchIntervalMs: 1_500 })).toBe(1_500)
   })
 
   it('asPermission normalizes camelCase and kebab-case aliases', () => {

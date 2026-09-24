@@ -238,6 +238,15 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     <span className="dsh-atb-dot" data-status={status} />
                     {t(COLUMN_KEYS[status])}
                     <span className="dsh-atb-colcount">{columnTasks.length}</span>
+                    {status === 'in_progress' && (
+                      <button
+                        type="button"
+                        className="dsh-atb-queuechip"
+                        title={t('queue.panel.title')}
+                        data-bad={(state.queue?.depth ?? 0) > 0 ? 'true' : undefined}
+                        onClick={() => controller.openQueuePanel()}
+                      >{t('board.queue.chip', { n: state.queue?.depth ?? 0 })}</button>
+                    )}
                   </div>
                   <div className="dsh-atb-cards">
                     {columnTasks.map(task => (
@@ -275,6 +284,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
 
       {state.diagOpen && <DiagnosticsPanel controller={controller} />}
 
+      {state.queueOpen && <QueuePanel controller={controller} onAlert={showAlert} />}
+
       {state.settingsOpen && <SettingsModal controller={controller} />}
 
       {state.importOpen && <ImportModal controller={controller} />}
@@ -282,6 +293,57 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       {state.tplManagerOpen && <TemplateManager controller={controller} />}
 
       {alertEl}
+    </div>
+  )
+}
+
+/** 📋 Execution-queue popup (in-progress column chip): depth, oldest wait, and a
+ *  double-confirm "clear queue" that drops every durable queue entry. */
+function QueuePanel({ controller, onAlert }: { controller: BoardController; onAlert: (msg: string) => void }) {
+  const t = useT()
+  const state = controller.getSnapshot()
+  const queue = state.queue
+  const [armed, setArmed] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const depth = queue?.depth ?? 0
+  const wait = queue?.oldestWaitMinutes
+  const clear = async (): Promise<void> => {
+    if (!armed) { setArmed(true); return }
+    setBusy(true)
+    const result = await controller.clearQueue()
+    setBusy(false)
+    setArmed(false)
+    if (result !== undefined) {
+      onAlert(t('queue.cleared', { n: result.cleared }))
+      controller.closeQueuePanel()
+    }
+  }
+  return (
+    <div className="dsh-atb-modal-backdrop" onClick={e => { if (e.target === e.currentTarget) controller.closeQueuePanel() }}>
+      <div className="dsh-atb-modal dsh-atb-queuepanel" role="dialog" aria-modal="true" aria-label={t('queue.panel.title')}>
+        <div className="dsh-atb-modal-head">
+          <span className="dsh-atb-modal-headicon">📋</span>
+          <div className="dsh-atb-modal-headtext">
+            <h3>{t('queue.panel.title')}</h3>
+          </div>
+          <button type="button" className="dsh-atb-modal-close" aria-label={t('shared.close')} onClick={() => controller.closeQueuePanel()}>✕</button>
+        </div>
+        <div className="dsh-atb-modal-body">
+          <div className="dsh-atb-diag-grid">
+            <div className="dsh-atb-diag-item" data-bad={depth > 0 ? 'true' : undefined}><b>{depth}</b><span>{t('queue.depth')}</span></div>
+            <div className="dsh-atb-diag-item" data-bad={wait !== undefined && wait > 5 ? 'true' : undefined}><b>{wait ?? 0}m</b><span>{t('queue.wait')}</span></div>
+          </div>
+          <div className="dsh-atb-queuepanel-actions">
+            <button
+              type="button"
+              className="dsh-atb-btn"
+              disabled={depth === 0 || busy}
+              data-armed={armed ? 'true' : undefined}
+              onClick={() => { void clear() }}
+            >{armed ? t('queue.confirm') : t('queue.clear')}</button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

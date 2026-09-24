@@ -90,7 +90,7 @@ async function seed(tasks: TaskRecord[]): Promise<InstanceType<typeof TaskStore>
 }
 
 /** Scheduler under a run-counting execution stub and faked global timers. */
-function makeScheduler(): SchedulerService {
+function makeScheduler(options: { queueMaxAgeMs?: number; dispatchIntervalMs?: number } = {}): SchedulerService {
   const executionFace: Pick<ExecutionService, 'run' | 'inFlight'> = {
     run: async (taskId, trigger) => {
       runs.push({ id: taskId, trigger })
@@ -102,6 +102,8 @@ function makeScheduler(): SchedulerService {
     store,
     execution: executionFace,
     now: () => Date.now(),
+    queueMaxAgeMs: options.queueMaxAgeMs,
+    dispatchIntervalMs: options.dispatchIntervalMs,
     // Injectable timer face (exercised on purpose): delegates to the faked
     // globals, so vi.advanceTimersByTimeAsync drives the 60s interval.
     timers: {
@@ -133,6 +135,100 @@ afterAll(async () => {
 })
 
 describe('SchedulerService lifecycle', () => {
+  it('clearQueue(): drops every durable queue entry with a system comment, without running them', async () => {
+    store = await seed(['q1', 'q2'].map(id => scheduledTask(id, {
+      mode: 'scheduled', cron: '* * * * *', nextRunAt: T0 + 60_000,
+      queuedRunAt: T0, queuedAt: T0,
+    })))
+    scheduler = makeScheduler()
+
+    let changes = 0
+    const unsubscribe = store.subscribe(() => { changes += 1 })
+    const cleared = await scheduler.clearQueue()
+    unsubscribe()
+
+    expect(cleared).toBe(2)
+    expect(changes).toBe(1)
+    expect(runs).toEqual([])
+    for (const id of ['q1', 'q2']) {
+      const task = store.get(id)
+      expect(task?.execution.queuedRunAt).toBeUndefined()
+      expect(task?.execution.queuedAt).toBeUndefined()
+      expect(task?.comments.some(c => c.systemKey === 'sys.queueCleared')).toBe(true)
+    }
+    // A follow-up tick must not resurrect or dispatch anything.
+    await scheduler.tick()
+    expect(runs).toEqual([])
+  })
+
+  it('clearQueue(): returns 0 on an empty queue and leaves dispatching entries alone', async () => {
+    store = await seed([scheduledTask('q-dispatching', {
+      mode: 'scheduled', cron: '* * * * *', nextRunAt: T0 + 60_000,
+      dispatchingRunAt: T0, queuedAt: T0,
+    })])
+    scheduler = makeScheduler()
+
+    expect(await scheduler.clearQueue()).toBe(0)
+    expect(store.get('q-dispatching')?.execution.dispatchingRunAt).toBe(T0)
+  })
+
+  it('expires an old durable queue entry only when an explicit shelf life is configured', async () => {
+    store = await seed([scheduledTask('t-expired', {
+      mode: 'scheduled', cron: '* * * * *', nextRunAt: T0 + 60_000,
+      queuedRunAt: T0 - 120_000, queuedAt: T0 - 61_000,
+    })])
+    scheduler = makeScheduler({ queueMaxAgeMs: 60_000 })
+
+    await scheduler.tick()
+
+    expect(runs).toEqual([])
+    const task = store.get('t-expired')
+    expect(task?.execution.queuedRunAt).toBeUndefined()
+    expect(task?.execution.queuedAt).toBeUndefined()
+    expect(task?.comments.some(c => c.systemKey === 'sys.queuedExpired')).toBe(true)
+  })
+
+  it('spaces dispatches and serializes overlapping tick requests', async () => {
+    store = await seed(['a', 'b', 'c'].map(id => scheduledTask(id, {
+      mode: 'scheduled', cron: '* * * * *', nextRunAt: T0 + 60_000,
+      queuedRunAt: T0, queuedAt: T0,
+    })))
+    const startedAt: number[] = []
+    const executionFace: Pick<ExecutionService, 'run' | 'inFlight'> = {
+      run: async (taskId, trigger) => {
+        runs.push({ id: taskId, trigger })
+        startedAt.push(Date.now())
+        return { ok: true, executionId: `e-${taskId}`, sessionId: `s-${taskId}` }
+      },
+      inFlight: () => 0,
+    }
+    scheduler = new SchedulerService({
+      store,
+      execution: executionFace,
+      now: () => Date.now(),
+      dispatchIntervalMs: 1_000,
+      timers: {
+        setInterval: (fn, ms) => setInterval(fn, ms),
+        clearInterval: handle => clearInterval(handle as ReturnType<typeof setInterval>),
+        setTimeout: (fn, ms) => setTimeout(fn, ms),
+        clearTimeout: handle => clearTimeout(handle as ReturnType<typeof setTimeout>),
+      },
+    })
+
+    const first = scheduler.tick()
+    const overlapping = scheduler.tick()
+    expect(await waitFor(() => runs.length === 1)).toBe(true)
+    await settle(30)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(await waitFor(() => runs.length === 2)).toBe(true)
+    await settle(30)
+    await vi.advanceTimersByTimeAsync(1_000)
+    await Promise.all([first, overlapping])
+
+    expect(runs.map(run => run.id)).toEqual(['a', 'b', 'c'])
+    expect(startedAt).toEqual([T0, T0 + 1_000, T0 + 2_000])
+  })
+
   it('start(): the 3s catchup tick runs a due task once and advances nextRunAt into the future', async () => {
     store = await seed([scheduledTask('t-due', { mode: 'scheduled', cron: '* * * * *', nextRunAt: T0 - 30_000 })])
     scheduler = makeScheduler()
