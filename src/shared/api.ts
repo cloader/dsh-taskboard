@@ -239,7 +239,7 @@ export type UpdateSettingsBody = {
   scheduleMissedAfterMinutes?: number
   /** Drop queued work after this many minutes; 0 retains it indefinitely. */
   queueMaxAgeMinutes?: number
-  /** Minimum milliseconds between scheduled session starts; 0 preserves burst dispatch. */
+  /** Minimum milliseconds between scheduled session starts; defaults to 1000 and accepts 0 to disable throttling. */
   dispatchIntervalMs?: number
 }
 

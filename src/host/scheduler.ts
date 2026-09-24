@@ -6,7 +6,7 @@
  *
  * @module dsh-taskboard/host/scheduler
  */
-import { DEFAULT_MAX_CONCURRENT, newCommentId, nextCronTime, normalizeBody, parseCron, type TaskLedger } from '../shared/protocol.ts'
+import { DEFAULT_DISPATCH_INTERVAL_MS, DEFAULT_MAX_CONCURRENT, newCommentId, nextCronTime, normalizeBody, parseCron, type TaskLedger } from '../shared/protocol.ts'
 import type { ExecutionService } from './execution.ts'
 import type { TaskStore } from './store.ts'
 
@@ -24,7 +24,7 @@ export interface SchedulerDeps {
   skipAfterMs?: number | (() => number)
   /** Optional shelf life for a durable queue entry in milliseconds; zero keeps it indefinitely. */
   queueMaxAgeMs?: number | (() => number)
-  /** Minimum time between scheduler-created sessions; zero preserves legacy burst dispatch. */
+  /** Minimum time between scheduler-created sessions; zero explicitly disables throttling. */
   dispatchIntervalMs?: number | (() => number)
   /** Timer face (injectable for tests). The timeout pair is optional so
    *  older injections keep working; gaps fall back to the globals. */
@@ -77,7 +77,7 @@ export class SchedulerService {
   }
 
   private dispatchIntervalMs(): number {
-    return typeof this.deps.dispatchIntervalMs === 'function' ? this.deps.dispatchIntervalMs() : this.deps.dispatchIntervalMs ?? 0
+    return typeof this.deps.dispatchIntervalMs === 'function' ? this.deps.dispatchIntervalMs() : this.deps.dispatchIntervalMs ?? DEFAULT_DISPATCH_INTERVAL_MS
   }
 
   /** Start ticking. */

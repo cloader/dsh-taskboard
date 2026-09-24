@@ -132,8 +132,10 @@ export const MAX_SCHEDULE_MISSED_AFTER_MINUTES = 1_440
 /** A queued entry's optional shelf life. Zero deliberately preserves durable replay. */
 export const DEFAULT_QUEUE_MAX_AGE_MINUTES = 0
 export const MAX_QUEUE_MAX_AGE_MINUTES = 10_080
-/** Minimum time between scheduler-created sessions. Zero preserves burst dispatch. */
-export const DEFAULT_DISPATCH_INTERVAL_MS = 0
+/** Smallest user-selectable delay; zero explicitly disables dispatch throttling. */
+export const MIN_DISPATCH_INTERVAL_MS = 0
+/** Default spacing between scheduler-created sessions. */
+export const DEFAULT_DISPATCH_INTERVAL_MS = 1_000
 export const MAX_DISPATCH_INTERVAL_MS = 60_000
 
 /** Validate an isolation value. */
@@ -190,7 +192,7 @@ export type BoardSettings = {
   scheduleMissedAfterMinutes?: number
   /** Drop an already queued window after this many minutes; zero keeps it indefinitely. */
   queueMaxAgeMinutes?: number
-  /** Minimum delay between scheduled session starts; zero allows the legacy burst. */
+  /** Minimum delay between scheduled session starts; zero explicitly disables throttling. */
   dispatchIntervalMs?: number
 }
 
@@ -239,8 +241,8 @@ export function asBoardSettings(raw: unknown): BoardSettings {
   }
   if (e.dispatchIntervalMs !== undefined) {
     if (typeof e.dispatchIntervalMs !== 'number' || !Number.isSafeInteger(e.dispatchIntervalMs)
-      || e.dispatchIntervalMs < DEFAULT_DISPATCH_INTERVAL_MS || e.dispatchIntervalMs > MAX_DISPATCH_INTERVAL_MS) {
-      throw new Error(`dispatchIntervalMs must be an integer from ${DEFAULT_DISPATCH_INTERVAL_MS} to ${MAX_DISPATCH_INTERVAL_MS}`)
+      || e.dispatchIntervalMs < MIN_DISPATCH_INTERVAL_MS || e.dispatchIntervalMs > MAX_DISPATCH_INTERVAL_MS) {
+      throw new Error(`dispatchIntervalMs must be an integer from ${MIN_DISPATCH_INTERVAL_MS} to ${MAX_DISPATCH_INTERVAL_MS}`)
     }
     out.dispatchIntervalMs = e.dispatchIntervalMs
   }

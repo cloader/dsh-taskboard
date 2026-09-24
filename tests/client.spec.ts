@@ -582,7 +582,7 @@ describe('client half', () => {
       maxConcurrent: 3,
       scheduleMissedAfterMinutes: 5,
       queueMaxAgeMinutes: 0,
-      dispatchIntervalMs: 0,
+      dispatchIntervalMs: 1_000,
     }])
 
     const storageInput = host.querySelector<HTMLInputElement>('.dsh-atb-storage-path')!

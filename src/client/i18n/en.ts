@@ -447,7 +447,7 @@ export const en: TaskboardDict = {
   'queue.confirm': 'Confirm clear',
   'queue.cleared': 'Cleared {n} queued task(s).',
   'set.schedule.queueMaxAge': 'Queue shelf life, minutes (0 = retain indefinitely; max 10080)',
-  'set.schedule.dispatchInterval': 'Scheduled-session start interval, ms (0 = no throttle; max 60000)',
+  'set.schedule.dispatchInterval': 'Scheduled-session start interval, ms (default 1000; 0 = no throttle; max 60000)',
   'set.schedule.invalid': 'Enter whole numbers within the allowed ranges before saving.',
   'card.badge.permReadOnly': '🔒 Read-only',
   'card.badge.permReadOnlyTitle': 'Permission: read-only',

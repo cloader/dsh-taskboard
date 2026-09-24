@@ -449,7 +449,7 @@ export const zh = {
   'queue.confirm': '再次确认清空',
   'queue.cleared': '已清空 {n} 个排队任务。',
   'set.schedule.queueMaxAge': '排队保质期（分钟，0=永不丢弃，最大 10080）',
-  'set.schedule.dispatchInterval': '定时会话启动间隔（毫秒，0=不节流，最大 60000）',
+  'set.schedule.dispatchInterval': '定时会话启动间隔（毫秒，默认 1000；0=不节流，最大 60000）',
   'set.schedule.invalid': '请输入范围内的整数后再保存。',
   'card.badge.permReadOnly': '🔒 仅查看',
   'card.badge.permReadOnlyTitle': '权限：仅可查看',

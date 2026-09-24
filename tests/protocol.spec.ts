@@ -282,6 +282,7 @@ describe('board settings & default isolation (0.5.0)', () => {
     expect(() => asBoardSettings({ maxConcurrent: 1.5 })).toThrow('maxConcurrent')
     expect(() => asBoardSettings({ scheduleMissedAfterMinutes: 0 })).toThrow('scheduleMissedAfterMinutes')
     expect(() => asBoardSettings({ queueMaxAgeMinutes: -1 })).toThrow('queueMaxAgeMinutes')
+    expect(asBoardSettings({ dispatchIntervalMs: 0 })).toEqual({ dispatchIntervalMs: 0 })
     expect(() => asBoardSettings({ dispatchIntervalMs: 60_001 })).toThrow('dispatchIntervalMs')
     expect(() => asBoardSettings(null)).toThrow('object')
     expect(defaultIsolationOf(undefined)).toBe('none')
@@ -302,7 +303,7 @@ describe('board settings & default isolation (0.5.0)', () => {
     expect(scheduleMissedAfterMinutesOf({ scheduleMissedAfterMinutes: 15 })).toBe(15)
     expect(queueMaxAgeMinutesOf(undefined)).toBe(0)
     expect(queueMaxAgeMinutesOf({ queueMaxAgeMinutes: 15 })).toBe(15)
-    expect(dispatchIntervalMsOf(undefined)).toBe(0)
+    expect(dispatchIntervalMsOf(undefined)).toBe(1_000)
     expect(dispatchIntervalMsOf({ dispatchIntervalMs: 1_500 })).toBe(1_500)
   })
 

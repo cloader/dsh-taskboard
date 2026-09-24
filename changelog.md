@@ -5,7 +5,7 @@
 **修复 / 调度：**
 
 - **同点批量定时任务补跑节流（[#32](https://github.com/cloader/dsh-taskboard/issues/32)）**：持久 FIFO 队列现提供排队深度、最久等待时间和最大并发数；进行中卡片显示排队数，可打开队列查看正在等待派发的任务，并可二次确认清空任务队列。清空只移除尚未派发的队列项，已运行会话不受影响。
-- 新增可选的队列保质期（`queueMaxAgeMinutes`，默认 `0`，继续保留跨重启补跑）与定时会话启动间隔（`dispatchIntervalMs`，默认 `0`，保持原行为）。
+- 新增可选的队列保质期（`queueMaxAgeMinutes`，默认 `0`，继续保留跨重启补跑）与定时会话启动间隔（`dispatchIntervalMs`，默认 `1000 ms`；可显式设为 `0` 关闭节流）。
 - 调度器以单飞 tick 和全局派发闸门避免 interval/catchup 重叠时并行放行队列。
 - 移除 DSH STORE 的客户端产物大小预算与专用测试；仍保留客户端压缩作为常规构建优化，而非发布门槛。
 
@@ -14,7 +14,7 @@
 **Fixes / Scheduling:**
 
 - **Replay throttling for concurrent scheduled tasks ([#32](https://github.com/cloader/dsh-taskboard/issues/32))**: the durable FIFO queue now exposes its depth, oldest wait, and concurrency cap; the in-progress card shows the queued count, and users can open the queue to inspect waiting tasks or double-confirm clearing it. Clearing only removes entries that have not been dispatched; running sessions are unaffected.
-- Adds optional queue shelf life (`queueMaxAgeMinutes`, default `0`, retaining restart replay) and scheduled-session start spacing (`dispatchIntervalMs`, default `0`, preserving prior behavior).
+- Adds optional queue shelf life (`queueMaxAgeMinutes`, default `0`, retaining restart replay) and scheduled-session start spacing (`dispatchIntervalMs`, default `1000 ms`; set it explicitly to `0` to disable throttling).
 - The scheduler uses a single-flight tick and global dispatch gate to prevent interval/catchup overlap from releasing queued work in parallel.
 - Removes the DSH STORE client-artifact size budget and its dedicated test. Client minification remains a normal build optimization, not a release gate.
 
