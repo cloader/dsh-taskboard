@@ -151,11 +151,12 @@ describe('ExecutionService', () => {
     // body as a normal user message (followup, next-turn).
     expect(agents.injects).toHaveLength(1)
     expect(agents.followups).toHaveLength(1)
-    const inject = agents.injects[0] as { content: Array<{ type: string; text: string }>; source: { kind: string; plugin?: string } }
+    const inject = agents.injects[0] as { content: Array<{ type: string; text: string }>; source: { kind: string } }
     const user = agents.followups[0] as { content: Array<{ type: string; text: string }>; source: { kind: string } }
     expect(inject.content[0]!.type).toBe('text')
-    expect(inject.source.kind).toBe('plugin')
-    expect(inject.source.plugin).toBe('dsh-taskboard')
+    // dsh 0.1.7-rc.2 retired the generic `kind: 'plugin'` source; the taskboard
+    // now injects its framing line under its own producer-owned source kind.
+    expect(inject.source.kind).toBe('dsh-taskboard')
     expect(inject.content[0]!.text).toContain('【任务看板】Run me')
     expect(inject.content[0]!.text).toContain('ID: t-run')
     expect(inject.content[0]!.text).toContain('taskboard_get')
