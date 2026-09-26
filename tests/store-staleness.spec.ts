@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -74,25 +74,6 @@ describe('TaskStore shared-file staleness', () => {
     expect(ids).toContain('c-older')
   })
 
-  it('reports whether the cached ledger was replaced, and is a no-op when current', async () => {
-    const { file } = await fixture()
-    const store = new TaskStore({ file })
-    await store.load()
-
-    // Nobody else wrote: nothing to refresh.
-    expect(await store.refreshIfStale()).toBe(false)
-
-    // An external writer bumps the file behind our back.
-    const raw = await onDisk(file)
-    raw.revision += 5
-    await writeFile(file, JSON.stringify(raw))
-
-    expect(await store.refreshIfStale()).toBe(true)
-    expect(store.snapshot().revision).toBe(raw.revision)
-    // Second call is a no-op again.
-    expect(await store.refreshIfStale()).toBe(false)
-  })
-
   it('keeps the revision monotonic across interleaved writers', async () => {
     const { file } = await fixture()
     const a = new TaskStore({ file })
@@ -117,5 +98,20 @@ describe('TaskStore shared-file staleness', () => {
     for (let i = 1; i < revisions.length; i++) {
       expect(revisions[i]!).toBeGreaterThan(revisions[i - 1]!)
     }
+  })
+
+  it('preserves both updates when stale stores mutate concurrently', async () => {
+    const { file } = await fixture()
+    const a = new TaskStore({ file })
+    const b = new TaskStore({ file })
+    await Promise.all([a.load(), b.load()])
+
+    // Both stores start from the same revision. A write-before-refresh guard
+    // loses one marker here because both reads can finish before either write.
+    await Promise.all([appendMarker(a, 'c-a'), appendMarker(b, 'c-b')])
+
+    const disk = await onDisk(file)
+    expect(disk.revision).toBe(3)
+    expect(disk.tasks[0]!.comments.map(c => c.id)).toEqual(expect.arrayContaining(['c-a', 'c-b']))
   })
 })

@@ -6,7 +6,7 @@
  *
  * @module dsh-taskboard/host/store
  */
-import { mkdir, open, readFile, rename } from 'node:fs/promises'
+import { mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import {
   LEDGER_SCHEMA_VERSION,
@@ -43,6 +43,9 @@ export interface TaskStoreOptions {
  * atomically (temp file + rename), and only then notifies subscribers.
  */
 export class TaskStore {
+  /** Stores from old and new plugin generations share one write lane per file. */
+  private static readonly fileQueues = new Map<string, Promise<unknown>>()
+
   private file: string
   private readonly storageQueue?: StorageQueue
   private ledger: TaskLedger = emptyLedger()
@@ -66,37 +69,26 @@ export class TaskStore {
     await persistAtomic(file, JSON.stringify(this.ledger))
   }
 
-  /**
-   * Re-read the ledger when the file has moved ahead of our cached copy.
-   *
-   * The ledger file is SHARED state: a second store instance (a previous
-   * plugin generation whose long-lived callbacks are still running, or a
-   * second host) can commit between our load and our write. Because a store
-   * caches its snapshot forever (`load()` is a no-op once loaded) and
-   * `mutate` persists the WHOLE document, writing a stale copy silently
-   * rolls those commits back — same revision, no error, invisible to
-   * subscribers. Re-read whenever the file is ahead so the cache is never
-   * authority over a newer document.
-   * @returns whether the cached ledger was replaced.
-   */
-  async refreshIfStale(): Promise<boolean> {
-    let parsed: TaskLedger
-    try {
-      parsed = JSON.parse(await readFile(this.file, 'utf8')) as TaskLedger
-    } catch {
-      return false
-    }
-    if (typeof parsed?.revision !== 'number' || !Array.isArray(parsed.tasks)) return false
-    if (parsed.revision <= this.ledger.revision) return false
-    // Drop the cache and re-adopt through loadOnce so normalization stays in one place.
+  /** Re-read through the normalizer while holding the cross-instance write lock. */
+  private async reload(): Promise<void> {
     this.loaded = false
     this.loadPromise = undefined
     await this.load()
-    return true
   }
 
   /** Switch future writes after a prepared migration commits. */
   setLocation(file: string): void { this.file = file }
+
+  /** Serialize one operation with every TaskStore in this host for this file. */
+  private inProcessWriteLane<T>(file: string, run: () => Promise<T>): Promise<T> {
+    const previous = TaskStore.fileQueues.get(file) ?? Promise.resolve()
+    const next = previous.then(run, run)
+    TaskStore.fileQueues.set(file, next)
+    void next.finally(() => {
+      if (TaskStore.fileQueues.get(file) === next) TaskStore.fileQueues.delete(file)
+    }).catch(() => { /* the caller receives the original rejection */ })
+    return next
+  }
 
   /** Load (once) from disk; a missing file starts empty; a corrupt file is quarantined, not thrown. */
   load(): Promise<void> {
@@ -213,35 +205,30 @@ export class TaskStore {
   ): Promise<{ ledger: TaskLedger; changed: readonly TaskRecord[] }> {
     const run = async (): Promise<{ ledger: TaskLedger; changed: readonly TaskRecord[] }> => {
       await this.load()
-      // Never write from a snapshot older than the file: another writer may
-      // have committed since we loaded (see refreshIfStale).
-      await this.refreshIfStale()
-      const draft: TaskLedger = structuredClone(this.ledger)
-      const changed = mutator(draft)
-      if (changed === undefined) {
-        // S9 parity: even a no-op mutation hands out a frozen clone — never
-        // the live internal ledger.
-        return { ledger: deepFreeze(structuredClone(this.ledger)), changed: [] }
-      }
-      // Retention cap: every committed mutation re-checks the touched tasks,
-      // so execution history can never grow unbounded (SSE state payload).
-      for (const task of changed) pruneExecutions(task)
-      draft.revision += 1
-      const json = JSON.stringify(draft)
-      await persistAtomic(this.file, json)
-      this.ledger = draft
-      const change: LedgerChange = { revision: draft.revision, tasks: changed, kind }
-      for (const fn of this.subscribers) {
-        try {
-          fn(change)
-        } catch { /* subscriber errors never abort the write */ }
-      }
-      // S9: hand out frozen clones — the return value used to BE the new
-      // internal ledger; callers must never mutate internal state in place.
-      return {
-        ledger: deepFreeze(structuredClone(draft)),
-        changed: changed.map(t => deepFreeze(structuredClone(t))),
-      }
+      const file = this.file
+      return this.inProcessWriteLane(file, async () => withLedgerWriteLock(file, async () => {
+        // A different TaskStore may have committed while this instance waited.
+        // Reload under the lock: a cached-revision check before it leaves a
+        // TOCTOU window in which two writers emit the same next revision.
+        await this.reload()
+        const draft: TaskLedger = structuredClone(this.ledger)
+        const changed = mutator(draft)
+        if (changed === undefined) return { ledger: deepFreeze(structuredClone(this.ledger)), changed: [] }
+        for (const task of changed) pruneExecutions(task)
+        draft.revision += 1
+        await persistAtomic(file, JSON.stringify(draft))
+        this.ledger = draft
+        const change: LedgerChange = { revision: draft.revision, tasks: changed, kind }
+        for (const fn of this.subscribers) {
+          try {
+            fn(change)
+          } catch { /* subscriber errors never abort the write */ }
+        }
+        return {
+          ledger: deepFreeze(structuredClone(draft)),
+          changed: changed.map(t => deepFreeze(structuredClone(t))),
+        }
+      }))
     }
     if (this.storageQueue !== undefined) return this.storageQueue.run(run)
     return (this.queue = this.queue.then(run, run)) as ReturnType<typeof run>
@@ -260,6 +247,49 @@ export class TaskStore {
     }
     if (this.storageQueue !== undefined) return this.storageQueue.run(run)
     return (this.queue = this.queue.then(run, run)) as Promise<T>
+  }
+}
+
+const LOCK_RETRY_MS = 25
+const LOCK_TIMEOUT_MS = 30_000
+const STALE_LOCK_MS = 5 * 60_000
+
+/**
+ * `rename()` makes one replacement atomic, but not the preceding
+ * read-modify-write sequence. This exclusive sidecar lock protects that full
+ * sequence across hosts; a crashed owner is recoverable after five minutes.
+ */
+async function withLedgerWriteLock<T>(file: string, run: () => Promise<T>): Promise<T> {
+  const lock = `${file}.lock`
+  const token = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`
+  const deadline = Date.now() + LOCK_TIMEOUT_MS
+  await mkdir(dirname(file), { recursive: true })
+  for (;;) {
+    try {
+      const handle = await open(lock, 'wx')
+      try {
+        await handle.writeFile(token, 'utf8')
+      } finally {
+        await handle.close()
+      }
+      try {
+        return await run()
+      } finally {
+        // Do not delete a new owner's lock if ours was reclaimed while a
+        // slow filesystem operation was in flight.
+        const held = await readFile(lock, 'utf8').catch(() => undefined)
+        if (held === token) await unlink(lock).catch(() => { /* best effort */ })
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      const age = await stat(lock).then(info => Date.now() - info.mtimeMs, () => undefined)
+      if (age !== undefined && age > STALE_LOCK_MS) {
+        await unlink(lock).catch(() => { /* another writer may have recovered it */ })
+        continue
+      }
+      if (Date.now() >= deadline) throw new Error(`timed out waiting for task ledger lock: ${file}`)
+      await new Promise<void>(resolve => setTimeout(resolve, LOCK_RETRY_MS))
+    }
   }
 }
 
