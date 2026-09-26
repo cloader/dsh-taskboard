@@ -570,6 +570,8 @@ export type ExecutionRecord = {
   /** Trigger: manual button or the host scheduler. */
   trigger: 'manual' | 'scheduled'
   startedAt?: number
+  /** Most recent observed session activity, throttled by the host. */
+  lastActivityAt?: number
   endedAt?: number
   outcome: 'running' | 'succeeded' | 'failed' | 'cancelled'
   error?: string
@@ -1324,6 +1326,7 @@ export function validateImportedTask(raw: unknown, now: number): { ok: true; tas
           ...(typeof xe.sessionId === 'string' ? { sessionId: xe.sessionId } : {}),
           trigger,
           ...(typeof xe.startedAt === 'number' ? { startedAt: xe.startedAt } : {}),
+          ...(typeof xe.lastActivityAt === 'number' ? { lastActivityAt: xe.lastActivityAt } : {}),
           ...(typeof xe.endedAt === 'number' ? { endedAt: xe.endedAt } : {}),
           outcome,
           ...(outcomeRaw === 'running' ? { error: 'imported while still running (settlement watcher died with the exporting host)' } : (typeof xe.error === 'string' ? { error: xe.error } : {})),

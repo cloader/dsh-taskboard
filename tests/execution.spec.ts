@@ -601,6 +601,41 @@ describe('ExecutionService', () => {
     expect(b.executions[0]!.outcome).toBe('succeeded')
   })
 
+  it('adopts a live execution during plugin reload instead of failing it as a restart', async () => {
+    const running = task({
+      id: 't-reload',
+      status: 'in_progress',
+      claimedBy: 'session-still-live',
+      claimedAt: 1,
+      executions: [{ id: 'e-reload', sessionId: 'session-still-live', trigger: 'manual', startedAt: 1, outcome: 'running' }],
+    })
+    const store = await storeWith(running)
+    let finish!: () => void
+    const idle = new Promise<void>(resolve => { finish = resolve })
+    const live = {
+      id: 'session-still-live',
+      followup: () => {},
+      inject: () => {},
+      whenIdle: () => idle,
+      cancel: () => {},
+    }
+    const svc = new ExecutionService({
+      store, agents: fakeAgents(), workspaces, events: fakeEvents(), now: () => 9_000,
+      liveAgent: id => id === 'session-still-live' ? live : undefined,
+    })
+
+    await svc.reconcile()
+    expect(store.get('t-reload')!.executions[0]!.outcome).toBe('running')
+    expect(store.get('t-reload')!.status).toBe('in_progress')
+    expect(svc.inFlight()).toBe(1)
+
+    finish()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await store.read(() => undefined)
+    expect(store.get('t-reload')!.executions[0]!.outcome).toBe('succeeded')
+    expect(store.get('t-reload')!.status).toBe('in_review')
+  })
+
   it('rejects a run on a running or unknown task', async () => {
     const store = await storeWith(task({ status: 'in_progress' }))
     const svc = new ExecutionService({ store, agents: fakeAgents(), workspaces, events: fakeEvents(), now: () => 1_000 })

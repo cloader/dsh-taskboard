@@ -198,6 +198,10 @@ export function apply(ctx: Context): void {
             isArchived: id => wsCtx.workspaceRegistry.archivedSessionIds.includes(id as never),
           }),
         },
+        // A DSH plugin reload keeps the host process and its live agents. The
+        // new execution service adopts these runs during reconciliation rather
+        // than mistaking the reload for a host restart.
+        liveAgent: sessionId => agentCtx.agents.get(sessionId as never) as never,
         workspaces: {
           get: id => workspaceFace(wsCtx.workspaceRegistry).get(id),
           attach: async (workspaceId, sessionId) => {

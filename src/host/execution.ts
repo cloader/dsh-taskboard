@@ -74,6 +74,11 @@ export interface AgentsFace {
   }>
 }
 
+/** A live agent retained by DSH across a plugin hot reload. */
+export type LiveAgentFace = Awaited<ReturnType<AgentsFace['create']>>['agent'] & {
+  cancel(cause: { kind: 'user' }): void
+}
+
 /**
  * The preset composition an execution session is built from — the shape
  * apiproxy's ensureSession produces: resolve → record on the session header,
@@ -114,6 +119,8 @@ export interface ExecutionDeps {
   renameSession?: (sessionId: string, title: string) => void
   /** Max concurrently running executions across all tasks (default 3). */
   maxConcurrent?: number | (() => number)
+  /** Resolve a still-live agent so reload reconciliation can adopt its run. */
+  liveAgent?: (sessionId: string) => LiveAgentFace | undefined
   /**
    * Git face for worktree isolation (0.3.0). Absent → every worktree-mode
    * task degrades to the original directory with an isolationNote.
@@ -185,6 +192,9 @@ interface RunEntry {
   dispose: () => Promise<void>
 }
 
+const ACTIVITY_PERSIST_MS = 60_000
+const ACTIVITY_EVENTS = new Set(['turn/start', 'turn/step', 'turn/progress', 'agent/step', 'agent/thought', 'user/message'])
+
 /**
  * The execution service.
  */
@@ -195,9 +205,17 @@ export class ExecutionService {
   /** Detaches the turn/end listener (plugin teardown — review P1). */
   private readonly unsubscribeEvents: () => void
 
+  /** Last activity persistence attempt per live session (avoid per-event disk writes). */
+  private readonly lastActivityAt = new Map<string, number>()
+
   /** @param deps - store + agents + workspaces + events + clock. */
   constructor(private readonly deps: ExecutionDeps) {
     this.unsubscribeEvents = deps.events.onSessionEvent((sessionId, event) => {
+      if (ACTIVITY_EVENTS.has(event.type)) {
+        this.noteActivity(sessionId).catch(error => {
+          console.error('[dsh-taskboard] activity persistence error:', error)
+        })
+      }
       if (event.type !== 'turn/end') return
       // S7 (open question): ANY turn/end with an error reason fails the whole
       // execution and hands the task back. Whether the DSH session loop can
@@ -216,6 +234,75 @@ export class ExecutionService {
   /** Detach the settlement listener; safe to call once at plugin teardown. */
   dispose(): void {
     this.unsubscribeEvents()
+  }
+
+  /** Record execution activity at most once per minute for an accurate stale badge. */
+  private async noteActivity(sessionId: string): Promise<void> {
+    const now = this.deps.now()
+    const previous = this.lastActivityAt.get(sessionId)
+    if (previous !== undefined && now - previous < ACTIVITY_PERSIST_MS) return
+    const entry = [...this.runs.entries()].find(([, run]) => run.sessionId === sessionId)
+    if (entry === undefined) return
+    this.lastActivityAt.set(sessionId, now)
+    const [executionId] = entry
+    await this.deps.store.mutate('execution-recorded', ledger => {
+      for (const task of ledger.tasks) {
+        const execution = task.executions.find(current => current.id === executionId)
+        if (execution?.outcome !== 'running') continue
+        if (execution.lastActivityAt !== undefined && now - execution.lastActivityAt < ACTIVITY_PERSIST_MS) return undefined
+        execution.lastActivityAt = now
+        return [task]
+      }
+      return undefined
+    })
+  }
+
+  /** Recreate enough mirror metadata from the durable start record to collect settlement facts. */
+  private preparedFromExecution(execution: ExecutionRecord): PreparedMirror | undefined {
+    if (execution.repos !== undefined && execution.repos.length > 0
+      && execution.repos.every(repo => repo.baseCommit !== undefined)) {
+      const repos = execution.repos.map(repo => ({
+        repo: repo.repo,
+        branch: repo.branch,
+        worktreePath: repo.worktreePath,
+        baseCommit: repo.baseCommit!,
+        reused: true,
+      }))
+      return { root: repos.find(repo => repo.repo === '')?.worktreePath ?? repos[0]!.worktreePath, repos, skipped: [], allReused: true }
+    }
+    if (execution.branch !== undefined && execution.worktreePath !== undefined && execution.baseCommit !== undefined) {
+      return {
+        root: execution.worktreePath,
+        repos: [{ repo: '', branch: execution.branch, worktreePath: execution.worktreePath, baseCommit: execution.baseCommit, reused: true }],
+        skipped: [],
+        allReused: true,
+      }
+    }
+    return undefined
+  }
+
+  /** Attach a new-generation settlement watcher without taking ownership of the live agent. */
+  private adoptLiveRun(executionId: string, sessionId: string, agent: LiveAgentFace, prepared: PreparedMirror | undefined): void {
+    if (this.runs.has(executionId)) return
+    const settle = (): void => {
+      if (!this.runs.has(executionId)) return
+      this.runs.delete(executionId)
+      void this.settleExecution(executionId, sessionId, prepared)
+    }
+    this.runs.set(executionId, {
+      sessionId,
+      ...(prepared !== undefined ? { prepared } : {}),
+      settle,
+      // The hot-reloaded service did not create this agent, but it can still
+      // honor the existing stop button through the live registry face.
+      dispose: async () => { agent.cancel({ kind: 'user' }); await agent.whenIdle() },
+    })
+    this.lastActivityAt.set(sessionId, this.deps.now())
+    void agent.whenIdle().then(settle, () => {
+      this.noteFailure(sessionId, 'agent did not reach quiescence', executionId)
+        .then(() => { this.runs.delete(executionId) })
+        .catch(() => { this.runs.delete(executionId) })
+    })
   }
 
   /**
@@ -433,6 +520,7 @@ export class ExecutionService {
         id: executionId,
         trigger,
         startedAt: this.deps.now(),
+        lastActivityAt: this.deps.now(),
         outcome: 'running',
         ...(isolation === 'none' ? { isolation: 'none' as const } : { isolation: 'worktree' as const, branch }),
       })
@@ -643,6 +731,7 @@ export class ExecutionService {
       void this.settleExecution(executionId, sessionId, prepared)
     }
     this.runs.set(executionId, { sessionId, ...(prepared !== undefined ? { prepared } : {}), settle, dispose: () => handle.dispose() })
+    this.lastActivityAt.set(sessionId, this.deps.now())
     // R2: the rejection path owns its state transition EXCLUSIVELY — the old
     // code also called settle() here, racing two evidence collections whose
     // mutations both checked outcome === 'running': whoever committed first
@@ -897,18 +986,30 @@ export class ExecutionService {
   }
 
   /**
-   * Startup reconciliation after a host restart: executions left `running`
-   * by the previous process can never settle here (their settlement watchers
-   * died with it), so mark them failed and hand their tasks back to todo.
+   * Reconcile running records after load. A real process restart leaves no
+   * live agent, but a plugin hot reload does; retain and adopt those runs
+   * instead of recording a false "interrupted by host restart" failure.
    */
   async reconcile(): Promise<void> {
+    const adopted = new Map<string, { sessionId: string; agent: LiveAgentFace; prepared: PreparedMirror | undefined }>()
+    for (const task of this.deps.store.snapshot().tasks) {
+      for (const execution of task.executions) {
+        if (execution.outcome !== 'running' || execution.sessionId === undefined) continue
+        const agent = this.deps.liveAgent?.(execution.sessionId)
+        if (agent !== undefined) adopted.set(execution.id, {
+          sessionId: execution.sessionId,
+          agent,
+          prepared: this.preparedFromExecution(execution),
+        })
+      }
+    }
     await this.deps.store.mutate('execution-recorded', (ledger) => {
       const now = this.deps.now()
       const touched: TaskRecord[] = []
       for (const task of ledger.tasks) {
         let dirty = false
         for (const execution of task.executions) {
-          if (execution.outcome === 'running') {
+          if (execution.outcome === 'running' && !adopted.has(execution.id)) {
             execution.outcome = 'failed'
             execution.error = 'interrupted by host restart'
             execution.endedAt = now
@@ -926,6 +1027,14 @@ export class ExecutionService {
       }
       return touched.length > 0 ? touched : undefined
     })
+    for (const [executionId, entry] of adopted) {
+      // A concurrent old-generation settlement may already have finished it;
+      // the idempotent settlement mutation below then becomes a no-op.
+      const stillRunning = this.deps.store.snapshot().tasks.some(task =>
+        task.executions.some(execution => execution.id === executionId && execution.outcome === 'running'))
+      if (!stillRunning) continue
+      this.adoptLiveRun(executionId, entry.sessionId, entry.agent, entry.prepared)
+    }
   }
 
   /**
