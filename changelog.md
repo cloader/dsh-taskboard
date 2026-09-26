@@ -6,13 +6,15 @@
 
 - **更新时不再误报任务失败（[#39](https://github.com/cloader/dsh-taskboard/issues/39)）**：正在进行的任务在看板刷新或更新后，会继续等到它真正结束；不会因为看板更新而被提前写成失败。
 - **“认领超时”提示更准确（[#40](https://github.com/cloader/dsh-taskboard/issues/40)）**：只有仍在进行、并且很久没有新进展的任务才会显示这个提示。已经结束的任务不会再因为认领时间较早而被误标。
-- **多人同时使用时保存更稳妥**：看板会按顺序保存最新内容，减少更新或刷新前后互相覆盖任务记录的风险。
+- **进入正在进行的任务更顺手（[PR #37](https://github.com/cloader/dsh-taskboard/pull/37)）**：点击任务后会直接打开对应的工作位置。感谢 [@Fishsb](https://github.com/Fishsb) 的贡献。
+- **多人同时使用时保存更稳妥（[PR #38](https://github.com/cloader/dsh-taskboard/pull/38)）**：看板会按顺序保存最新内容，减少更新或刷新前后互相覆盖任务记录的风险。感谢 [@Fishsb](https://github.com/Fishsb) 的贡献。
 
 **English:**
 
 - **Tasks are no longer wrongly marked as failed during an update ([#39](https://github.com/cloader/dsh-taskboard/issues/39))**: work that is still in progress keeps waiting for its real result when the board is refreshed or updated.
 - **The “claim stale” hint is more accurate ([#40](https://github.com/cloader/dsh-taskboard/issues/40))**: it now appears only for work that is still running and has had no progress for a long time. Finished work is not flagged just because it was claimed earlier.
-- **Safer saving when several updates happen together**: the board saves the latest information in order, reducing the chance that one update overwrites another task record.
+- **Opening work that is in progress is smoother ([PR #37](https://github.com/cloader/dsh-taskboard/pull/37))**: selecting a task now takes you straight to its working place. Thanks to [@Fishsb](https://github.com/Fishsb) for the contribution.
+- **Safer saving when several updates happen together ([PR #38](https://github.com/cloader/dsh-taskboard/pull/38))**: the board saves the latest information in order, reducing the chance that one update overwrites another task record. Thanks to [@Fishsb](https://github.com/Fishsb) for the contribution.
 
 ### 0.8.2
 

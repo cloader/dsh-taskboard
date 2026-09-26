@@ -243,7 +243,8 @@ node scripts/screenshot.mjs     # regenerate img/ screenshots (needs local Edge)
 
 - **Tasks are no longer wrongly marked as failed during an update ([#39](https://github.com/cloader/dsh-taskboard/issues/39))**: work that is still in progress keeps waiting for its real result when the board is refreshed or updated.
 - **The “claim stale” hint is more accurate ([#40](https://github.com/cloader/dsh-taskboard/issues/40))**: it now appears only for work that is still running and has had no progress for a long time. Finished work is not flagged just because it was claimed earlier.
-- **Safer saving when several updates happen together**: the board saves the latest information in order, reducing the chance that one update overwrites another task record.
+- **Opening work that is in progress is smoother ([PR #37](https://github.com/cloader/dsh-taskboard/pull/37))**: selecting a task now takes you straight to its working place. Thanks to [@Fishsb](https://github.com/Fishsb) for the contribution.
+- **Safer saving when several updates happen together ([PR #38](https://github.com/cloader/dsh-taskboard/pull/38))**: the board saves the latest information in order, reducing the chance that one update overwrites another task record. Thanks to [@Fishsb](https://github.com/Fishsb) for the contribution.
 
 ### 0.8.2
 

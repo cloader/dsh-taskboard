@@ -245,7 +245,8 @@ node scripts/screenshot.mjs     # 重新生成 img/ 截图（需本机 Edge）
 
 - **更新时不再误报任务失败（[#39](https://github.com/cloader/dsh-taskboard/issues/39)）**：正在进行的任务在看板刷新或更新后，会继续等到它真正结束；不会因为看板更新而被提前写成失败。
 - **“认领超时”提示更准确（[#40](https://github.com/cloader/dsh-taskboard/issues/40)）**：只有仍在进行、并且很久没有新进展的任务才会显示这个提示。已经结束的任务不会再因为认领时间较早而被误标。
-- **多人同时使用时保存更稳妥**：看板会按顺序保存最新内容，减少更新或刷新前后互相覆盖任务记录的风险。
+- **进入正在进行的任务更顺手（[PR #37](https://github.com/cloader/dsh-taskboard/pull/37)）**：点击任务后会直接打开对应的工作位置。感谢 [@Fishsb](https://github.com/Fishsb) 的贡献。
+- **多人同时使用时保存更稳妥（[PR #38](https://github.com/cloader/dsh-taskboard/pull/38)）**：看板会按顺序保存最新内容，减少更新或刷新前后互相覆盖任务记录的风险。感谢 [@Fishsb](https://github.com/Fishsb) 的贡献。
 
 ### 0.8.2
 
