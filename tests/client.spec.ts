@@ -860,6 +860,47 @@ describe('client half', () => {
     controller.dispose()
   })
 
+  // Regression guard for the DSH 0.1.7 runtime shape: the runtime's sessions
+  // service no longer carries `open()` (0.1.5 had one, 0.1.6+ removed it —
+  // "navigation belongs to view owners"). The documented navigation entry is
+  // uiWorkspace.openSession(); reading a missing `sessions.open` throws inside
+  // the jumper's try, so a runtime-shaped sessions service must still open.
+  it('session jump opens through the navigation service when sessions has no open()', async () => {
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { createSessionJumper } = await import('../src/client/session-jump.ts')
+
+    const client = {
+      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [] }),
+      workspaces: async () => [],
+      stream: () => () => {},
+    }
+    const controller = new BoardController(client as never)
+    controller.openBoard()
+
+    // Runtime-shaped services: probe-clean, no `open` key at all.
+    const sessions = {
+      refresh: async () => {},
+      list: { getSnapshot: () => ({ byId: { 's-live': {} } }) },
+    }
+    const workspaces = { list: { getSnapshot: () => ({ archivedSessionIds: [] as string[] }) } }
+    const navigated: string[] = []
+    const uiWorkspace = { openSession: (id: string) => { navigated.push(id) } }
+
+    controller.installSessionJumper(createSessionJumper({
+      getSessions: () => sessions as never,
+      getWorkspaces: () => workspaces as never,
+      getUiWorkspace: () => uiWorkspace as never,
+    }))
+
+    // The jump must not degrade to 'unavailable' on this runtime, and the
+    // board must close over the session it navigated to.
+    expect(await controller.openSession('s-live')).toBe('opened')
+    expect(navigated).toEqual(['s-live'])
+    expect(controller.getSnapshot().boardOpen).toBe(false)
+
+    controller.dispose()
+  })
+
   it('controller: search filter, urgency sort, and persisted view state', async () => {
     localStorage.clear()
     const { BoardController } = await import('../src/client/controller.ts')
