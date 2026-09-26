@@ -17,15 +17,12 @@ import type { TaskRecord } from '../src/shared/protocol.ts'
 /** A minimal task that satisfies the ledger's plausibility rules. */
 function task(id: string): TaskRecord {
   return {
-    id,
-    title: 'shared-ledger fixture',
-    workspaceId: 'ws-1',
-    status: 'todo',
-    version: 1,
-    comments: [],
-    executions: [],
-    execution: { mode: 'claim' },
-  } as TaskRecord
+    id, title: 'shared-ledger fixture', description: '', prompt: 'Do the thing',
+    workspaceId: 'project', urgency: 'normal', status: 'todo', blocked: false,
+    isolation: 'none', execution: { mode: 'claim' },
+    version: 1, createdAt: 1, updatedAt: 1, createdBy: { kind: 'user' }, updatedBy: { kind: 'user' },
+    comments: [], executions: [],
+  }
 }
 
 /** Create a store backed by a real file that already contains one task. */
@@ -34,17 +31,17 @@ async function fixture() {
   const file = join(root, 'dsh-taskboard.json')
   const seed = new TaskStore({ file })
   await seed.load()
-  await seed.mutate('task-created', ledger => {
-    const created = task('t-shared-1')
-    ledger.tasks.push(created)
-    return [created]
-  })
+  const first = task('t-shared-1')
+  await seed.mutate('task-created', ledger => { ledger.tasks.push(first); return [first] })
   return { file }
 }
 
 /** Read the ledger straight from disk (bypassing any instance's cache). */
-async function onDisk(file: string): Promise<{ revision: number; tasks: Array<{ comments: Array<{ id: string }>; version?: number }> }> {
-  return JSON.parse(await readFile(file, 'utf8')) as never
+async function onDisk(file: string) {
+  return JSON.parse(await readFile(file, 'utf8')) as {
+    revision: number
+    tasks: Array<{ comments: Array<{ id: string }>; version: number }>
+  }
 }
 
 /** Append a marker comment to the first task. */
@@ -52,7 +49,7 @@ function appendMarker(store: TaskStore, id: string) {
   return store.mutate('comment-added', ledger => {
     const first = ledger.tasks[0]
     if (first === undefined) return undefined
-    first.comments.push({ id } as never)
+    first.comments.push({ id } as (typeof first.comments)[number])
     return [first]
   })
 }
@@ -86,12 +83,12 @@ describe('TaskStore shared-file staleness', () => {
     expect(await store.refreshIfStale()).toBe(false)
 
     // An external writer bumps the file behind our back.
-    const raw = JSON.parse(await readFile(file, 'utf8')) as { revision: number }
+    const raw = await onDisk(file)
     raw.revision += 5
     await writeFile(file, JSON.stringify(raw))
 
     expect(await store.refreshIfStale()).toBe(true)
-    expect((store.snapshot() as { revision: number }).revision).toBe(raw.revision)
+    expect(store.snapshot().revision).toBe(raw.revision)
     // Second call is a no-op again.
     expect(await store.refreshIfStale()).toBe(false)
   })
@@ -110,7 +107,7 @@ describe('TaskStore shared-file staleness', () => {
       const result = await store.mutate('task-updated', ledger => {
         const first = ledger.tasks[0]
         if (first === undefined) return undefined
-        first.version = (first.version ?? 1) + 1
+        first.version += 1
         return [first]
       })
       revisions.push(result.ledger.revision)
