@@ -243,7 +243,7 @@ node scripts/screenshot.mjs     # 重新生成 img/ 截图（需本机 Edge）
 
 ### 0.8.2
 
-- **兼容 DSH 0.1.7-rc.2 的执行开场注入（[PR #33](https://github.com/cloader/dsh-taskboard/pull/33)）**：DSH v4 会话格式不再接受通用的 `source.kind: 'plugin'`。看板现在以自身的 `dsh-taskboard` 消息来源写入执行上下文，避免手动和定时任务在启动首轮时因消息格式校验失败；后续的用户 follow-up 消息行为不变。
+- **兼容 DSH 0.1.7-rc.2 的执行开场注入（[PR #33](https://github.com/cloader/dsh-taskboard/pull/33)）**：DSH v4 会话格式不再接受通用的 `source.kind: 'plugin'`。看板现在以自身的 `dsh-taskboard` 消息来源写入执行上下文，避免手动和定时任务在启动首轮时因消息格式校验失败；后续的用户 follow-up 消息行为不变。感谢 @weibaohui 提交并合入此修复。
 - **开发依赖升级**：`@deepseek-ai/dsh-agent`、`dsh-home-paths`、`dsh-host-webserver`、`dsh-system-prompt`、`dsh-tools` 和 `dsh-workspace` 统一升级至 `0.1.7-rc.2`，使开发与测试使用与该修复相同的 DSH API 版本。
 - **定期任务完成策略（[#35](https://github.com/cloader/dsh-taskboard/issues/35)）**：定期任务默认「完成后新建待办」：本轮保留待验收，宿主创建下一轮带 cron 的 todo 卡；也可选择「完成后移回待办」复用本卡等待下次 cron。两种策略均由宿主在结算时执行，不依赖 agent 是否记得改状态，并会由模板和后继卡继承；未设置的既有 cron 任务也采用默认的新建待办策略。
 
