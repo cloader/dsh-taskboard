@@ -35,6 +35,20 @@ import { createRepoScanner, type RepoScanner } from './repos.ts'
 import { MessageId } from './sdk.ts'
 import type { TaskStore } from './store.ts'
 
+/**
+ * Producer-owned message source kind for the framing line dsh-taskboard injects
+ * at the head of each execution turn (the "plugin context row"). dsh 0.1.7-rc.2
+ * retired the generic `kind: 'plugin'` source — the v4 session format now
+ * requires every durable message to carry a producer-owned source kind (a
+ * non-empty string that is not `'plugin'`), declared here so the taskboard owns
+ * its attribution instead of using the retired wrapper.
+ */
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'dsh-taskboard': { kind: 'dsh-taskboard' }
+  }
+}
+
 /** Narrow agents face (the registry's create, structurally). */
 export interface AgentsFace {
   /** Restore a compatible scheduled session; undefined means it is unavailable. */
@@ -610,7 +624,7 @@ export class ExecutionService {
       id: this.deps.mintMessageId?.() ?? MessageId(`msg-taskboard-${crypto.randomUUID()}`),
       role: 'user' as const,
       content: [{ type: 'text' as const, text: this.pluginFraming(task, prepared, isolationNote) }],
-      source: { kind: 'plugin' as const, plugin: 'dsh-taskboard' },
+      source: { kind: 'dsh-taskboard' as const },
     })
     handle.agent.followup({
       id: this.deps.mintMessageId?.() ?? MessageId(`msg-taskboard-${crypto.randomUUID()}`),
