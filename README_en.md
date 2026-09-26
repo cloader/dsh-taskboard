@@ -239,6 +239,12 @@ node scripts/screenshot.mjs     # regenerate img/ screenshots (needs local Edge)
 
 ## Changelog
 
+### 0.8.3
+
+- **Tasks are no longer wrongly marked as failed during an update ([#39](https://github.com/cloader/dsh-taskboard/issues/39))**: work that is still in progress keeps waiting for its real result when the board is refreshed or updated.
+- **The “claim stale” hint is more accurate ([#40](https://github.com/cloader/dsh-taskboard/issues/40))**: it now appears only for work that is still running and has had no progress for a long time. Finished work is not flagged just because it was claimed earlier.
+- **Safer saving when several updates happen together**: the board saves the latest information in order, reducing the chance that one update overwrites another task record.
+
 ### 0.8.2
 
 - **DSH 0.1.7-rc.2 execution-start compatibility ([PR #33](https://github.com/cloader/dsh-taskboard/pull/33))**: the DSH v4 session format no longer accepts the generic `source.kind: 'plugin'`. The board now records its execution framing context under its own `dsh-taskboard` message source, preventing manual and scheduled tasks from failing validation on their opening turn; later user follow-up messages are unchanged. Thanks to @weibaohui for contributing and merging this fix.

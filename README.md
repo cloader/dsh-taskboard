@@ -241,6 +241,12 @@ node scripts/screenshot.mjs     # 重新生成 img/ 截图（需本机 Edge）
 
 ## 升级日志
 
+### 0.8.3
+
+- **更新时不再误报任务失败（[#39](https://github.com/cloader/dsh-taskboard/issues/39)）**：正在进行的任务在看板刷新或更新后，会继续等到它真正结束；不会因为看板更新而被提前写成失败。
+- **“认领超时”提示更准确（[#40](https://github.com/cloader/dsh-taskboard/issues/40)）**：只有仍在进行、并且很久没有新进展的任务才会显示这个提示。已经结束的任务不会再因为认领时间较早而被误标。
+- **多人同时使用时保存更稳妥**：看板会按顺序保存最新内容，减少更新或刷新前后互相覆盖任务记录的风险。
+
 ### 0.8.2
 
 - **兼容 DSH 0.1.7-rc.2 的执行开场注入（[PR #33](https://github.com/cloader/dsh-taskboard/pull/33)）**：DSH v4 会话格式不再接受通用的 `source.kind: 'plugin'`。看板现在以自身的 `dsh-taskboard` 消息来源写入执行上下文，避免手动和定时任务在启动首轮时因消息格式校验失败；后续的用户 follow-up 消息行为不变。感谢 @weibaohui 提交并合入此修复。
