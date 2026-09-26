@@ -287,6 +287,11 @@ export function dispatchIntervalMsOf(settings?: BoardSettings): number {
 /** How a task may run. */
 export type ExecutionMode = 'claim' | 'scheduled'
 
+/** How a periodic cron task continues after a successful scheduled run. */
+export type PeriodicCompletion = 'rearm' | 'spawn'
+/** Default periodic behavior: keep this round for review and create the next todo card. */
+export const DEFAULT_PERIODIC_COMPLETION: PeriodicCompletion = 'spawn'
+
 /**
  * Per-task execution configuration. `claim` tasks wait for an in-project
  * session to claim them; `scheduled` tasks run on the host cron scheduler.
@@ -299,6 +304,12 @@ export interface ExecutionConfig {
    * time it comes due while the card sits in todo.
    */
   cron?: string
+  /**
+   * Optional host-owned completion policy for periodic cron tasks. `rearm`
+   * returns this card to todo; `spawn` preserves it for review and creates a
+   * fresh todo successor. Omitted records use the {@link DEFAULT_PERIODIC_COMPLETION}.
+   */
+  periodicCompletion?: PeriodicCompletion
   /**
    * One-shot trigger time (epoch ms). Present on ONE-SHOT scheduled tasks
    * (定时执行): the scheduler fires the task once when due and consumes the
@@ -719,7 +730,7 @@ export function spawnNextCycle(source: TaskRecord, prevExecutionId: string | und
     urgency: source.urgency,
     status: 'todo',
     blocked: false,
-    execution: { mode: 'scheduled', cron, nextRunAt: next },
+    execution: { mode: 'scheduled', cron, nextRunAt: next, periodicCompletion: source.execution.periodicCompletion ?? DEFAULT_PERIODIC_COMPLETION },
     ...(source.model !== undefined ? { model: structuredClone(source.model) } : {}),
     ...(source.isolation !== undefined ? { isolation: source.isolation } : {}),
     ...(source.presetId !== undefined ? { presetId: source.presetId } : {}),
@@ -894,7 +905,7 @@ function normalizeRunAt(raw: unknown): number | undefined {
  * @returns the normalized config.
  */
 export function normalizeExecution(
-  raw: { mode?: string; cron?: string; runAt?: unknown },
+  raw: { mode?: string; cron?: string; runAt?: unknown; periodicCompletion?: unknown },
   now: number,
   opts?: { allowPastRunAt?: boolean },
 ): ExecutionConfig {
@@ -902,13 +913,17 @@ export function normalizeExecution(
   if (mode !== 'claim' && mode !== 'scheduled') {
     throw new Error("execution.mode must be 'claim' or 'scheduled'")
   }
-  if (mode === 'claim') return { mode }
+  if (mode === 'claim') {
+    if (raw.periodicCompletion !== undefined) throw new Error('execution.periodicCompletion requires a cron schedule')
+    return { mode }
+  }
   const runAt = normalizeRunAt(raw.runAt)
   const cron = (raw.cron ?? '').trim()
   if (cron.length > 0 && runAt !== undefined) {
     throw new Error('execution: cron and runAt are mutually exclusive (periodic vs one-shot)')
   }
   if (runAt !== undefined) {
+    if (raw.periodicCompletion !== undefined) throw new Error('execution.periodicCompletion requires a cron schedule')
     if (!opts?.allowPastRunAt && runAt <= now) throw new Error('execution.runAt must be in the future')
     return { mode, runAt, nextRunAt: runAt }
   }
@@ -916,7 +931,11 @@ export function normalizeExecution(
   if (match === null) throw new Error('execution.cron is not a valid 5-field cron expression')
   const next = nextCronTime(match, now)
   if (next === null) throw new Error('execution.cron never matches within 4 years')
-  return { mode, cron, nextRunAt: next }
+  const periodicCompletion = raw.periodicCompletion ?? DEFAULT_PERIODIC_COMPLETION
+  if (periodicCompletion !== 'rearm' && periodicCompletion !== 'spawn') {
+    throw new Error("execution.periodicCompletion must be 'rearm' or 'spawn'")
+  }
+  return { mode, cron, nextRunAt: next, periodicCompletion }
 }
 
 /**
@@ -1237,7 +1256,7 @@ export function validateImportedTask(raw: unknown, now: number): { ok: true; tas
   if (!isValidTaskId(id)) return fail('missing/invalid id (must match ^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$)')
   try {
     const rawExecution = typeof e.execution === 'object' && e.execution !== null
-      ? e.execution as { mode?: string; cron?: string; runAt?: unknown; queuedRunAt?: unknown; queuedAt?: unknown; dispatchingRunAt?: unknown }
+      ? e.execution as { mode?: string; cron?: string; runAt?: unknown; periodicCompletion?: unknown; queuedRunAt?: unknown; queuedAt?: unknown; dispatchingRunAt?: unknown }
       : {}
     const execution = normalizeExecution(
       rawExecution,

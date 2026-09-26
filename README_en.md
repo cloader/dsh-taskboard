@@ -9,7 +9,7 @@ A **task board plugin for DeepSeek Harness**: humans create cards, agents claim 
 
 - **Closed loop**: human creates a card → agent claims & executes → structured hand-off report → human accepts (✓ done / ✗ send back with a reason)
 - **10 `taskboard_*` agent tools** plus code-level protocol gates: agents can never move a task to *done*, held tasks cannot be snatched away, cross-project claims are rejected
-- **Execution**: manual or cron-scheduled (host-side scheduling keeps firing with the browser closed); manual runs open a new session, scheduled runs reuse the same task's conversation, optionally pinned to a model and preset
+- **Execution**: manual, one-shot scheduled, or host-side periodic cron runs (keep running when the browser closes); periodic tasks can return to todo each round or keep a review record while creating the next todo card
 - **Git worktree isolation**: each run works on its own worktree + dedicated task branch, one-click merge at acceptance; parallel multi-repo workspaces are mirrored whole (0.6.3); non-git projects fall back automatically
 - **Efficient acceptance**: DoD acceptance checklists (agent checks items off with evidence), structured execution reports (summary / changed files / checks / artifacts / risks), in-board diff viewer
 - **Live board**: SSE real-time refresh, five-column flow, persisted filters & sorting, JSON import/export, task templates
@@ -80,7 +80,7 @@ Uninstall: `dsh plugin --profile web remove dsh-taskboard` (ledger data stays in
 
 ## Quick Start
 
-**Step 1 · Create a card**: click "+ New Task" in the board toolbar — pick a project, urgency, execution mode (claim / scheduled + cron), model and preset, Git isolation toggle, and an acceptance checklist; tick "⚡ Run now" to execute immediately.
+**Step 1 · Create a card**: click "+ New Task" in the board toolbar — pick a project, urgency, execution mode (claim / one-shot / periodic cron), model and preset, Git isolation toggle, and an acceptance checklist. Periodic tasks also choose whether completion returns to todo or creates a new todo card; tick "⚡ Run now" to execute immediately.
 
 **Step 2 · An agent executes it**, triggered any of three ways:
 
@@ -130,7 +130,7 @@ Available in any session. Project boundary: only sessions belonging to the task'
 - Tasks belong to projects: claiming validates session ownership — no snatching across projects
 - Three-color urgency (urgent red / normal purple / relaxed blue) with filtering and color bars; search (title / ID) and in-column sorting; filters and sorting persist
 - Status-colored dots on column headers: backlog gray / todo blue / in-progress orange / in-review purple / done green / deleted red
-- Create/edit modal: project, model (with reasoning effort), urgency, execution mode, cron with live validation & next-run preview, isolation toggle, checklist editor
+- Create/edit modal: project, model (with reasoning effort), urgency, execution mode, cron with live validation & next-run preview, periodic completion policy, isolation toggle, checklist editor
 - Detail panel: status transitions (*done* is human-only; completing with unchecked items asks for confirmation and shows the count), agent/user comment thread, execution history (newest first; session IDs open the execution session on click; deleted/archived targets get distinct notices), stop execution, worktree isolation block (branch / commits / change stats / merge & cleanup), execution report block, acceptance checklist block
 - Quick actions on In Review cards: "✓ Done" one-click accept, "✗ Send back" returns to Todo with an optional reason agents read before starting
 - **Image attachments (0.7.0)**: task descriptions and comments accept PNG/JPEG/GIF/WebP through file picker, paste, or drag and drop and insert Markdown automatically; task details show thumbnails with click-to-zoom lightbox previews. Images stay in the local data directory, capped at 5 MiB each
@@ -152,6 +152,7 @@ Available in any session. Project boundary: only sessions belonging to the task'
 
 **Execution**
 - Manual runs open a new session. The first cron run creates a conversation; subsequent triggers reuse that task's previous scheduled session and context, restoring its persisted history after a DSH restart. Each run still has a separate result/report and receives the current task content and hand-off protocol. Manual runs do not replace the scheduled conversation. A deleted/archived session or changed project, model, preset, permission or isolation configuration starts a new conversation. Busy, locked or unrestorable sessions fall back to a brand-new conversation so the scheduled run still proceeds. Pre-upgrade records and imported tasks start a new conversation on their first scheduled run. Session reuse does not change Git worktree preparation; the current run's instructions define the working directory and state.
+- **Periodic completion policies (0.8.2)**: choose the behavior under **After periodic completion** in the task form. The default **Create a new todo** preserves this round for review and has the host create a new todo card inheriting the cron, prompt, and configuration. **Return to todo** has the host re-arm the same card for the next cron window. The choice persists on the task and is inherited by templates and successors; settlement enforces it without relying on an agent status move. Existing cron tasks without an explicit setting use the same default.
 - **Per-task presets (0.3.3)**: an "execution mode (preset)" dropdown in the create/edit form — execution sessions are composed from that preset (tool sets and persona come from it, matching how the GUI composes new sessions); defaults to the deployment default preset, or pick "follow deployment default"; a broken preset fails the execution outright and records why in the execution history (no half-composed sessions); changeable anytime, effective next round
 - **Git worktree isolated execution (0.3.0)**: per-task toggle (since 0.5.0 the default for newly created tasks comes from Board Settings; factory default runs in place). Every execution happens on a dedicated worktree at `<project>/.dsh-worktrees/<taskId>`, branch `task/<title>+<taskId>` (fixed after first creation; renaming doesn't rename branches). The executing session stays rooted at the project directory (grouping, tools, and the file sandbox fully available — DSH requires session cwd === workspace root, fixed in 0.3.2), and the worktree path plus boundary rules are spelled out in the opening instructions. Settlement collects commit lists / uncommitted-changes warnings / change stats automatically. Non-git projects or missing git degrade gracefully to in-place execution (the reason is recorded; the ledger and execution flow never fail because of git). At acceptance: one-click `--no-ff` merge into the main working tree (dirty tree / conflicts reported verbatim, never auto-resolved), worktree deletion (refused with uncommitted changes), optional branch deletion. "↻ Resume" continues on the existing worktree/branch (previous commits and edits kept)
 - **Multi-repo mirror isolation (0.6.3)**: when a workspace holds several parallel git repositories (a root repo plus nested independent ones), worktree mode upgrades into a whole-workspace task mirror — a bounded scan discovers every repo (depth ≤3, capped at 8, 60s cache; submodule / linked-worktree shapes are skipped), each repo gets its own worktree on the same task branch mounted at its relative path under `<project>/.dsh-worktrees/<taskId>/`; the session framing lists every repo's mirror path and branch and marks un-mirrored repos do-not-touch; commit evidence, diff viewing (`?repo=`) and merging (per-repo `--no-ff`, one conflict never blocking the others, per-repo summaries) all work per repo; mirror cleanup aggregates dirty checks across all repo worktrees and removes children before the root; the new `branches` / `repos` record fields are purely additive — single-repo behavior and old data are untouched; container workspaces whose root repo tracks sub-repos as gitlinks (embedded repos) are fully supported too — the structural noise nested child mirrors produce in the root mirror's status (untracked directories / gitlink drift) is exempted automatically from evidence collection, merge clean-checks, and mirror removal; the create-task form shows an "mirrors N repos" note on multi-repo workspaces, and pure-container workspaces (root not a repo, parallel sub-repos only) can pick worktree isolation too
@@ -201,6 +202,9 @@ See [Configuration & Data](#configuration--data). "⬇ JSON" exports and restore
 **Do scheduled tasks still fire when the browser is closed?**
 Yes. Scheduling lives in the host process and is browser-independent; missed windows are skipped, not replayed.
 
+**Why does my periodic task stop in In Review, and how can it continue automatically?**
+By default, the system retains this round for review and creates the next todo card. In the task form, choose **Return to todo** instead to reuse the card at the next cron window. Both policies are host-enforced; existing cron tasks without an explicit setting use the default create-successor behavior too.
+
 **My project isn't a git repo — does it still work?**
 Yes. Worktree isolation degrades automatically to in-place execution with the reason recorded in the execution history; everything else is unaffected.
 
@@ -234,6 +238,12 @@ node scripts/screenshot.mjs     # regenerate img/ screenshots (needs local Edge)
 ```
 
 ## Changelog
+
+### 0.8.2
+
+- **DSH 0.1.7-rc.2 execution-start compatibility ([PR #33](https://github.com/cloader/dsh-taskboard/pull/33))**: the DSH v4 session format no longer accepts the generic `source.kind: 'plugin'`. The board now records its execution framing context under its own `dsh-taskboard` message source, preventing manual and scheduled tasks from failing validation on their opening turn; later user follow-up messages are unchanged.
+- **Development dependency upgrade**: `@deepseek-ai/dsh-agent`, `dsh-home-paths`, `dsh-host-webserver`, `dsh-system-prompt`, `dsh-tools`, and `dsh-workspace` now use `0.1.7-rc.2`, so development and test runs use the same DSH API version as this fix.
+- **Periodic completion policies ([#35](https://github.com/cloader/dsh-taskboard/issues/35))**: periodic tasks now default to creating a new todo successor: the finished round stays in review while the host creates the next cron-bearing card. **Return to todo** remains available to reuse the same card for the next cron window. The host enforces both policies during settlement regardless of agent status moves; templates and successors preserve the selection, and existing cron tasks without an explicit setting use the new default.
 
 ### 0.8.1
 

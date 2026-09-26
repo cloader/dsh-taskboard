@@ -681,6 +681,55 @@ export class ExecutionService {
             delete t.claimedBy
             delete t.claimedAt
           }
+          const periodicCompletion = execution.trigger === 'scheduled' && t.execution.cron !== undefined
+            ? t.execution.periodicCompletion ?? 'spawn'
+            : undefined
+          // These policies are host-owned: an agent may follow the ordinary
+          // hand-off protocol and already have moved the card to in_review,
+          // but that must never suppress the selected periodic continuation.
+          if (periodicCompletion === 'rearm') {
+            t.status = 'todo'
+            t.updatedAt = now
+            t.updatedBy = { kind: 'system' }
+            t.comments.push({
+              id: newCommentId(),
+              body: normalizeBody('[系统] 定期任务本轮执行完成，已按设置自动回到待办，等待下一次触发。'),
+              systemKey: 'sys.periodicRearmed',
+              version: 1,
+              createdAt: now,
+            })
+            return [t]
+          }
+          if (periodicCompletion === 'spawn') {
+            const match = parseCron(t.execution.cron!)
+            const next = match === null ? undefined : nextCronTime(match, now) ?? undefined
+            t.status = 'in_review'
+            t.updatedAt = now
+            t.updatedBy = { kind: 'system' }
+            if (next !== undefined) {
+              const successor = spawnNextCycle(t, executionId, now)
+              t.execution = { mode: 'claim' }
+              t.comments.push({
+                id: newCommentId(),
+                body: normalizeBody(`[系统] 定期任务本轮执行完毕，已按设置新建待办卡 ${successor.id} 承接下一轮，请审查本卡后验收。`),
+                systemKey: 'sys.periodicHandoff',
+                systemParams: { nextTaskId: successor.id },
+                version: 1,
+                createdAt: now,
+              })
+              ledger.tasks.push(successor)
+              return [t, successor]
+            }
+            t.execution = { mode: 'claim' }
+            t.comments.push({
+              id: newCommentId(),
+              body: normalizeBody('[系统] 定期表达式已无未来触发时间，本轮结束后定时停用；如需继续请重新设置。'),
+              systemKey: 'sys.cronDead',
+              version: 1,
+              createdAt: now,
+            })
+            return [t]
+          }
           if (t.status === 'in_progress') {
             const commented = t.comments.some(c => c.threadId === sessionId && c.createdAt >= (execution.startedAt ?? 0))
             t.comments.push({
@@ -892,13 +941,20 @@ export class ExecutionService {
    * @param degradeNote - why a worktree task degraded to the main directory.
    */
   private pluginFraming(task: TaskRecord, prepared?: PreparedMirror, degradeNote?: string): string {
+    const periodicCompletion = task.execution.mode === 'scheduled' && task.execution.cron !== undefined
+      ? task.execution.periodicCompletion ?? 'spawn'
+      : undefined
     let text = `【任务看板】${task.title}（ID: ${task.id}）\n`
       + `本会话由任务看板执行服务启动，任务已置为进行中——无需认领；「已完成」仅限用户在界面操作（代码已限制，移了会被拒）。\n`
       + `完成后按序交接：\n`
       + `1. taskboard_get 读取本任务，取得最新 version\n`
       + `2. taskboard_execution_report 提交结构化执行报告（做了什么/改了哪些文件/如何验证/剩余风险；提交与评论不冲突，都会展示给验收人）\n`
       + `3. taskboard_comment_add 留评论：做了什么改动 / 如何验证 / 剩余风险\n`
-      + `4. taskboard_move 将本任务移至待验收 in_review（带 ifVersion）\n`
+      + `${periodicCompletion === 'rearm'
+        ? '4. 本任务设为“完成后移回待办”：完成报告和评论后无需改变状态，宿主会在会话结束时自动回到待办。\n'
+        : periodicCompletion === 'spawn'
+          ? '4. 本任务设为“完成后新建待办”：完成报告和评论后无需改变状态，宿主会保留本卡待验收并新建下一轮待办卡。\n'
+          : '4. taskboard_move 将本任务移至待验收 in_review（带 ifVersion）\n'}`
       + `若无法完成：留评论说明原因，将任务移回待办 todo。`
     if (task.checklist !== undefined && task.checklist.length > 0) {
       const items = task.checklist

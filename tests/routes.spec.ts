@@ -957,6 +957,26 @@ describe('taskboard routes 0.4.0 (checklist / templates / import / diff)', () =>
     expect(bad.status).toBe(400)
   })
 
+  it('persists a periodic completion policy on tasks and templates', async () => {
+    const created = await post('/dsh-taskboard/tasks', {
+      title: '自动续跑', workspaceId: 'ws-a', urgency: 'normal',
+      execution: { mode: 'scheduled', cron: '0 9 * * *', periodicCompletion: 'rearm' },
+    })
+    expect(created.status).toBe(201)
+    const id = created.json.value.id as string
+    expect(store.get(id)!.execution.periodicCompletion).toBe('rearm')
+    const updated = await post(`/dsh-taskboard/tasks/${id}/update`, {
+      ifVersion: 1, execution: { mode: 'scheduled', cron: '0 9 * * *', periodicCompletion: 'spawn' },
+    })
+    expect(updated.status).toBe(200)
+    expect(store.get(id)!.execution.periodicCompletion).toBe('spawn')
+    const template = await post('/dsh-taskboard/templates', {
+      name: '自动续跑模板', task: { execution: { mode: 'scheduled', cron: '0 9 * * *', periodicCompletion: 'spawn' } },
+    })
+    expect(template.status).toBe(201)
+    expect(template.json.value.task.execution.periodicCompletion).toBe('spawn')
+  })
+
   // ------------------------------------------------------------- templates
   it('templates: seeds built-ins, upserts, renames, deletes', async () => {
     const list = await (await fetch(`${base}/dsh-taskboard/templates`)).json()

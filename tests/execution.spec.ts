@@ -288,6 +288,47 @@ describe('ExecutionService', () => {
     expect(t.comments[0]!.body).toContain('未按协议交接')
   })
 
+  it('re-arms a periodic task even when its agent already moved it to in_review', async () => {
+    const store = await storeWith(task({ execution: { mode: 'scheduled', cron: '* * * * *', nextRunAt: 2_000, periodicCompletion: 'rearm' } }))
+    const agents = fakeAgents()
+    const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: () => 1_000 })
+    const result = await svc.run('t-run', 'scheduled')
+    if (!result.ok) throw new Error('run failed')
+    await store.mutate('task-moved', ledger => {
+      const t = ledger.tasks[0]!
+      t.status = 'in_review'
+      delete t.claimedBy
+      return [t]
+    })
+    agents.idle(result.sessionId)
+    await waitFor(() => store.get('t-run')!.executions[0]!.outcome === 'succeeded')
+    const t = store.get('t-run')!
+    expect(t.status).toBe('todo')
+    expect(t.execution).toMatchObject({ mode: 'scheduled', cron: '* * * * *', nextRunAt: 2_000, periodicCompletion: 'rearm' })
+    expect(t.comments.some(c => c.systemKey === 'sys.periodicRearmed')).toBe(true)
+  })
+
+  it('defaults an unconfigured periodic task to a todo successor even when its agent already moved it to in_review', async () => {
+    const store = await storeWith(task({ execution: { mode: 'scheduled', cron: '* * * * *', nextRunAt: 2_000 } }))
+    const agents = fakeAgents()
+    const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: () => 1_000 })
+    const result = await svc.run('t-run', 'scheduled')
+    if (!result.ok) throw new Error('run failed')
+    await store.mutate('task-moved', ledger => {
+      const t = ledger.tasks[0]!
+      t.status = 'in_review'
+      delete t.claimedBy
+      return [t]
+    })
+    agents.idle(result.sessionId)
+    await waitFor(() => store.snapshot().tasks.length === 2)
+    const [finished, successor] = store.snapshot().tasks
+    expect(finished!.status).toBe('in_review')
+    expect(finished!.execution).toEqual({ mode: 'claim' })
+    expect(successor).toMatchObject({ status: 'todo', spawnedFrom: 't-run' })
+    expect(successor!.execution).toMatchObject({ mode: 'scheduled', cron: '* * * * *', periodicCompletion: 'spawn' })
+  })
+
   it('passes pinned model and reasoningEffort to agents.create', async () => {
     const store = await storeWith(task({
       model: { provider: 'deepseek', model: 'deepseek-reasoner', reasoningEffort: 'high' },

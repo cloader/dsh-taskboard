@@ -47,6 +47,10 @@ describe('normalizeExecution runAt', () => {
     expect(cfg.runAt).toBe(T0 + 60_000)
   })
 
+  it('defaults periodic cron completion to a new todo successor', () => {
+    expect(normalizeExecution({ mode: 'scheduled', cron: '0 9 * * *' }, T0).periodicCompletion).toBe('spawn')
+  })
+
   it('rejects a past runAt by default and cron/runAt together', () => {
     expect(() => normalizeExecution({ mode: 'scheduled', runAt: T0 - 1 }, T0)).toThrow()
     expect(() => normalizeExecution({ mode: 'scheduled', cron: '* * * * *', runAt: T0 + 1 }, T0)).toThrow(/mutually exclusive/)
@@ -72,7 +76,7 @@ describe('spawnNextCycle', () => {
     expect(next.id).not.toBe(source.id)
     expect(next.status).toBe('todo')
     expect(next.spawnedFrom).toBe('t-src')
-    expect(next.execution).toEqual({ mode: 'scheduled', cron: '0 9 * * *', nextRunAt: expect.any(Number) })
+    expect(next.execution).toEqual({ mode: 'scheduled', cron: '0 9 * * *', nextRunAt: expect.any(Number), periodicCompletion: 'spawn' })
     expect(next.execution.nextRunAt!).toBeGreaterThan(T0)
     expect(next.urgency).toBe('urgent')
     expect(next.branch).toBe('task/t-src+abc')
@@ -80,6 +84,11 @@ describe('spawnNextCycle', () => {
     expect(next.createdBy).toEqual({ kind: 'system' })
     expect(next.executions).toEqual([])
     expect(next.comments[0]?.systemKey).toBe('sys.spawnedFrom')
+  })
+
+  it('preserves the configured completion policy on a successor', () => {
+    const source = taskOf('t-src', { mode: 'scheduled', cron: '0 9 * * *', periodicCompletion: 'spawn' })
+    expect(spawnNextCycle(source, 'e-1', T0).execution.periodicCompletion).toBe('spawn')
   })
 
   it('throws on a dead cron (no future match)', () => {

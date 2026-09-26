@@ -18,7 +18,7 @@ async function fixture() {
   const task: TaskRecord = {
     id: 'recurring', title: 'Daily check', description: '', prompt: 'Check current state',
     workspaceId: 'project', urgency: 'normal', status: 'todo', blocked: false,
-    isolation: 'none', execution: { mode: 'scheduled', cron: '* * * * *' },
+    isolation: 'none', execution: { mode: 'scheduled', cron: '* * * * *', periodicCompletion: 'rearm' },
     version: 1, createdAt: 1, updatedAt: 1, createdBy: { kind: 'user' }, updatedBy: { kind: 'user' },
     comments: [], executions: [],
   }
@@ -70,16 +70,15 @@ async function fixture() {
     expect(service.inFlight()).toBe(0)
     now += 100
   }
-  // 0.7.x periodic semantics: a finished round lives in in_review while a
-  // fresh todo card carries the cron. The fixture keeps ONE card, so each
-  // scheduled run first re-arms it (todo + cron) — standing in for the
-  // successor card the host would mint — before triggering.
+  // This suite exercises scheduled-session reuse on ONE stable card, so it
+  // explicitly chooses the rearm policy instead of the default successor-card
+  // policy.
   const run = async (trigger: 'scheduled' | 'manual' = 'scheduled', service = svc, ledger = store) => {
     if (trigger === 'scheduled') {
       await ledger.mutate('task-updated', l => {
         const t = l.tasks.find(x => x.id === task.id)!
         t.status = 'todo'
-        t.execution = { mode: 'scheduled', cron: '* * * * *' }
+        t.execution = { mode: 'scheduled', cron: '* * * * *', periodicCompletion: 'rearm' }
         return [t]
       })
     }
@@ -220,7 +219,7 @@ describe('scheduled session reuse', () => {
     await f.finish(first.sessionId)
   })
 
-  it('does not count an earlier run comment as the current handoff', async () => {
+  it('does not let an earlier run comment interfere with the rearm policy', async () => {
     const f = await fixture()
     const first = await f.run()
     await f.store.mutate('comment-added', ledger => {
@@ -231,7 +230,7 @@ describe('scheduled session reuse', () => {
     const second = await f.run()
     await f.finish(second.sessionId)
     const keys = f.store.get(f.task.id)!.comments.map(c => c.systemKey)
-    expect(keys).toContain('sys.endedNoHandoff')
-    expect(keys.at(-1)).toBe('sys.periodicHandoff')
+    expect(keys).not.toContain('sys.endedNoHandoff')
+    expect(keys.at(-1)).toBe('sys.periodicRearmed')
   })
 })

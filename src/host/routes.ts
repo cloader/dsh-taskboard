@@ -143,7 +143,7 @@ function normalizeTemplateSpec(raw: unknown, now: number): TaskTemplate['task'] 
   if (presetId !== undefined && presetId.trim().length > 0) spec.presetId = presetId.trim()
   if (permission !== undefined && permission.trim().length > 0) spec.permission = asPermission(permission)
   if (e.execution !== undefined) {
-    spec.execution = normalizeExecution(e.execution as { mode?: string; cron?: string; runAt?: unknown }, now)
+    spec.execution = normalizeExecution(e.execution as { mode?: string; cron?: string; runAt?: unknown; periodicCompletion?: unknown }, now)
   }
   if (e.model !== undefined) spec.model = normalizeModel(e.model)
   if (e.checklist !== undefined) {
@@ -678,7 +678,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
           if (status !== 'backlog' && status !== 'todo') {
             throw new Error('Error: invalid_transition: a new task must start as backlog or todo')
           }
-          const execution = normalizeExecution((body.execution as { mode?: string; cron?: string; runAt?: unknown } | undefined) ?? {}, options.now())
+          const execution = normalizeExecution((body.execution as { mode?: string; cron?: string; runAt?: unknown; periodicCompletion?: unknown } | undefined) ?? {}, options.now())
           const model = body.model === undefined ? undefined : checkModel(body.model, options.modelProviders)
           const isolationRaw = str(body, 'isolation')
           // 0.5.0: an omitted isolation is MATERIALIZED from the board
@@ -774,7 +774,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
               }
               if (typeof body.blocked === 'boolean') next.blocked = body.blocked
               // The GUI (task owner surface) may edit model/execution; null clears the model.
-              if (body.execution !== undefined) next.execution = normalizeExecution(body.execution as { mode?: string; cron?: string; runAt?: unknown }, options.now())
+              if (body.execution !== undefined) next.execution = normalizeExecution(body.execution as { mode?: string; cron?: string; runAt?: unknown; periodicCompletion?: unknown }, options.now())
               if (body.model === null) next.model = undefined
               else if (body.model !== undefined) next.model = checkModel(body.model, options.modelProviders)
               // Isolation may change only before the first execution (分支与基线

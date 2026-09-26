@@ -65,7 +65,7 @@ export type CreateTaskBody = {
   urgency: string
   description?: string
   prompt?: string
-  execution?: { mode?: string; cron?: string; runAt?: string | number }
+  execution?: { mode?: string; cron?: string; runAt?: string | number; periodicCompletion?: 'rearm' | 'spawn' }
   model?: TaskModel
   /** Code isolation for executions ('worktree' | 'none'); omitted = default. */
   isolation?: string
@@ -87,7 +87,7 @@ export type UpdateTaskBody = {
   blocked?: boolean
   /** Rebind the task to another project (GUI owner surface only). */
   workspaceId?: string
-  execution?: { mode?: string; cron?: string; runAt?: string | number }
+  execution?: { mode?: string; cron?: string; runAt?: string | number; periodicCompletion?: 'rearm' | 'spawn' }
   model?: TaskModel | null
   /** Change isolation; locked once the task has execution history. */
   isolation?: string
@@ -182,7 +182,7 @@ export type TaskTemplateSpec = {
   description?: string
   prompt?: string
   urgency?: string
-  execution?: { mode?: string; cron?: string; runAt?: string | number }
+  execution?: { mode?: string; cron?: string; runAt?: string | number; periodicCompletion?: 'rearm' | 'spawn' }
   model?: TaskModel
   isolation?: string
   presetId?: string

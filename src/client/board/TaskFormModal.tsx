@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { BoardController } from '../controller.ts'
 import type { TaskTemplateSpec } from '../../shared/api.ts'
-import type { ChecklistItem, IsolationMode, PermissionMode, TaskRecord, Urgency } from '../../shared/protocol.ts'
+import type { ChecklistItem, IsolationMode, PermissionMode, PeriodicCompletion, TaskRecord, Urgency } from '../../shared/protocol.ts'
 import { MAX_CHECKLIST_ITEMS, asPermission, defaultIsolationOf, defaultPermissionOf, nextCronTime, parseCron } from '../../shared/protocol.ts'
 import { fmtTime } from './format.ts'
 import { useT, type Translate } from '../i18n/runtime.ts'
@@ -183,6 +183,9 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
     initExec?.mode === 'scheduled' ? (initExec.cron !== undefined ? 'periodic' : 'once') : 'claim',
   )
   const [cron, setCron] = useState(task?.execution.cron ?? prefill?.execution?.cron ?? '0 9 * * *')
+  const [periodicCompletion, setPeriodicCompletion] = useState<PeriodicCompletion>(
+    task?.execution.periodicCompletion ?? prefill?.execution?.periodicCompletion ?? 'spawn',
+  )
   // One-shot trigger (定时执行): datetime-local string; '' = unset.
   const initRunAt = initExec?.mode === 'scheduled' && initExec.runAt !== undefined ? initExec.runAt : undefined
   const [runAt, setRunAt] = useState(() => {
@@ -265,8 +268,8 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
   const valid = title.trim().length > 0 && workspaceId !== '' && !cronBad && !runAtBad
 
   /** Execution payload for submit: claim | periodic (cron) | one-shot (runAt ISO). */
-  const executionPayload = (): { mode: 'claim' | 'scheduled'; cron?: string; runAt?: string } => {
-    if (mode === 'periodic') return { mode: 'scheduled', cron: cron.trim() }
+  const executionPayload = (): { mode: 'claim' | 'scheduled'; cron?: string; runAt?: string; periodicCompletion?: PeriodicCompletion } => {
+    if (mode === 'periodic') return { mode: 'scheduled', cron: cron.trim(), periodicCompletion }
     if (mode === 'once') return { mode: 'scheduled', runAt: new Date(runAt).toISOString() }
     return { mode: 'claim' }
   }
@@ -572,29 +575,43 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
             )}
 
             {mode === 'periodic' && (
-              <Field label={t('form.field.cron')} required full>
-                <input
-                  className={cronBad ? 'dsh-atb-input-bad' : undefined}
-                  value={cron}
-                  onChange={e => setCron(e.target.value)}
-                  placeholder={t('form.cron.placeholder')}
-                  spellCheck={false}
-                />
-                <span className="dsh-atb-cron-presets">
-                  {cronPresets(t).map(p => (
-                    <button
-                      key={p.cron}
-                      type="button"
-                      className="dsh-atb-cron-preset"
-                      data-on={cron.trim() === p.cron}
-                      onClick={() => setCron(p.cron)}
-                    >
-                      {p.label}
+              <>
+                <Field label={t('form.field.cron')} required full>
+                  <input
+                    className={cronBad ? 'dsh-atb-input-bad' : undefined}
+                    value={cron}
+                    onChange={e => setCron(e.target.value)}
+                    placeholder={t('form.cron.placeholder')}
+                    spellCheck={false}
+                  />
+                  <span className="dsh-atb-cron-presets">
+                    {cronPresets(t).map(p => (
+                      <button
+                        key={p.cron}
+                        type="button"
+                        className="dsh-atb-cron-preset"
+                        data-on={cron.trim() === p.cron}
+                        onClick={() => setCron(p.cron)}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                    {!cronBad && nextRun !== null && <span className="dsh-atb-cron-next">{t('form.cron.next', { time: fmtTime(nextRun) })}</span>}
+                  </span>
+                </Field>
+                <Field label={t('form.field.periodicCompletion')} full>
+                  <div className="dsh-atb-mode-picker">
+                    <button type="button" className="dsh-atb-mode-opt" data-on={periodicCompletion === 'rearm'} onClick={() => setPeriodicCompletion('rearm')}>
+                      <span className="dsh-atb-mode-name">{t('form.periodicCompletion.rearm')}</span>
+                      <span className="dsh-atb-mode-hint">{t('form.periodicCompletion.rearmHint')}</span>
                     </button>
-                  ))}
-                  {!cronBad && nextRun !== null && <span className="dsh-atb-cron-next">{t('form.cron.next', { time: fmtTime(nextRun) })}</span>}
-                </span>
-              </Field>
+                    <button type="button" className="dsh-atb-mode-opt" data-on={periodicCompletion === 'spawn'} onClick={() => setPeriodicCompletion('spawn')}>
+                      <span className="dsh-atb-mode-name">{t('form.periodicCompletion.spawn')}</span>
+                      <span className="dsh-atb-mode-hint">{t('form.periodicCompletion.spawnHint')}</span>
+                    </button>
+                  </div>
+                </Field>
+              </>
             )}
 
             <Field label={t('form.field.isolation')} full>
