@@ -66,6 +66,35 @@ export class TaskStore {
     await persistAtomic(file, JSON.stringify(this.ledger))
   }
 
+  /**
+   * Re-read the ledger when the file has moved ahead of our cached copy.
+   *
+   * The ledger file is SHARED state: a second store instance (a previous
+   * plugin generation whose long-lived callbacks are still running, or a
+   * second host) can commit between our load and our write. Because a store
+   * caches its snapshot forever (`load()` is a no-op once loaded) and
+   * `mutate` persists the WHOLE document, writing a stale copy silently
+   * rolls those commits back — same revision, no error, invisible to
+   * subscribers. Re-read whenever the file is ahead so the cache is never
+   * authority over a newer document.
+   * @returns whether the cached ledger was replaced.
+   */
+  async refreshIfStale(): Promise<boolean> {
+    let parsed: TaskLedger
+    try {
+      parsed = JSON.parse(await readFile(this.file, 'utf8')) as TaskLedger
+    } catch {
+      return false
+    }
+    if (typeof parsed?.revision !== 'number' || !Array.isArray(parsed.tasks)) return false
+    if (parsed.revision <= this.ledger.revision) return false
+    // Drop the cache and re-adopt through loadOnce so normalization stays in one place.
+    this.loaded = false
+    this.loadPromise = undefined
+    await this.load()
+    return true
+  }
+
   /** Switch future writes after a prepared migration commits. */
   setLocation(file: string): void { this.file = file }
 
@@ -184,6 +213,9 @@ export class TaskStore {
   ): Promise<{ ledger: TaskLedger; changed: readonly TaskRecord[] }> {
     const run = async (): Promise<{ ledger: TaskLedger; changed: readonly TaskRecord[] }> => {
       await this.load()
+      // Never write from a snapshot older than the file: another writer may
+      // have committed since we loaded (see refreshIfStale).
+      await this.refreshIfStale()
       const draft: TaskLedger = structuredClone(this.ledger)
       const changed = mutator(draft)
       if (changed === undefined) {
