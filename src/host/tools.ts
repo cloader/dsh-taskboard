@@ -345,6 +345,9 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
     async execute(args) {
       try {
         const a = args as { workspaceId?: string; status?: string; urgency?: string; includeTrashed?: boolean }
+        if (a.workspaceId !== undefined && workspaces.get(a.workspaceId) === undefined) throw new ToolError(ERR.notFound, `unknown workspaceId ${a.workspaceId}`)
+        if (a.status !== undefined) asStatus(a.status)
+        if (a.urgency !== undefined) asUrgency(a.urgency)
         const tasks = store.snapshot().tasks.filter(t =>
           (a.workspaceId === undefined || t.workspaceId === a.workspaceId)
           && (a.status === undefined || t.status === a.status)
