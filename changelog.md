@@ -1,5 +1,13 @@
 # 更新日志 / Changelog
 
+### 0.9.2 — 2026-10-18
+
+- **列表过滤校验（#52）**：`taskboard_list` 的 `workspaceId` / `status` / `urgency` 过滤参数不再按纯字符串静默过滤为空：未注册的 workspaceId（含把项目路径误当 id 传入）返回 `not_found`，拼错的 status/urgency 返回 `invalid_input` 并列出合法值，调用方拿到纠错信号，「任务 0 条」不再与「参数写错」同形。已注册但无任务的项目与省略过滤参数的行为保持不变。感谢 [@Ausli](https://github.com/Ausli) 的贡献。
+
+**English:**
+
+- **List filter validation (#52)**: `taskboard_list` no longer treats `workspaceId` / `status` / `urgency` filters as plain string comparisons that silently match nothing. An unknown workspaceId (including a filesystem path passed by mistake) fails with `not_found`, and a misspelled status or urgency fails with `invalid_input` listing the legal values, so callers get a correction signal instead of a false "no tasks" answer. Registered-but-empty projects and omitted filters behave exactly as before. Thanks to [@Ausli](https://github.com/Ausli).
+
 ### 0.9.1 — 2026-10-16
 
 - **同步未关联范围**：禅道新增随映射方式变化的勾选项，默认关闭；开启后动态发现未关联和新增项目/执行，导入空工作项目卡片。补齐空项目禅道卡片的账本重载和备份导入支持，后续关联后自动补齐已有空项目卡片的归属，非空归属、已归档和回收站卡片保持不变。
