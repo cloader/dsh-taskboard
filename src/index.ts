@@ -389,7 +389,9 @@ export function apply(ctx: Context): void {
       // Startup reconciliation: executions left 'running' by a previous host
       // process are marked failed and their tasks handed back to todo (their
       // settlement watchers died with that process).
-      void execution.reconcile()
+      void storeReady.then(() => execution.reconcile()).catch(error => {
+        console.warn('[dsh-taskboard] startup execution reconciliation failed; ledger retained:', error)
+      })
 
       // Detach the settlement listener with the plugin — a hot reload must
       // not leave stale services reacting to turn/end errors (review P1).

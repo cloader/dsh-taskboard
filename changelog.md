@@ -1,5 +1,10 @@
 # 更新日志 / Changelog
 
+### Unreleased
+
+- **崩溃后台账锁恢复（#53）**：确认锁持有进程已退出时立即回收；存活或无法确认的进程不会因锁龄被抢锁，旧格式锁保留五分钟恢复窗口且等待上限覆盖该窗口。启动执行恢复失败会记录告警，保留台账，不产生未处理的 Promise 拒绝。
+- **Ledger crash recovery (#53)**: recover locks owned by exited processes immediately, preserve live or indeterminate owners, and cover the legacy stale-lock window with the acquisition timeout. Handle startup reconciliation failures without discarding the ledger.
+
 ### 0.9.2 — 2026-10-18
 
 - **列表过滤校验（#52）**：`taskboard_list` 的 `workspaceId` / `status` / `urgency` 过滤参数不再按纯字符串静默过滤为空：未注册的 workspaceId（含把项目路径误当 id 传入）返回 `not_found`，拼错的 status/urgency 返回 `invalid_input` 并列出合法值，调用方拿到纠错信号，「任务 0 条」不再与「参数写错」同形。已注册但无任务的项目与省略过滤参数的行为保持不变。感谢 [@Ausli](https://github.com/Ausli) 的贡献。
