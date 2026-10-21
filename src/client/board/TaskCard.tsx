@@ -52,9 +52,9 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
   const running = task.executions.find(ex => ex.outcome === 'running')
   const stale = now !== undefined && isStaleClaim(task, now)
   const reviewing = task.status === 'in_review' && task.trashedAt === undefined
-  const needsHuman = checkNeedsHuman(task)
-  const latestReport = [...task.executions].reverse().find(e => e.report !== undefined)?.report
-  const latestWithGit = [...task.executions].reverse().find(e => (e.changedFiles ?? 0) > 0 || (e.commits?.length ?? 0) > 0 || e.diffStat)
+  const needsHuman = checkNeedsHuman(task, t)
+  const latestReport = last?.report
+  const latestWithGit = last
   const targetSessionId = resolveTaskSessionId(task)
   const sessionTitle = controller.getSessionTitle(targetSessionId)
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -166,17 +166,17 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
       {(task.status === 'in_review' || task.status === 'done') && (
         <div className="dsh-atb-card-deliverable">
           <div className="dsh-atb-card-deliv-row">
-            <span className="dsh-atb-card-deliv-tag">📄 {t('card.deliv.changed')}:</span>
+            <span className="dsh-atb-card-deliv-tag">📄 {t(latestReport?.changedFiles.length ? 'card.deliv.reportFiles' : 'card.deliv.gitFiles')}:</span>
             {latestReport?.changedFiles && latestReport.changedFiles.length > 0 ? (
               <span className="dsh-atb-card-deliv-val" title={latestReport.changedFiles.join('\n')}>
-                {latestReport.changedFiles.length} {t('card.deliv.filesUnit')} ({latestReport.changedFiles[0].split('/').pop()}{latestReport.changedFiles.length > 1 ? ` +${latestReport.changedFiles.length - 1}` : ''})
+                {latestReport.changedFiles.length} {t('card.deliv.filesUnit')} ({latestReport.changedFiles[0]?.split(/[\\/]/).pop()}{latestReport.changedFiles.length > 1 ? ` +${latestReport.changedFiles.length - 1}` : ''})
               </span>
             ) : latestWithGit?.changedFiles ? (
               <span className="dsh-atb-card-deliv-val">
                 {latestWithGit.changedFiles} {t('card.deliv.gitFilesChanged')}
               </span>
             ) : (
-              <span className="dsh-atb-card-deliv-val dsh-atb-deliv-warn">{t('card.deliv.noFilesRecorded')}</span>
+              <span className="dsh-atb-card-deliv-val">{t('card.deliv.noFilesRecorded')}</span>
             )}
           </div>
           <div className="dsh-atb-card-deliv-row">
@@ -190,7 +190,7 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
               </span>
             ) : latestReport?.checks && latestReport.checks.length > 0 ? (
               <span className="dsh-atb-card-deliv-val" title={latestReport.checks.join('\n')}>
-                ✓ {t('card.deliv.checksCount', { n: latestReport.checks.length })}
+                • {t('card.deliv.checksCount', { n: latestReport.checks.length })}
               </span>
             ) : (
               <span className="dsh-atb-card-deliv-val dsh-atb-deliv-warn">

@@ -506,6 +506,29 @@ describe('taskboard routes', () => {
     expect(bad.status).toBe(404)
   })
 
+  it('persists human waiting, supports explicit clear and automatic mode, and rejects invalid patches', async () => {
+    const created = await post('/dsh-taskboard/tasks', { title: '等待用户确认', workspaceId: 'ws-a', urgency: 'normal' })
+    const id = created.json.value.id as string
+    const url = `/dsh-taskboard/tasks/${id}/update`
+    const marked = await post(url, { ifVersion: 1, blocked: true, waitingForHuman: true, waitingReason: ' 请确认目标环境 ' })
+    expect(marked.status).toBe(200)
+    expect(marked.json.value).toMatchObject({ waitingForHuman: true, waitingReason: '请确认目标环境', blocked: true })
+    const reloaded = new TaskStore({ file: store.location() })
+    await reloaded.load()
+    expect(reloaded.get(id)).toMatchObject({ waitingForHuman: true, waitingReason: '请确认目标环境' })
+    const cleared = await post(url, { ifVersion: 2, waitingForHuman: false })
+    expect(cleared.json.value).toMatchObject({ waitingForHuman: false, blocked: true })
+    expect(store.get(id)?.waitingReason).toBeUndefined()
+    const invalid = await post(url, { ifVersion: 3, waitingForHuman: 'yes' })
+    expect(invalid.status).toBe(400)
+    expect(store.get(id)?.version).toBe(3)
+    const tooLong = await post(url, { ifVersion: 3, waitingForHuman: true, waitingReason: 'x'.repeat(501) })
+    expect(tooLong.status).toBe(400)
+    expect((await post(url, { ifVersion: 3, waitingForHuman: null })).status).toBe(200)
+    expect(store.get(id)?.waitingForHuman).toBeUndefined()
+    expect(store.get(id)?.blocked).toBe(true)
+  })
+
   it('archived tasks are immutable: update and comment both refuse with 400 invalid_transition', async () => {
     const created = await post('/dsh-taskboard/tasks', { title: '已归档', workspaceId: 'ws-a', urgency: 'normal' })
     const id = created.json.value.id as string

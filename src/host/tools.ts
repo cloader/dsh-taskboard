@@ -1,5 +1,6 @@
 import type { SessionArchiveResult } from '../shared/api.ts'
 import { archiveTaskSessions } from './archive-sessions.ts'
+import { applyHumanWaitingPatch, humanWaiting } from '../shared/human-wait.ts'
 /**
  * The ten `taskboard_*` agent tools. All writes require a calling agent
  * session (ownership audit), carry optimistic-version checks, and enforce
@@ -65,6 +66,8 @@ function taskLine(t: {
   version: number
   workspaceId: string
   blocked: boolean
+  waitingForHuman?: boolean
+  waitingReason?: string
   executionMode: string
   commentCount?: number
   lastExecutionOutcome?: string
@@ -76,6 +79,7 @@ function taskLine(t: {
     `「${t.title}」`,
   ]
   if (t.blocked) parts.push('·受阻')
+  if (t.waitingForHuman === true) parts.push(`·待人工${t.waitingReason ? `：${t.waitingReason}` : ''}`)
   if (t.executionMode === 'scheduled') parts.push('·定时')
   if (t.commentCount !== undefined && t.commentCount > 0) parts.push(`·评论${t.commentCount}`)
   if (t.checklist !== undefined && t.checklist.total > 0) parts.push(`·清单${t.checklist.done}/${t.checklist.total}`)
@@ -93,6 +97,9 @@ function taskDetail(t: TaskRecord & { effectivePrompt?: string }): string {
     `隔离: ${t.isolation === 'none' ? '关闭（原目录执行）' : 'Git Worktree'}${t.branch !== undefined ? `（分支 ${t.branch}）` : ''}${t.branches !== undefined ? `（多仓库镜像 ${Object.keys(t.branches).length + (t.branch !== undefined ? 1 : 0)} 个仓库）` : ''}`,
   ]
   const holder = isClaimedBy(t)
+  const waiting = humanWaiting(t)
+  if (waiting.needs) lines.push(`人工等待: ${waiting.source === 'inferred' ? '疑似，需确认' : '已标记'}${waiting.reason ? ` · ${waiting.reason}` : ''}`)
+  else if (t.waitingForHuman === false) lines.push('人工等待: 已明确解除（不自动识别）')
   if (holder !== undefined) lines.push(`认领: agent ${String(holder).slice(0, 24)}（持有期间其他会话不可移动）`)
   if (t.execution.nextRunAt !== undefined) lines.push(`下次触发: ${new Date(t.execution.nextRunAt).toISOString()}`)
   if (t.model !== undefined) lines.push(`固定模型: ${t.model.provider}/${t.model.model}${t.model.reasoningEffort !== undefined ? ` (思考强度: ${t.model.reasoningEffort})` : ''}`)
@@ -522,7 +529,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
   disposers.push(register(defineTool({
     name: 'taskboard_update',
     description:
-      'Update a task\'s title/description/prompt/urgency/blocked/permission. Requires ifVersion (read first). '
+      'Update a task\'s title/description/prompt/urgency/blocked/waitingForHuman/waitingReason/permission. Requires ifVersion (read first). '
       + 'The model and execution config are read-only through this tool (they belong to the task owner/user).',
     parameters: {
       id: { type: 'string', required: true, description: 'Task id.' },
@@ -532,6 +539,8 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       prompt: { type: 'string', description: 'New execution prompt.' },
       urgency: { type: 'string', description: 'urgent | normal | relaxed.' },
       blocked: { type: 'boolean', description: 'Blocked marker (work cannot continue right now).' },
+      waitingForHuman: { type: 'boolean', description: 'True to wait for human action; false to explicitly clear the wait and suppress inference. Independent of blocked.' },
+      waitingReason: { type: 'string', description: 'Why human input/action is needed (max 500 characters). Never include credentials or secret values. Empty clears the reason.' },
       permission: { type: 'string', description: 'Execution permission: read-only | workspace-write | danger-full-access.' },
     },
     output: {
@@ -550,6 +559,8 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       prompt?: string
       urgency?: string
       blocked?: boolean
+      waitingForHuman?: boolean
+      waitingReason?: string
       permission?: string
     }, exec: unknown) {
       try {
@@ -568,6 +579,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           if (args.prompt !== undefined) next.prompt = normalizePrompt(args.prompt)
           if (args.urgency !== undefined) next.urgency = asUrgency(args.urgency)
           if (args.blocked !== undefined) next.blocked = args.blocked
+          applyHumanWaitingPatch(next, args)
           if (args.permission !== undefined) next.permission = asPermission(args.permission)
           next.version = task.version + 1
           next.updatedAt = deps.now()

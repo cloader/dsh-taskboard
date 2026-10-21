@@ -52,6 +52,19 @@ async function setup(deps: { modelProviders?: () => string[] | undefined; ready?
 }
 
 describe('taskboard tool outputs', () => {
+  it('lets agents report and clear a human wait without changing generic blocking', async () => {
+    const { tool, exec, store } = await setup()
+    const created = await tool('taskboard_create').execute({ title: 'Human wait', workspaceId: 'ws-a', urgency: 'normal' }, exec) as { task: { id: string } }
+    const id = created.task.id
+    await tool('taskboard_update').execute({ id, ifVersion: 1, blocked: true, waitingForHuman: true, waitingReason: 'Confirm the environment' }, exec)
+    const got = await tool('taskboard_get').execute({ id }, exec)
+    expect(tool('taskboard_get').output.render({}, got)[0]!.text).toContain('Confirm the environment')
+    const listed = await tool('taskboard_list').execute({}, exec)
+    expect(tool('taskboard_list').output.render({}, listed)[0]!.text).toContain('待人工')
+    await tool('taskboard_update').execute({ id, ifVersion: 2, waitingForHuman: false }, exec)
+    expect(store.get(id)).toMatchObject({ blocked: true, waitingForHuman: false })
+    expect(store.get(id)?.waitingReason).toBeUndefined()
+  })
   it('omits archived sessions from a project session picker', () => {
     const archived = ['session-b']
     const project = { id: 'ws-a', path: '/proj/a', title: 'A', sessionIds: ['session-a', 'session-b'] }

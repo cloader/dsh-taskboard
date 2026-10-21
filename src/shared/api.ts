@@ -88,6 +88,9 @@ export type UpdateTaskBody = {
   prompt?: string
   urgency?: string
   blocked?: boolean
+  /** null restores automatic recognition. Independent of the blocked marker. */
+  waitingForHuman?: boolean | null
+  waitingReason?: string | null
   /** Rebind the task to another project (GUI owner surface only). */
   workspaceId?: string
   execution?: { mode?: string; cron?: string; runAt?: string | number; periodicCompletion?: 'rearm' | 'spawn'; reuseSessionId?: string; sessionReuseMode?: 'fresh' | 'reuse' }

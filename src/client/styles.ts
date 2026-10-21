@@ -1128,8 +1128,14 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
     background: rgba(200,49,49,.85); color: #fff; border-color: transparent;
   }
 
-/* Needs human & Review desk enhancement */
+/* Human waiting and delivery review. */
+.dsh-atb-human-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.dsh-atb-fieldcard[data-kind="human-wait"] label { display: grid; gap: 5px; }
+.dsh-atb-fieldcard[data-kind="human-wait"] input { width: 100%; box-sizing: border-box; }
+.dsh-atb-fieldcard[data-kind="report-history"] summary { cursor: pointer; }
 .dsh-atb-badge[data-kind="needs-human"] {
+  white-space: normal;
+  overflow-wrap: anywhere;
   background: rgba(245, 158, 11, 0.18) !important;
   color: #d97706 !important;
   border: 1px solid rgba(245, 158, 11, 0.45);
@@ -1219,6 +1225,8 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  user-select: text;
+  min-width: 0;
 }
 .dsh-atb-file-copybtn {
   font-size: 10.5px;

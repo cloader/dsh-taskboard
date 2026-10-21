@@ -13,7 +13,8 @@ import { COLUMN_KEYS, URGENCY_KEYS } from './labels.ts'
 import { useT } from '../i18n/runtime.ts'
 import { localizeBuiltinName, localizeBuiltinTask } from '../i18n/templates.ts'
 import { categoryLabel, groupTemplatesByCategory } from '../template-categories.ts'
-import { checkNeedsHuman, fmtTime, isStaleClaim } from './format.ts'
+import { fmtTime, isStaleClaim } from './format.ts'
+import { humanWaiting } from '../../shared/human-wait.ts'
 import { DRAG_TYPE, TaskCard } from './TaskCard.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
 import { TaskFormModal } from './TaskFormModal.tsx'
@@ -166,8 +167,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   }, [])
   const [onlyNeedsHuman, setOnlyNeedsHuman] = useState(false)
   const allLive = filterTasks(state, state.ledger.tasks.filter(t => t.trashedAt === undefined))
-  const needsHumanCount = allLive.filter(t => checkNeedsHuman(t).needs).length
-  const live = onlyNeedsHuman ? allLive.filter(t => checkNeedsHuman(t).needs) : allLive
+  const needsHumanCount = allLive.filter(task => humanWaiting(task).needs).length
+  const live = onlyNeedsHuman ? allLive.filter(task => humanWaiting(task).needs) : allLive
   const selected = state.selectedId === undefined ? undefined : state.ledger.tasks.find(t => t.id === state.selectedId)
   const detailPanelRef = useRef<HTMLDivElement>(null)
 
@@ -304,9 +305,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           className="dsh-atb-chip"
           data-kind="needs-human-filter"
           data-on={onlyNeedsHuman}
+          aria-pressed={onlyNeedsHuman}
           style={onlyNeedsHuman ? { background: "#f59e0b", color: "#fff", borderColor: "#d97706", fontWeight: 600 } : undefined}
           title={t("board.filter.needsHumanTitle")}
-          onClick={() => setOnlyNeedsHuman(!onlyNeedsHuman)}
+          onClick={() => {
+            if (!onlyNeedsHuman && state.secondaryOpen) controller.toggleSecondary()
+            setOnlyNeedsHuman(!onlyNeedsHuman)
+          }}
         >
           🙋 {t("board.filter.needsHuman")} {needsHumanCount > 0 ? `(${needsHumanCount})` : ""}
         </button>

@@ -1,4 +1,5 @@
 import { archiveTaskSessions } from './archive-sessions.ts'
+import { applyHumanWaitingPatch } from '../shared/human-wait.ts'
 /**
  * /dsh-taskboard routes on the shared DSH webserver: a JSON API for the
  * GUI's human operations (create/update/move/comment/delete — actor `user`,
@@ -844,6 +845,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
                 next.workspaceId = workspaceId
               }
               if (typeof body.blocked === 'boolean') next.blocked = body.blocked
+              applyHumanWaitingPatch(next, body)
               // The GUI (task owner surface) may edit model/execution; null clears the model.
               if (body.execution !== undefined) {
                 const previousExecution = next.execution
