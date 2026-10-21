@@ -13,7 +13,7 @@ import type { BoardController } from '../controller.ts'
 import type { CommentRecord, ExecutionRecord, TaskRecord } from '../../shared/protocol.ts'
 import { canTransition, checklistProgress, taskAssociatedSessionIds, taskSessionId } from '../../shared/protocol.ts'
 import { useAlert } from './AlertModal.tsx'
-import { fmtTime, isStaleClaim } from './format.ts'
+import { checkNeedsHuman, fmtTime, isStaleClaim } from './format.ts'
 import { MOVE_KEYS, OUTCOME_KEYS, STATUS_KEYS, URGENCY_KEYS } from './labels.ts'
 import { useT, type Translate } from '../i18n/runtime.ts'
 import { IMAGE_ACCEPT, acceptedImageFiles, imageAlt, imageMarkdown, insertImageMarkdown } from '../image-insert.ts'
@@ -224,33 +224,144 @@ function ChecklistBlock({ task, controller }: { task: TaskRecord; controller: Bo
   )
 }
 
-/**
- * The structured execution report block (0.4.0): the newest execution that
- * carries one, rendered section by section for the reviewer.
- */
-function ReportBlock({ task }: { task: TaskRecord }) {
+/** Explicit waiting state is independent of generic blocking. */
+function HumanWaitingBlock({ task, controller }: { task: TaskRecord; controller: BoardController }) {
   const t = useT()
-  const execution = [...task.executions].reverse().find(e => e.report !== undefined)
+  const waiting = checkNeedsHuman(task, t)
+  const [reason, setReason] = useState(task.waitingReason ?? '')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => setReason(task.waitingReason ?? ''), [task.id, task.waitingReason])
+  if (task.trashedAt !== undefined || ['done', 'archived', 'canceled'].includes(task.status)) return null
+  const update = (value: boolean | null): void => {
+    if (busy) return
+    setBusy(true)
+    void controller.update(task.id, task.version, {
+      waitingForHuman: value,
+      waitingReason: value === true ? reason.trim() : null,
+    }).finally(() => setBusy(false))
+  }
+  return (
+    <div className="dsh-atb-fieldcard" data-kind="human-wait">
+      <div className="dsh-atb-fieldcard-label">{t('human.title')}</div>
+      <p>{waiting.reason ?? t(task.waitingForHuman === false ? 'human.cleared' : 'human.automatic')}</p>
+      <label>
+        {t('human.reasonLabel')}
+        <input className="dsh-atb-input" value={reason} maxLength={500} disabled={busy}
+          placeholder={t('human.reasonPlaceholder')} onChange={event => setReason(event.target.value)} />
+      </label>
+      <div className="dsh-atb-human-actions">
+        <button type="button" className="dsh-atb-movebtn" data-to="needs-human" disabled={busy}
+          onClick={() => update(true)}>{t(task.waitingForHuman === true ? 'human.saveReason' : 'detail.needsHuman.mark')}</button>
+        <button type="button" className="dsh-atb-movebtn" data-to="needs-human-clear" disabled={busy || task.waitingForHuman === false}
+          onClick={() => update(false)}>{t('detail.needsHuman.unmark')}</button>
+        <button type="button" className="dsh-atb-movebtn" data-to="needs-human-auto" disabled={busy || task.waitingForHuman === undefined}
+          onClick={() => update(null)}>{t('human.restoreAuto')}</button>
+      </div>
+    </div>
+  )
+}
+
+/** Current execution report, or a separately labeled historical report. */
+function ReportBlock({ task, execution = task.executions.at(-1), historical = false }: { task: TaskRecord; execution?: ExecutionRecord; historical?: boolean }) {
+  const t = useT()
+  const [copiedFile, setCopiedFile] = useState<string | null>(null)
+  const [copyError, setCopyError] = useState(false)
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(copyTimer.current), [])
   const report = execution?.report
-  if (execution === undefined || report === undefined) return null
-  const section = (label: string, rows: string[] | undefined): ReactNode => rows !== undefined && rows.length > 0
-    ? (
-        <div className="dsh-atb-rpt-sec">
-          <div className="dsh-atb-rpt-label">{label}</div>
-          <ul className="dsh-atb-rpt-list">{rows.map((row, i) => <li key={i}>{row}</li>)}</ul>
+  const isReviewOrDone = task.status === 'in_review' || task.status === 'done'
+
+  // If not review/done and no report submitted, keep quiet
+  if (!isReviewOrDone && (execution === undefined || report === undefined)) return null
+
+  const copyPath = (path: string): void => {
+    setCopyError(false)
+    void Promise.resolve().then(() => navigator.clipboard.writeText(path)).then(() => {
+      setCopiedFile(path)
+      clearTimeout(copyTimer.current)
+      copyTimer.current = setTimeout(() => setCopiedFile(null), 1500)
+    }).catch(() => setCopyError(true))
+  }
+
+  if (execution === undefined || report === undefined) {
+    if (isReviewOrDone && !historical) {
+      return (
+        <div className="dsh-atb-fieldcard dsh-atb-reviewdesk" data-kind="report-missing">
+          <div className="dsh-atb-fieldcard-label">
+            <span>📋 {t('detail.deliv.title')}</span>
+            <span className="dsh-atb-deliv-warn" style={{ marginLeft: 'auto' }}>⚠ {t('detail.deliv.missingReport')}</span>
+          </div>
+          <div className="dsh-atb-deliv-missing-box">
+            <p>{t('detail.deliv.missingHint')}</p>
+          </div>
         </div>
       )
-    : null
+    }
+    return null
+  }
+
   return (
-    <div className="dsh-atb-fieldcard" data-kind="report">
-      <div className="dsh-atb-fieldcard-label">{t('report.title')}<span className="dsh-atb-cl-progress">{t('report.submitted', { time: fmtTime(execution.endedAt ?? execution.startedAt) })}</span></div>
-      <div className="dsh-atb-rpt-summary">{report.summary}</div>
-      {section(t('report.changedFiles'), report.changedFiles)}
-      {section(t('report.checks'), report.checks)}
-      {section(t('report.artifacts'), report.artifacts)}
+    <div className="dsh-atb-fieldcard dsh-atb-reviewdesk" data-kind="report">
+      <div className="dsh-atb-fieldcard-label">
+        <span>📋 {t('detail.deliv.title')}</span>
+        <span className="dsh-atb-cl-progress">
+          {t('detail.deliv.execution', { id: execution.id })} · {t('report.submitted', { time: fmtTime(execution.endedAt ?? execution.startedAt) })}
+        </span>
+      </div>
+      
+      <div className="dsh-atb-deliv-summary-box">
+        <div className="dsh-atb-rpt-label">🎯 {t('detail.deliv.summaryLabel')}</div>
+        <div className="dsh-atb-rpt-summary">{report.summary}</div>
+      </div>
+
+      {report.changedFiles && report.changedFiles.length > 0 && (
+        <div className="dsh-atb-rpt-sec">
+          <div className="dsh-atb-rpt-label">📁 {t('card.deliv.reportFiles')} ({report.changedFiles.length})</div>
+          {copyError && <div role="status">{t('detail.deliv.copyFailed')}</div>}
+          <ul className="dsh-atb-rpt-filelist">
+            {report.changedFiles.map((file, i) => (
+              <li key={i} className="dsh-atb-rpt-fileitem">
+                <span className="dsh-atb-file-path">{file}</span>
+                <button
+                  type="button"
+                  className="dsh-atb-file-copybtn"
+                  title={t('detail.deliv.copyPath')}
+                  onClick={() => copyPath(file)}
+                >
+                  {copiedFile === file ? t('detail.deliv.copied') : t('detail.deliv.copy')}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {report.checks && report.checks.length > 0 && (
+        <div className="dsh-atb-rpt-sec">
+          <div className="dsh-atb-rpt-label">🔬 {t('report.checks')} ({report.checks.length})</div>
+          <ul className="dsh-atb-rpt-checklist">
+            {report.checks.map((check, i) => (
+              <li key={i} className="dsh-atb-rpt-checkitem">
+                <span aria-hidden="true">•</span>
+                <span>{check}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {report.artifacts && report.artifacts.length > 0 && (
+        <div className="dsh-atb-rpt-sec">
+          <div className="dsh-atb-rpt-label">📦 {t('report.artifacts')}</div>
+          <ul className="dsh-atb-rpt-list">
+            {report.artifacts.map((art, i) => <li key={i}>{art}</li>)}
+          </ul>
+        </div>
+      )}
+
       {report.risk.length > 0 && (
         <div className="dsh-atb-rpt-sec">
-          <div className="dsh-atb-rpt-label">{t('report.risk')}</div>
+          <div className="dsh-atb-rpt-label">⚠️ {t('report.risk')}</div>
           <div className="dsh-atb-rpt-risk">{report.risk}</div>
         </div>
       )}
@@ -538,11 +649,14 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
   const canRun = task.status !== 'done' && task.status !== 'archived'
     && runningExecution === undefined && holder === undefined
   const stale = now !== undefined && isStaleClaim(task, now)
+  const needsHuman = checkNeedsHuman(task, t)
   const unchecked = (task.checklist ?? []).filter(i => !i.checked).length
   const targetSessionId = taskSessionId(task)
   const associatedSessions = taskAssociatedSessionIds(task)
   const archiveState = controller.getSnapshot()
   const archiveResult = archiveState.sessionArchive?.taskId === task.id ? archiveState.sessionArchive.result : undefined
+  const isReviewOrDone = task.status === 'in_review' || task.status === 'done'
+  const hasReport = task.executions.some(e => e.report !== undefined)
 
   /** Fire one top action under the shared busy guard; re-enable on settle. */
   const runAction = (action: () => Promise<unknown>): void => {
@@ -620,6 +734,7 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
               <Chip icon="⏰">{t('detail.chip.nextRun', { cron: task.execution.cron ?? '', time: fmtTime(task.execution.nextRunAt) })}</Chip>
             )}
             {task.execution.queuedRunAt !== undefined && <Chip icon="⏳" tone="urgent">{t('detail.chip.queuedRun', { time: fmtTime(task.execution.queuedRunAt) })}</Chip>}
+            {needsHuman.needs && <Chip icon="🙋" tone="urgent" title={needsHuman.reason}>{needsHuman.reason ?? t('detail.chip.needsHuman')}</Chip>}
             {task.blocked && <Chip icon="⛔" tone="urgent">{t('shared.blocked')}</Chip>}
             {task.checklist !== undefined && task.checklist.length > 0 && (
               <Chip icon="☑" tone={task.status === 'in_review' && task.checklist.some(i => !i.checked) ? 'urgent' : undefined}>
@@ -731,6 +846,24 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
       </div>
 
       {task.external && <ExternalSourcePanel task={task} />}
+
+      {(isReviewOrDone || hasReport) && (
+        <>
+          <ReportBlock task={task} />
+          {task.executions.slice(0, -1).some(e => e.report !== undefined) && (
+            <details className="dsh-atb-fieldcard" data-kind="report-history">
+              <summary>{t('detail.deliv.history')}</summary>
+              {[...task.executions.slice(0, -1)].reverse().filter(e => e.report !== undefined).map(execution => (
+                <ReportBlock key={execution.id} task={task} execution={execution} historical />
+              ))}
+            </details>
+          )}
+          <ChecklistBlock task={task} controller={controller} />
+        </>
+      )}
+
+      <HumanWaitingBlock task={task} controller={controller} />
+
       {task.description.length > 0 && (
         <div className="dsh-atb-fieldcard">
           <div className="dsh-atb-fieldcard-label">{t('detail.field.description')}</div>
@@ -747,9 +880,12 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
 
       <IsolationBlock task={task} controller={controller} />
 
-      <ReportBlock task={task} />
-
-      <ChecklistBlock task={task} controller={controller} />
+      {!isReviewOrDone && !hasReport && (
+        <>
+          <ReportBlock task={task} />
+          <ChecklistBlock task={task} controller={controller} />
+        </>
+      )}
 
       {archiveResult !== undefined && (
         <div role="status" className="dsh-atb-confirm">

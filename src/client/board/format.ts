@@ -7,6 +7,7 @@
  *
  * @module dsh-taskboard/client/board/format
  */
+import { humanWaiting } from '../../shared/human-wait.ts'
 import type { TaskRecord } from '../../shared/protocol.ts'
 
 /** Format an epoch ms as a short local stamp. */
@@ -31,4 +32,11 @@ export function isStaleClaim(task: TaskRecord, now: number): boolean {
   if (running.length === 0) return false
   const activity = Math.max(...running.map(execution => execution.lastActivityAt ?? task.claimedAt ?? -Infinity))
   return Number.isFinite(activity) && now - activity > STALE_CLAIM_MS
+}
+
+/** Localize both explicit reasons and conservative automatic suggestions. */
+export function checkNeedsHuman(task: TaskRecord, t: import('../i18n/runtime.ts').Translate) {
+  const result = humanWaiting(task)
+  const reason = result.reason ?? (result.reasonKey ? t(result.reasonKey) : undefined)
+  return { ...result, reason: result.source === 'inferred' ? t('human.suspected', { reason: reason ?? '' }) : reason }
 }

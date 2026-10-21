@@ -10,6 +10,7 @@
  */
 
 import { normalizeExternalSource, normalizeExternalSyncRecords } from './external.ts'
+import { applyHumanWaitingPatch } from './human-wait.ts'
 
 // ---------------------------------------------------------------------------
 // Status vocabulary
@@ -678,6 +679,10 @@ export type TaskRecord = {
   status: TaskStatus
   /** Horizontal marker: work cannot continue right now (any non-terminal status). */
   blocked: boolean
+  /** Omitted = infer; true = explicit human wait; false = suppress inference. */
+  waitingForHuman?: boolean
+  /** Explanation only; never put credentials or secret values here. */
+  waitingReason?: string
   execution: ExecutionConfig
   model?: TaskModel
   /** Code isolation for executions (omitted = the worktree default; see {@link IsolationMode}). */
@@ -1529,6 +1534,7 @@ export function validateImportedTask(raw: unknown, now: number): { ok: true; tas
       ...(typeof e.executionsPruned === 'number' ? { executionsPruned: e.executionsPruned } : {}),
       ...(typeof e.trashedAt === 'number' ? { trashedAt: e.trashedAt } : {}),
     }
+    applyHumanWaitingPatch(task, e)
     if (task.workspaceId.length === 0 && task.external?.provider !== 'zentao') return fail('missing workspaceId')
     return { ok: true, task }
   } catch (error) {
@@ -1604,6 +1610,8 @@ export type TaskSummary = {
   urgency: Urgency
   status: TaskStatus
   blocked: boolean
+  waitingForHuman?: boolean
+  waitingReason?: string
   executionMode: ExecutionMode
   nextRunAt?: number
   model?: TaskModel
@@ -1631,6 +1639,8 @@ export function summarize(task: TaskRecord): TaskSummary {
     urgency: task.urgency,
     status: task.status,
     blocked: task.blocked,
+    ...(typeof task.waitingForHuman === 'boolean' ? { waitingForHuman: task.waitingForHuman } : {}),
+    ...(task.waitingForHuman === true && task.waitingReason ? { waitingReason: task.waitingReason } : {}),
     executionMode: task.execution.mode,
     nextRunAt: task.execution.nextRunAt,
     model: task.model,

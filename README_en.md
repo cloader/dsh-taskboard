@@ -166,6 +166,13 @@ Available in any session. Project boundary: only sessions belonging to the task'
 - Optimistic concurrency (ifVersion) + full attribution (who changed what, which session executed)
 - ⚙ Health diagnostics: ledger sanity checks + orphaned worktrees (present on disk but unowned in the ledger) with one-click cleanup
 
+### Human action waiting and delivery review
+
+- **Waiting for Me** filters human waits within the current project, search and urgency filters. Automatic recognition is labeled as a suggestion and avoids generic business terms such as login or verification codes.
+- Task details support an editable reason, explicit marking, explicit clearing and restoring automatic recognition. Explicit clearing overrides inference. Human waiting and generic blocking are independent; terminal and trashed tasks are excluded.
+- Agents can report or clear waits with `taskboard_update` using `waitingForHuman` and `waitingReason`. Describe the action needed without entering credentials. JSON backups preserve these fields; HTTP updates accept `waitingForHuman: null` to restore automatic recognition.
+- Review/done cards summarize the latest execution. Details foreground its report and acceptance checklist, with earlier reports in history. Verification notes are reported evidence, not a guarantee of success; some tasks require no file changes.
+
 ## Safety
 
 - **Acceptance authority belongs to humans**: agent calls moving a task to *done* are rejected by the code-level protocol gate (a prompt suggestion, not); held tasks cannot be preempted; cross-project claims are rejected.

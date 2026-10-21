@@ -2,8 +2,17 @@
 
 ### Unreleased
 
-- **崩溃后台账锁恢复（#53）**：确认锁持有进程已退出时立即回收；存活或无法确认的进程不会因锁龄被抢锁，旧格式锁保留五分钟恢复窗口且等待上限覆盖该窗口。启动执行恢复失败会记录告警，保留台账，不产生未处理的 Promise 拒绝。
-- **Ledger crash recovery (#53)**: recover locks owned by exited processes immediately, preserve live or indeterminate owners, and cover the legacy stale-lock window with the acquisition timeout. Handle startup reconciliation failures without discarding the ledger.
+- **崩溃后台账锁恢复（#53）**：确认锁持有进程已退出时立即回收；使用唯一持有记录的锁目录，避免并发回收误删接替者的新锁，兼容旧锁文件。存活或无法确认的进程不会因锁龄被抢锁，旧格式锁保留五分钟恢复窗口且等待上限覆盖该窗口。干净启动不申请写锁，启动执行恢复失败记录告警并保留台账。
+- **人工等待（承接 #54）**：补齐共享协议、HTTP 更新、Agent 工具、台账重载和 JSON 导入导出；明确标记、明确解除、恢复自动识别三种选择独立于普通阻塞。支持编辑等待原因，自动推断显示为疑似提示，排除终态、常见业务词和已解决表述。请勿在等待原因中填写凭据。
+- **交付验收（承接 #54）**：卡片和详情前置最新执行的交付信息，历史报告单独折叠并标注执行编号；区分 Agent 自报文件和 Git 统计，验证记录采用中性标识，无文件改动不视为异常；复制失败可手动选取路径。
+- **质量检查**：CI 增加独立类型检查，补充锁恢复、人工等待持久化与覆盖规则、筛选、历史报告和复制失败回归测试。感谢 [@monkey-sking](https://github.com/monkey-sking) 的 #54 原始实现。
+
+**English:**
+
+- **Ledger recovery (#53)**: immediately recover locks owned by exited processes while preserving live or indeterminate owners; keep a bounded recovery window for legacy locks. Clean startup avoids the write lock, and reconciliation failures are handled without discarding the ledger.
+- **Human action waiting (based on #54)**: persist explicit waits, explicit clears and automatic recognition through GUI, agent tools and JSON backups, independently of generic blocking. Localize conservative suggestions and support editable reasons without credentials.
+- **Delivery review (based on #54)**: foreground only the latest execution report, keep earlier reports in labeled history, distinguish agent-reported files from Git evidence, and use neutral verification markers. Handle clipboard failures and tasks without file changes.
+- **Validation**: add CI typechecking and regression coverage for crash recovery, waiting state, filters, report history and clipboard failures. Thanks to [@monkey-sking](https://github.com/monkey-sking) for the original #54 implementation.
 
 ### 0.9.2 — 2026-10-18
 

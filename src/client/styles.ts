@@ -1127,6 +1127,146 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
   .dsh-atb-queuepanel-actions .dsh-atb-btn[data-armed="true"] {
     background: rgba(200,49,49,.85); color: #fff; border-color: transparent;
   }
+
+/* Human waiting and delivery review. */
+.dsh-atb-human-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.dsh-atb-fieldcard[data-kind="human-wait"] label { display: grid; gap: 5px; }
+.dsh-atb-fieldcard[data-kind="human-wait"] input { width: 100%; box-sizing: border-box; }
+.dsh-atb-fieldcard[data-kind="report-history"] summary { cursor: pointer; }
+.dsh-atb-badge[data-kind="needs-human"] {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  background: rgba(245, 158, 11, 0.18) !important;
+  color: #d97706 !important;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  font-weight: 600;
+}
+.dsh-atb-card[data-needs-human="true"] {
+  border-color: rgba(245, 158, 11, 0.55);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.25);
+  background: linear-gradient(to right, rgba(245, 158, 11, 0.06), var(--dsw-bg-elevated, rgba(128,128,128,.1)));
+}
+.dsh-atb-card[data-needs-human="true"]::before {
+  background: #f59e0b !important;
+  width: 4.5px;
+}
+.dsh-atb-card-deliverable {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(128, 128, 128, 0.08);
+  border: 1px dashed var(--dsw-border, rgba(128, 128, 128, 0.25));
+  font-size: 11.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dsh-atb-card-deliv-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dsh-atb-card-deliv-tag {
+  font-weight: 600;
+  color: var(--dsw-text-secondary, #71717a);
+  flex-shrink: 0;
+}
+.dsh-atb-card-deliv-val {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dsh-atb-deliv-warn {
+  color: #e5484d;
+  font-weight: 550;
+}
+.dsh-atb-card-deliv-summary {
+  font-size: 11px;
+  color: var(--dsw-text-secondary, #71717a);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 2px;
+}
+.dsh-atb-reviewdesk {
+  border: 1.5px solid var(--dsw-alias-brand-primary, #6366f1) !important;
+  background: linear-gradient(to bottom, rgba(99, 102, 241, 0.04), var(--dsw-bg-elevated, rgba(128,128,128,.1))) !important;
+}
+.dsh-atb-deliv-summary-box {
+  background: var(--dsw-bg, rgba(128,128,128,.08));
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+.dsh-atb-rpt-filelist, .dsh-atb-rpt-checklist {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dsh-atb-rpt-fileitem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(128, 128, 128, 0.08);
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.dsh-atb-file-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text;
+  min-width: 0;
+}
+.dsh-atb-file-copybtn {
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--dsw-border, #d4d4d8);
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+.dsh-atb-file-copybtn:hover {
+  background: var(--dsw-bg-hover, rgba(128,128,128,.15));
+}
+.dsh-atb-rpt-checkitem {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.dsh-atb-check-icon {
+  color: #2ea043;
+  font-weight: bold;
+}
+.dsh-atb-deliv-missing-box {
+  padding: 12px;
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px dashed rgba(245, 158, 11, 0.35);
+  color: var(--dsw-text-secondary, #71717a);
+  font-size: 12.5px;
+}
+.dsh-atb-movebtn[data-to="needs-human-active"] {
+  border-color: #d97706;
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+  font-weight: 600;
+}
 `
 
 /** Style element id (stable since 0.1.x: hook for tests and debugging). */

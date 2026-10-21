@@ -8,6 +8,7 @@
  */
 import { mkdir, open, readFile, rename } from 'node:fs/promises'
 import { withLedgerWriteLock } from './ledger-lock.ts'
+import { applyHumanWaitingPatch } from '../shared/human-wait.ts'
 import { dirname, join } from 'node:path'
 import {
   LEDGER_SCHEMA_VERSION,
@@ -124,6 +125,11 @@ export class TaskStore {
         // task carried its holder in updatedBy — backfill the explicit claim
         // fields so the hold survives user edits (updatedBy is audit-only).
         for (const task of tasks) {
+          try { applyHumanWaitingPatch(task, task) } catch {
+            delete task.waitingForHuman
+            delete task.waitingReason
+            console.warn('[dsh-taskboard] dropping invalid human-wait fields on load:', task.id)
+          }
           if (task.external !== undefined) {
             const external = normalizeExternalSource(task.external)
             if (external === undefined) delete task.external
