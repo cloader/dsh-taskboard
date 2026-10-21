@@ -1,5 +1,10 @@
 # 更新日志 / Changelog
 
+### Unreleased
+
+- **崩溃后台账锁恢复（#53）**：确认锁持有进程已退出时立即回收；存活或无法确认的进程不会因锁龄被抢锁，旧格式锁保留五分钟恢复窗口且等待上限覆盖该窗口。启动执行恢复失败会记录告警，保留台账，不产生未处理的 Promise 拒绝。
+- **Ledger crash recovery (#53)**: recover locks owned by exited processes immediately, preserve live or indeterminate owners, and cover the legacy stale-lock window with the acquisition timeout. Handle startup reconciliation failures without discarding the ledger.
+
 ### 0.9.3 — 2026-10-21
 
 - **待人类操作智能识别与快速过滤**：新增 `checkNeedsHuman` 判定机制，支持显式标记与语义启发式识别（拍板/待确认/需人工/提供 Key/扫码/会话等待等），卡片正面以琥珀色徽章与高亮边框醒目标记，详情抽屉支持一键切换「🙋 标为需人介入」；看板顶部增加「🙋 待我处理」过滤按钮，一键排查全部需人类提供信息或决策的任务。

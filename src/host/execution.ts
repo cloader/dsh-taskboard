@@ -1032,6 +1032,9 @@ export class ExecutionService {
    * instead of recording a false "interrupted by host restart" failure.
    */
   async reconcile(): Promise<void> {
+    await this.deps.store.load()
+    // A clean startup needs no write lane or cross-process lock at all.
+    if (!this.deps.store.snapshot().tasks.some(task => task.executions.some(execution => execution.outcome === 'running'))) return
     const adopted = new Map<string, { sessionId: string; agent: LiveAgentFace; prepared: PreparedMirror | undefined }>()
     for (const task of this.deps.store.snapshot().tasks) {
       for (const execution of task.executions) {

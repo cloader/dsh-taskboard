@@ -6,7 +6,8 @@
  *
  * @module dsh-taskboard/host/store
  */
-import { mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
+import { mkdir, open, readFile, rename } from 'node:fs/promises'
+import { withLedgerWriteLock } from './ledger-lock.ts'
 import { dirname, join } from 'node:path'
 import {
   LEDGER_SCHEMA_VERSION,
@@ -254,49 +255,6 @@ export class TaskStore {
     }
     if (this.storageQueue !== undefined) return this.storageQueue.run(run)
     return (this.queue = this.queue.then(run, run)) as Promise<T>
-  }
-}
-
-const LOCK_RETRY_MS = 25
-const LOCK_TIMEOUT_MS = 30_000
-const STALE_LOCK_MS = 5 * 60_000
-
-/**
- * `rename()` makes one replacement atomic, but not the preceding
- * read-modify-write sequence. This exclusive sidecar lock protects that full
- * sequence across hosts; a crashed owner is recoverable after five minutes.
- */
-async function withLedgerWriteLock<T>(file: string, run: () => Promise<T>): Promise<T> {
-  const lock = `${file}.lock`
-  const token = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`
-  const deadline = Date.now() + LOCK_TIMEOUT_MS
-  await mkdir(dirname(file), { recursive: true })
-  for (;;) {
-    try {
-      const handle = await open(lock, 'wx')
-      try {
-        await handle.writeFile(token, 'utf8')
-      } finally {
-        await handle.close()
-      }
-      try {
-        return await run()
-      } finally {
-        // Do not delete a new owner's lock if ours was reclaimed while a
-        // slow filesystem operation was in flight.
-        const held = await readFile(lock, 'utf8').catch(() => undefined)
-        if (held === token) await unlink(lock).catch(() => { /* best effort */ })
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-      const age = await stat(lock).then(info => Date.now() - info.mtimeMs, () => undefined)
-      if (age !== undefined && age > STALE_LOCK_MS) {
-        await unlink(lock).catch(() => { /* another writer may have recovered it */ })
-        continue
-      }
-      if (Date.now() >= deadline) throw new Error(`timed out waiting for task ledger lock: ${file}`)
-      await new Promise<void>(resolve => setTimeout(resolve, LOCK_RETRY_MS))
-    }
   }
 }
 
