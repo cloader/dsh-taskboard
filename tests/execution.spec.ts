@@ -3,7 +3,7 @@
  * model, prompt submission, settlement incl. turn errors) and the cron
  * scheduler (due → advance → run; missed windows skip).
  */
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -650,6 +650,15 @@ describe('ExecutionService', () => {
     expect(t.status).toBe('in_progress')
     expect(t.comments).toHaveLength(0)
     expect(store.snapshot().revision).toBe(revisionBefore)
+  })
+
+  it('does not request a write lock on a clean startup', async () => {
+    const store = await storeWith(task())
+    await writeFile(`${store.location()}.lock`, `${process.pid}:1:live`)
+    const svc = new ExecutionService({ store, agents: fakeAgents(), workspaces, events: fakeEvents(), now: () => 9_000 })
+    const revision = store.snapshot().revision
+    await svc.reconcile()
+    expect(store.snapshot().revision).toBe(revision)
   })
 
   it('reconciles stale running executions after a host restart', async () => {
