@@ -13,7 +13,7 @@ import { COLUMN_KEYS, URGENCY_KEYS } from './labels.ts'
 import { useT } from '../i18n/runtime.ts'
 import { localizeBuiltinName, localizeBuiltinTask } from '../i18n/templates.ts'
 import { categoryLabel, groupTemplatesByCategory } from '../template-categories.ts'
-import { fmtTime, isStaleClaim } from './format.ts'
+import { checkNeedsHuman, fmtTime, isStaleClaim } from './format.ts'
 import { DRAG_TYPE, TaskCard } from './TaskCard.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
 import { TaskFormModal } from './TaskFormModal.tsx'
@@ -164,7 +164,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     const timer = setInterval(() => setNow(Date.now()), 60_000)
     return () => clearInterval(timer)
   }, [])
-  const live = filterTasks(state, state.ledger.tasks.filter(t => t.trashedAt === undefined))
+  const [onlyNeedsHuman, setOnlyNeedsHuman] = useState(false)
+  const allLive = filterTasks(state, state.ledger.tasks.filter(t => t.trashedAt === undefined))
+  const needsHumanCount = allLive.filter(t => checkNeedsHuman(t).needs).length
+  const live = onlyNeedsHuman ? allLive.filter(t => checkNeedsHuman(t).needs) : allLive
   const selected = state.selectedId === undefined ? undefined : state.ledger.tasks.find(t => t.id === state.selectedId)
   const detailPanelRef = useRef<HTMLDivElement>(null)
 
@@ -296,6 +299,17 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             {t(URGENCY_KEYS[u])}
           </button>
         ))}
+        <button
+          type="button"
+          className="dsh-atb-chip"
+          data-kind="needs-human-filter"
+          data-on={onlyNeedsHuman}
+          style={onlyNeedsHuman ? { background: "#f59e0b", color: "#fff", borderColor: "#d97706", fontWeight: 600 } : undefined}
+          title={t("board.filter.needsHumanTitle")}
+          onClick={() => setOnlyNeedsHuman(!onlyNeedsHuman)}
+        >
+          🙋 {t("board.filter.needsHuman")} {needsHumanCount > 0 ? `(${needsHumanCount})` : ""}
+        </button>
         <button type="button" className="dsh-atb-btn" onClick={() => controller.toggleSecondary()}>
           {state.secondaryOpen ? t('board.action.backToBoard') : t('board.action.otherTasks')}
         </button>

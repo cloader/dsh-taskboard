@@ -1,5 +1,16 @@
 # 更新日志 / Changelog
 
+### 0.9.3 — 2026-10-21
+
+- **待人类操作智能识别与快速过滤**：新增 `checkNeedsHuman` 判定机制，支持显式标记与语义启发式识别（拍板/待确认/需人工/提供 Key/扫码/会话等待等），卡片正面以琥珀色徽章与高亮边框醒目标记，详情抽屉支持一键切换「🙋 标为需人介入」；看板顶部增加「🙋 待我处理」过滤按钮，一键排查全部需人类提供信息或决策的任务。
+- **交付审查与验收核对台置顶**：当任务处于「待验收 (in_review)」或「已完成 (done)」时，卡片正面直接展现改动文件概览、Checklist DoD / 自验证据及交付摘要，若缺少交付记录则红字预警；详情抽屉将「交付审查与验收核对台」直接置顶在最上方，支持改动文件路径一键复制、自验结论展示、Checklist 逐项核对与证据追溯。
+
+**English:**
+
+- **Waiting-for-human recognition & quick filter**: add `checkNeedsHuman` supporting explicit and heuristic signals (decisions, confirmations, credential inputs, QR codes, session prompts), highlighted with amber badge on cards; add "Waiting for Me" toolbar filter to quickly locate tasks blocked on human input; add one-click toggle in task details.
+- **Pinned delivery review desk**: in "in_review" and "done" columns, cards display changed files summary, checklist progress / self-verification checks, and delivery summaries with missing-record warnings; task detail pins the "Delivery Review & Verification Desk" to the top with one-click file path copying, verification conclusions, and DoD evidence notes.
+
+
 ### 0.9.2 — 2026-10-18
 
 - **列表过滤校验（#52）**：`taskboard_list` 的 `workspaceId` / `status` / `urgency` 过滤参数不再按纯字符串静默过滤为空：未注册的 workspaceId（含把项目路径误当 id 传入）返回 `not_found`，拼错的 status/urgency 返回 `invalid_input` 并列出合法值，调用方拿到纠错信号，「任务 0 条」不再与「参数写错」同形。已注册但无任务的项目与省略过滤参数的行为保持不变。感谢 [@Ausli](https://github.com/Ausli) 的贡献。

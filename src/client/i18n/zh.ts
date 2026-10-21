@@ -638,6 +638,32 @@ export const zh = {
   'sys.runAtMissed': '[系统] 定时执行错过触发时间（主机当时未运行），本次不再补跑；可手动执行或修改定时。',
   'sys.mergeSingle': '[系统] 分支 {branch} 已合并到主工作区（--no-ff）。',
   'sys.mergeMulti': '[系统] 分支已按仓库合并（--no-ff）：{summary}',
+
+  // ── needs-human & review-desk keys ──
+  'card.badge.needsHuman': '需人工介入',
+  'card.badge.needsHumanTitle': '该任务需要人类操作、决策或提供输入',
+  'card.deliv.changed': '修改文件',
+  'card.deliv.filesUnit': '个文件',
+  'card.deliv.gitFilesChanged': '个文件变更 (Git)',
+  'card.deliv.noFilesRecorded': '未登记改动文件',
+  'card.deliv.acceptance': '验收核对',
+  'card.deliv.checklistProgress': 'Checklist {done}/{total}',
+  'card.deliv.uncheckedWarn': '有未勾选',
+  'card.deliv.checksCount': '已自验 {n} 项',
+  'card.deliv.noVerificationWarn': '缺少自验/验收记录',
+  'detail.chip.needsHuman': '需人类操作/待提供信息',
+  'detail.deliv.title': '交付审查与验收核对台',
+  'detail.deliv.summaryLabel': '交付成果摘要',
+  'detail.deliv.missingReport': '未提交结构化交付报告',
+  'detail.deliv.missingHint': 'Agent 完成后未提交自验证据与改动清单。请核对实际代码变更或在会话中索要自验证据后再确认完成。',
+  'detail.deliv.copyPath': '复制路径',
+  'detail.deliv.copy': '复制',
+  'detail.deliv.copied': '已复制',
+  'detail.needsHuman.mark': '🙋 标为需人介入',
+  'detail.needsHuman.unmark': '✓ 解除需人介入',
+  'detail.needsHuman.hint': '标记该任务是否正在卡在等待人类输入、扫码、提供凭据或决策',
+  'board.filter.needsHuman': '待我处理',
+  'board.filter.needsHumanTitle': '仅展示需要人类操作或提供信息的任务',
 } as const
 
 /** The dictionary shape en.ts must match key-for-key. */

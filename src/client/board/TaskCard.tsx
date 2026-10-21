@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import type { BoardController } from '../controller.ts'
 import { taskSessionId, type TaskRecord } from '../../shared/protocol.ts'
-import { fmtTime, isStaleClaim } from './format.ts'
+import { checkNeedsHuman, fmtTime, isStaleClaim } from './format.ts'
 import { OUTCOME_KEYS, URGENCY_KEYS } from './labels.ts'
 import { useT } from '../i18n/runtime.ts'
 import { externalTypeLabel } from '../external-api.ts'
@@ -52,6 +52,9 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
   const running = task.executions.find(ex => ex.outcome === 'running')
   const stale = now !== undefined && isStaleClaim(task, now)
   const reviewing = task.status === 'in_review' && task.trashedAt === undefined
+  const needsHuman = checkNeedsHuman(task)
+  const latestReport = [...task.executions].reverse().find(e => e.report !== undefined)?.report
+  const latestWithGit = [...task.executions].reverse().find(e => (e.changedFiles ?? 0) > 0 || (e.commits?.length ?? 0) > 0 || e.diffStat)
   const targetSessionId = resolveTaskSessionId(task)
   const sessionTitle = controller.getSessionTitle(targetSessionId)
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -127,6 +130,7 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
       tabIndex={0}
       className="dsh-atb-card"
       data-urgency={task.urgency}
+      data-needs-human={needsHuman.needs ? 'true' : undefined}
       draggable={draggable && !rejectOpen}
       onDragStart={(e) => {
         // Block drag if a session is still executing this task
@@ -153,8 +157,55 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
         }
       }}
     >
-      <div className="dsh-atb-card-title">{task.title}</div>
+      <div className="dsh-atb-card-title">
+        {needsHuman.needs && <span className="dsh-atb-badge" data-kind="needs-human" style={{ marginRight: 6, verticalAlign: 'middle' }}>🙋 {needsHuman.reason ?? t('card.badge.needsHuman')}</span>}
+        {task.title}
+      </div>
       {task.external && <small>{task.external.providerName ?? task.external.provider} · {externalTypeLabel(task.external.item.type, t)} #{task.external.item.id}{task.external.conflicts.length > 0 ? ' ⚠' : ''}</small>}
+      
+      {(task.status === 'in_review' || task.status === 'done') && (
+        <div className="dsh-atb-card-deliverable">
+          <div className="dsh-atb-card-deliv-row">
+            <span className="dsh-atb-card-deliv-tag">📄 {t('card.deliv.changed')}:</span>
+            {latestReport?.changedFiles && latestReport.changedFiles.length > 0 ? (
+              <span className="dsh-atb-card-deliv-val" title={latestReport.changedFiles.join('\n')}>
+                {latestReport.changedFiles.length} {t('card.deliv.filesUnit')} ({latestReport.changedFiles[0].split('/').pop()}{latestReport.changedFiles.length > 1 ? ` +${latestReport.changedFiles.length - 1}` : ''})
+              </span>
+            ) : latestWithGit?.changedFiles ? (
+              <span className="dsh-atb-card-deliv-val">
+                {latestWithGit.changedFiles} {t('card.deliv.gitFilesChanged')}
+              </span>
+            ) : (
+              <span className="dsh-atb-card-deliv-val dsh-atb-deliv-warn">{t('card.deliv.noFilesRecorded')}</span>
+            )}
+          </div>
+          <div className="dsh-atb-card-deliv-row">
+            <span className="dsh-atb-card-deliv-tag">☑ {t('card.deliv.acceptance')}:</span>
+            {task.checklist && task.checklist.length > 0 ? (
+              <span className="dsh-atb-card-deliv-val" title={task.checklist.map(c => `${c.checked ? '✓' : '✗'} ${c.text}`).join('\n')}>
+                {t('card.deliv.checklistProgress', { done: task.checklist.filter(c => c.checked).length, total: task.checklist.length })}
+                {task.status === 'in_review' && task.checklist.some(c => !c.checked) && (
+                  <span className="dsh-atb-deliv-warn"> ({t('card.deliv.uncheckedWarn')})</span>
+                )}
+              </span>
+            ) : latestReport?.checks && latestReport.checks.length > 0 ? (
+              <span className="dsh-atb-card-deliv-val" title={latestReport.checks.join('\n')}>
+                ✓ {t('card.deliv.checksCount', { n: latestReport.checks.length })}
+              </span>
+            ) : (
+              <span className="dsh-atb-card-deliv-val dsh-atb-deliv-warn">
+                ⚠ {t('card.deliv.noVerificationWarn')}
+              </span>
+            )}
+          </div>
+          {latestReport?.summary && (
+            <div className="dsh-atb-card-deliv-summary" title={latestReport.summary}>
+              💡 {latestReport.summary}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="dsh-atb-card-meta">
         <span className="dsh-atb-badge">{t(URGENCY_KEYS[task.urgency])}</span>
         {task.blocked && <span className="dsh-atb-badge" data-kind="blocked">{t('shared.blocked')}</span>}

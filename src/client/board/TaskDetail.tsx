@@ -13,7 +13,7 @@ import type { BoardController } from '../controller.ts'
 import type { CommentRecord, ExecutionRecord, TaskRecord } from '../../shared/protocol.ts'
 import { canTransition, checklistProgress, taskAssociatedSessionIds, taskSessionId } from '../../shared/protocol.ts'
 import { useAlert } from './AlertModal.tsx'
-import { fmtTime, isStaleClaim } from './format.ts'
+import { checkNeedsHuman, fmtTime, isStaleClaim } from './format.ts'
 import { MOVE_KEYS, OUTCOME_KEYS, STATUS_KEYS, URGENCY_KEYS } from './labels.ts'
 import { useT, type Translate } from '../i18n/runtime.ts'
 import { IMAGE_ACCEPT, acceptedImageFiles, imageAlt, imageMarkdown, insertImageMarkdown } from '../image-insert.ts'
@@ -230,27 +230,99 @@ function ChecklistBlock({ task, controller }: { task: TaskRecord; controller: Bo
  */
 function ReportBlock({ task }: { task: TaskRecord }) {
   const t = useT()
+  const [copiedFile, setCopiedFile] = useState<string | null>(null)
   const execution = [...task.executions].reverse().find(e => e.report !== undefined)
   const report = execution?.report
-  if (execution === undefined || report === undefined) return null
-  const section = (label: string, rows: string[] | undefined): ReactNode => rows !== undefined && rows.length > 0
-    ? (
-        <div className="dsh-atb-rpt-sec">
-          <div className="dsh-atb-rpt-label">{label}</div>
-          <ul className="dsh-atb-rpt-list">{rows.map((row, i) => <li key={i}>{row}</li>)}</ul>
+  const isReviewOrDone = task.status === 'in_review' || task.status === 'done'
+
+  // If not review/done and no report submitted, keep quiet
+  if (!isReviewOrDone && (execution === undefined || report === undefined)) return null
+
+  const copyPath = (path: string): void => {
+    void navigator.clipboard.writeText(path).then(() => {
+      setCopiedFile(path)
+      setTimeout(() => setCopiedFile(null), 1500)
+    })
+  }
+
+  if (execution === undefined || report === undefined) {
+    if (task.status === 'in_review') {
+      return (
+        <div className="dsh-atb-fieldcard dsh-atb-reviewdesk" data-kind="report-missing">
+          <div className="dsh-atb-fieldcard-label">
+            <span>📋 {t('detail.deliv.title')}</span>
+            <span className="dsh-atb-deliv-warn" style={{ marginLeft: 'auto' }}>⚠ {t('detail.deliv.missingReport')}</span>
+          </div>
+          <div className="dsh-atb-deliv-missing-box">
+            <p>{t('detail.deliv.missingHint')}</p>
+          </div>
         </div>
       )
-    : null
+    }
+    return null
+  }
+
   return (
-    <div className="dsh-atb-fieldcard" data-kind="report">
-      <div className="dsh-atb-fieldcard-label">{t('report.title')}<span className="dsh-atb-cl-progress">{t('report.submitted', { time: fmtTime(execution.endedAt ?? execution.startedAt) })}</span></div>
-      <div className="dsh-atb-rpt-summary">{report.summary}</div>
-      {section(t('report.changedFiles'), report.changedFiles)}
-      {section(t('report.checks'), report.checks)}
-      {section(t('report.artifacts'), report.artifacts)}
+    <div className="dsh-atb-fieldcard dsh-atb-reviewdesk" data-kind="report">
+      <div className="dsh-atb-fieldcard-label">
+        <span>📋 {t('detail.deliv.title')}</span>
+        <span className="dsh-atb-cl-progress">
+          {t('report.submitted', { time: fmtTime(execution.endedAt ?? execution.startedAt) })}
+        </span>
+      </div>
+      
+      <div className="dsh-atb-deliv-summary-box">
+        <div className="dsh-atb-rpt-label">🎯 {t('detail.deliv.summaryLabel')}</div>
+        <div className="dsh-atb-rpt-summary">{report.summary}</div>
+      </div>
+
+      {report.changedFiles && report.changedFiles.length > 0 && (
+        <div className="dsh-atb-rpt-sec">
+          <div className="dsh-atb-rpt-label">📁 {t('report.changedFiles')} ({report.changedFiles.length})</div>
+          <ul className="dsh-atb-rpt-filelist">
+            {report.changedFiles.map((file, i) => (
+              <li key={i} className="dsh-atb-rpt-fileitem">
+                <span className="dsh-atb-file-path">{file}</span>
+                <button
+                  type="button"
+                  className="dsh-atb-file-copybtn"
+                  title={t('detail.deliv.copyPath')}
+                  onClick={() => copyPath(file)}
+                >
+                  {copiedFile === file ? t('detail.deliv.copied') : t('detail.deliv.copy')}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {report.checks && report.checks.length > 0 && (
+        <div className="dsh-atb-rpt-sec">
+          <div className="dsh-atb-rpt-label">🔬 {t('report.checks')} ({report.checks.length})</div>
+          <ul className="dsh-atb-rpt-checklist">
+            {report.checks.map((check, i) => (
+              <li key={i} className="dsh-atb-rpt-checkitem">
+                <span className="dsh-atb-check-icon">✓</span>
+                <span>{check}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {report.artifacts && report.artifacts.length > 0 && (
+        <div className="dsh-atb-rpt-sec">
+          <div className="dsh-atb-rpt-label">📦 {t('report.artifacts')}</div>
+          <ul className="dsh-atb-rpt-list">
+            {report.artifacts.map((art, i) => <li key={i}>{art}</li>)}
+          </ul>
+        </div>
+      )}
+
       {report.risk.length > 0 && (
         <div className="dsh-atb-rpt-sec">
-          <div className="dsh-atb-rpt-label">{t('report.risk')}</div>
+          <div className="dsh-atb-rpt-label">⚠️ {t('report.risk')}</div>
           <div className="dsh-atb-rpt-risk">{report.risk}</div>
         </div>
       )}
@@ -538,11 +610,14 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
   const canRun = task.status !== 'done' && task.status !== 'archived'
     && runningExecution === undefined && holder === undefined
   const stale = now !== undefined && isStaleClaim(task, now)
+  const needsHuman = checkNeedsHuman(task)
   const unchecked = (task.checklist ?? []).filter(i => !i.checked).length
   const targetSessionId = taskSessionId(task)
   const associatedSessions = taskAssociatedSessionIds(task)
   const archiveState = controller.getSnapshot()
   const archiveResult = archiveState.sessionArchive?.taskId === task.id ? archiveState.sessionArchive.result : undefined
+  const isReviewOrDone = task.status === 'in_review' || task.status === 'done'
+  const hasReport = task.executions.some(e => e.report !== undefined)
 
   /** Fire one top action under the shared busy guard; re-enable on settle. */
   const runAction = (action: () => Promise<unknown>): void => {
@@ -620,7 +695,8 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
               <Chip icon="⏰">{t('detail.chip.nextRun', { cron: task.execution.cron ?? '', time: fmtTime(task.execution.nextRunAt) })}</Chip>
             )}
             {task.execution.queuedRunAt !== undefined && <Chip icon="⏳" tone="urgent">{t('detail.chip.queuedRun', { time: fmtTime(task.execution.queuedRunAt) })}</Chip>}
-            {task.blocked && <Chip icon="⛔" tone="urgent">{t('shared.blocked')}</Chip>}
+            {needsHuman.needs && <Chip icon="🙋" tone="urgent" title={needsHuman.reason}>{needsHuman.reason ?? t('detail.chip.needsHuman')}</Chip>}
+            {task.blocked && !needsHuman.needs && <Chip icon="⛔" tone="urgent">{t('shared.blocked')}</Chip>}
             {task.checklist !== undefined && task.checklist.length > 0 && (
               <Chip icon="☑" tone={task.status === 'in_review' && task.checklist.some(i => !i.checked) ? 'urgent' : undefined}>
                 {t('detail.chip.checklist', { done: checklistProgress(task).done, total: task.checklist.length })}
@@ -731,6 +807,14 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
       </div>
 
       {task.external && <ExternalSourcePanel task={task} />}
+
+      {(isReviewOrDone || hasReport) && (
+        <>
+          <ReportBlock task={task} />
+          <ChecklistBlock task={task} controller={controller} />
+        </>
+      )}
+
       {task.description.length > 0 && (
         <div className="dsh-atb-fieldcard">
           <div className="dsh-atb-fieldcard-label">{t('detail.field.description')}</div>
@@ -747,9 +831,12 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
 
       <IsolationBlock task={task} controller={controller} />
 
-      <ReportBlock task={task} />
-
-      <ChecklistBlock task={task} controller={controller} />
+      {!isReviewOrDone && !hasReport && (
+        <>
+          <ReportBlock task={task} />
+          <ChecklistBlock task={task} controller={controller} />
+        </>
+      )}
 
       {archiveResult !== undefined && (
         <div role="status" className="dsh-atb-confirm">
@@ -852,6 +939,23 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
               </button>
             )
           })}
+          <button
+            type="button"
+            className="dsh-atb-movebtn"
+            data-to={needsHuman.needs ? "needs-human-active" : "needs-human"}
+            title={needsHuman.reason ?? t('detail.needsHuman.hint')}
+            onClick={() => {
+              const anyTask = task as Record<string, unknown>
+              const nextVal = !needsHuman.needs
+              void controller.update(task.id, task.version, {
+                blocked: nextVal,
+                waitingForHuman: nextVal,
+                waitingReason: nextVal ? (anyTask.waitingReason as string ?? "需人工操作或提供信息") : undefined,
+              } as never)
+            }}
+          >
+            {needsHuman.needs ? t('detail.needsHuman.unmark') : t('detail.needsHuman.mark')}
+          </button>
           <button type="button" className="dsh-atb-movebtn" data-to="blocked" onClick={() => void controller.toggleBlocked(task)}>
             {task.blocked ? t('detail.blocked.unmark') : t('detail.blocked.mark')}
           </button>
