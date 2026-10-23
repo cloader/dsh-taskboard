@@ -8,7 +8,26 @@
  * @module dsh-taskboard/client/board/format
  */
 import { humanWaiting } from '../../shared/human-wait.ts'
-import type { TaskRecord } from '../../shared/protocol.ts'
+import type { BoardSettings, TaskRecord } from '../../shared/protocol.ts'
+
+/**
+ * Initial project for the task form (#56): the task being edited wins, then
+ * the board's project filter, then the configured default project when it is
+ * still a registered workspace, then the first registered workspace.
+ */
+export function initialWorkspaceId(input: {
+  editing?: string
+  filter?: string
+  settings?: BoardSettings
+  workspaces?: ReadonlyArray<{ id: string }>
+}): string {
+  const list = input.workspaces ?? []
+  if (input.editing !== undefined) return input.editing
+  if (input.filter !== undefined) return input.filter
+  const preferred = input.settings?.defaultWorkspaceId
+  if (preferred !== undefined && list.some(w => w.id === preferred)) return preferred
+  return list[0]?.id ?? ''
+}
 
 /** Format an epoch ms as a short local stamp. */
 export function fmtTime(ms: number | undefined): string {

@@ -1,7 +1,6 @@
-# NOTE: lib/ build output IS committed (prebuilt) so github: installs work
-# with no build step and no build-script approval — ecosystem convention.
-# Ignore the obsolete intermediate left by older builds; full builds clean it.
-lib/client.cjs
+# build output (regenerate with npm run build; packed into the npm tarball
+# via the "files" field — prepublishOnly builds it fresh on publish)
+lib/
 
 # build scratch
 .tsc-check/

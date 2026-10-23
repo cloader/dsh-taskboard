@@ -1292,6 +1292,25 @@ describe('taskboard routes 0.5.0 (board settings → default isolation)', () => 
     expect(reread.value.isolation).toBe('worktree')
   })
 
+  it('defaultWorkspaceId persists for registered workspaces, rejects unknown ids, and drops blank values (#56)', async () => {
+    const ok = await post('/dsh-taskboard/settings/update', { defaultWorkspaceId: ' ws-a ' })
+    expect(ok.status).toBe(200)
+    expect(ok.json.value).toEqual({ defaultWorkspaceId: 'ws-a' })
+    const state = await (await fetch(`${base}/dsh-taskboard/state`)).json()
+    expect(state.value.settings.defaultWorkspaceId).toBe('ws-a')
+
+    const unknown = await post('/dsh-taskboard/settings/update', { defaultWorkspaceId: 'ws-ghost' })
+    expect(unknown.status).toBe(400)
+    expect(unknown.json.error.code).toBe('invalid_input')
+
+    const blank = await post('/dsh-taskboard/settings/update', { defaultWorkspaceId: '   ' })
+    expect(blank.status).toBe(200)
+    expect(blank.json.value).toEqual({})
+
+    const badType = await post('/dsh-taskboard/settings/update', { defaultWorkspaceId: 42 })
+    expect(badType.status).toBe(400)
+  })
+
   it('import replace swaps board settings; merge keeps the live ones; invalid settings refuse the file', async () => {
     await post('/dsh-taskboard/settings/update', { defaultIsolation: 'none' })
     const ledgerFile = {

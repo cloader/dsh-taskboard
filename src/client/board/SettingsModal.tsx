@@ -40,12 +40,14 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
   const currentModelKey = currentModel === undefined ? '' : JSON.stringify({ provider: currentModel.provider, model: currentModel.model })
   const currentEffort = currentModel?.reasoningEffort ?? ''
   const currentPreset = state.ledger.settings?.defaultPresetId ?? ''
+  const currentDefaultWorkspace = state.ledger.settings?.defaultWorkspaceId ?? ''
   const [catalog, setCatalog] = useState<CatalogModelItem[]>([])
   const [presets, setPresets] = useState<CatalogPresetItem[]>([])
   const [presetDefault, setPresetDefault] = useState<string | undefined>()
   const [draftModel, setDraftModel] = useState(currentModelKey)
   const [draftEffort, setDraftEffort] = useState(currentEffort)
   const [draftPreset, setDraftPreset] = useState(currentPreset)
+  const [draftDefaultWorkspace, setDraftDefaultWorkspace] = useState(currentDefaultWorkspace)
   const parsedModel = draftModel === '' ? undefined : JSON.parse(draftModel) as { provider: string; model: string }
   const selectedModel = catalog.find(m => m.provider === parsedModel?.provider && m.model === parsedModel?.model)
   const reasoning = selectedModel?.reasoning
@@ -71,6 +73,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
     && Number.isSafeInteger(dispatchIntervalMs) && dispatchIntervalMs >= 0 && dispatchIntervalMs <= 60000
   const completedLimitValid = Number.isSafeInteger(completedLimit) && completedLimit >= MIN_COMPLETED_DISPLAY_LIMIT && completedLimit <= MAX_COMPLETED_DISPLAY_LIMIT
   const dirty = draftModel !== currentModelKey || draftEffort !== currentEffort || draftPreset !== currentPreset
+    || draftDefaultWorkspace !== currentDefaultWorkspace
     || draftIso !== currentIso || draftSync !== currentSync || draftPerm !== currentPerm
     || draftMaxConcurrent !== String(currentMaxConcurrent) || draftMissedAfterMinutes !== String(currentMissedAfterMinutes)
     || draftQueueMaxAgeMinutes !== String(currentQueueMaxAgeMinutes) || draftDispatchIntervalMs !== String(currentDispatchIntervalMs)
@@ -98,6 +101,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
       defaultPermission: draftPerm,
       ...(parsedModel !== undefined ? { defaultModel: { ...parsedModel, ...(draftEffort !== '' ? { reasoningEffort: draftEffort } : {}) } } : {}),
       ...(draftPreset !== '' ? { defaultPresetId: draftPreset } : {}),
+      ...(draftDefaultWorkspace !== '' ? { defaultWorkspaceId: draftDefaultWorkspace } : {}),
       maxConcurrent,
       scheduleMissedAfterMinutes: missedAfterMinutes,
       queueMaxAgeMinutes,
@@ -186,6 +190,21 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
                 ? t('set.sync.stateOn')
                 : t('set.sync.stateOff')}
             </span>
+          </section>
+
+          <section className="dsh-atb-diag-sec">
+            <h4>{t('set.workspace.heading')}</h4>
+            <p className="dsh-atb-isolation-note">{t('set.workspace.hint')}</p>
+            <label className="dsh-atb-field">
+              <span className="dsh-atb-field-label">{t('set.workspace.field')}</span>
+              <select className="dsh-atb-input" value={draftDefaultWorkspace} onChange={e => setDraftDefaultWorkspace(e.target.value)}>
+                <option value="">{t('set.workspace.follow')}</option>
+                {draftDefaultWorkspace !== '' && !(state.workspaces ?? []).some(w => w.id === draftDefaultWorkspace) && (
+                  <option value={draftDefaultWorkspace}>{draftDefaultWorkspace}</option>
+                )}
+                {(state.workspaces ?? []).map(ws => <option key={ws.id} value={ws.id}>{ws.title || ws.path}</option>)}
+              </select>
+            </label>
           </section>
 
           <section className="dsh-atb-diag-sec">
