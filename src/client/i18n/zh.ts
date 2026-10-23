@@ -328,6 +328,7 @@ export const zh = {
   'detail.comments.title': '评论',
   'detail.comments.empty': '暂无评论 — agent 交接时会在这里汇报改动与验证结果',
   'detail.comments.user': '用户',
+  'detail.comments.system': '系统',
   'detail.composer.placeholder': '以用户身份留言（agent 开工前会读）…',
   'detail.composer.send': '发表',
   // Issue #51 Plan A: explicit comment delivery (in_review only)

@@ -146,6 +146,8 @@ describe('ExternalSessionSyncService (0.5.4)', () => {
     expect(settled.comments).toHaveLength(1)
     expect(settled.comments[0]!.body).toContain('[系统]')
     expect(settled.comments[0]!.body).toContain('已自动进入待验收')
+    // The settlement system comment is attributed to the settling session.
+    expect(settled.comments[0]!.threadId).toBe('sess-user-99')
 
     h.dispose()
   })

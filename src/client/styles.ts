@@ -508,6 +508,7 @@ button.dsh-atb-chip2.dsh-atb-chip-btn:hover {
   font-size: 13px; background: var(--dsw-bg-inset, rgba(128,128,128,.12));
 }
 .dsh-atb-bubble[data-from="agent"] .dsh-atb-bubble-avatar { background: rgba(142,78,198,.15); }
+.dsh-atb-bubble[data-from="system"] .dsh-atb-bubble-avatar { background: rgba(100,116,139,.16); }
 .dsh-atb-bubble-main {
   flex: 1; min-width: 0; border-radius: 10px; padding: 6px 10px;
   background: var(--dsw-bg-elevated, rgba(128,128,128,.08));
@@ -517,6 +518,8 @@ button.dsh-atb-chip2.dsh-atb-chip-btn:hover {
 .dsh-atb-bubble-meta { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; }
 .dsh-atb-bubble-meta b { font-size: 11.5px; font-weight: 600; color: var(--dsw-text-primary, inherit); }
 .dsh-atb-bubble[data-from="agent"] .dsh-atb-bubble-meta b { color: #a06ce0; }
+.dsh-atb-bubble[data-from="system"] .dsh-atb-bubble-main { border-color: rgba(100,116,139,.3); background: rgba(100,116,139,.07); }
+.dsh-atb-bubble[data-from="system"] .dsh-atb-bubble-meta b { color: #64748b; }
 .dsh-atb-bubble-meta span { font-size: 10.5px; color: var(--dsw-text-secondary, gray); }
 .dsh-atb-bubble-body { font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 

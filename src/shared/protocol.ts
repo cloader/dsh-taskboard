@@ -527,7 +527,7 @@ export type CommentRecord = {
   /**
    * When this comment was delivered to the task's conversation as a user
    * message (issue #51 Plan A explicit delivery); absent = still pending.
-   * Only user comments (no threadId) are ever delivered.
+   * Only user comments (no threadId, no systemKey) are ever delivered.
    */
   deliveredAt?: number
   /** The execution that carried the delivery (live followup or the wake run). */

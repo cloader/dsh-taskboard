@@ -170,6 +170,18 @@ export type DeliverCommentsResult =
   | { ok: true; delivered: 'live' | 'run'; count: number; executionId?: string; sessionId?: string }
   | { ok: false; error: string }
 
+/**
+ * Merge pending comment bodies into ONE user message (issue #51; user
+ * decision 2026-10-23): N comments must never render as N conversation
+ * bubbles. A lone comment stays verbatim; several join into a single message
+ * separated by a markdown rule under a short count header.
+ */
+export function mergeCommentBodies(bodies: string[]): string {
+  if (bodies.length === 0) return ''
+  if (bodies.length === 1) return bodies[0]!
+  return `（用户共留言 ${bodies.length} 条，请逐条处理）\n\n${bodies.join('\n\n----\n\n')}`
+}
+
 /** Whether a turn/end payload closed with an error reason. */
 function isErrorTurnEnd(data: unknown): { message: string } | undefined {
   if (typeof data !== 'object' || data === null) return undefined
@@ -433,6 +445,7 @@ export class ExecutionService {
                   body: normalizeBody(`[系统] 执行失败：${message.slice(0, 300)}；任务已退回待办。`),
                   systemKey: 'sys.execFailed',
                   systemParams: { error: message.slice(0, 300) },
+                  threadId: sessionId,
                   version: 1,
                   createdAt: this.deps.now(),
                 })
@@ -786,8 +799,8 @@ export class ExecutionService {
     //      next-step messages plus the one next-turn message into a single
     //    turn — framing first, then the user bubble.
     //    Comment wake (issue #51): the framing changes to the review variant
-    //    and EVERY pending comment is appended verbatim as its own user
-    //    message — never merged, never rewritten (user decision 2026-10).
+    //    and ALL pending comments go in as ONE merged user message (never N
+    //    bubbles; lone comment stays verbatim) — user decision 2026-10-23.
     const commentWake = trigger === 'comment' && (options?.comments?.length ?? 0) > 0
     handle.agent.inject({
       id: this.deps.mintMessageId?.() ?? MessageId(`msg-taskboard-${crypto.randomUUID()}`),
@@ -796,14 +809,12 @@ export class ExecutionService {
       source: { kind: 'dsh-taskboard' as const },
     })
     if (commentWake) {
-      for (const c of options!.comments!) {
-        handle.agent.followup({
-          id: this.deps.mintMessageId?.() ?? MessageId(`msg-taskboard-${crypto.randomUUID()}`),
-          role: 'user' as const,
-          content: [{ type: 'text' as const, text: c.body }],
-          source: { kind: 'user' as const },
-        })
-      }
+      handle.agent.followup({
+        id: this.deps.mintMessageId?.() ?? MessageId(`msg-taskboard-${crypto.randomUUID()}`),
+        role: 'user' as const,
+        content: [{ type: 'text' as const, text: mergeCommentBodies(options!.comments!.map(c => c.body)) }],
+        source: { kind: 'user' as const },
+      })
     } else {
       handle.agent.followup({
         id: this.deps.mintMessageId?.() ?? MessageId(`msg-taskboard-${crypto.randomUUID()}`),
@@ -881,6 +892,7 @@ export class ExecutionService {
               id: newCommentId(),
               body: normalizeBody('[系统] 定期任务本轮执行完成，已按设置自动回到待办，等待下一次触发。'),
               systemKey: 'sys.periodicRearmed',
+              threadId: sessionId,
               version: 1,
               createdAt: now,
             })
@@ -900,6 +912,7 @@ export class ExecutionService {
                 body: normalizeBody(`[系统] 定期任务本轮执行完毕，已按设置新建待办卡 ${successor.id} 承接下一轮，请审查本卡后验收。`),
                 systemKey: 'sys.periodicHandoff',
                 systemParams: { nextTaskId: successor.id },
+                threadId: sessionId,
                 version: 1,
                 createdAt: now,
               })
@@ -911,6 +924,7 @@ export class ExecutionService {
               id: newCommentId(),
               body: normalizeBody('[系统] 定期表达式已无未来触发时间，本轮结束后定时停用；如需继续请重新设置。'),
               systemKey: 'sys.cronDead',
+              threadId: sessionId,
               version: 1,
               createdAt: now,
             })
@@ -924,6 +938,7 @@ export class ExecutionService {
                 ? '[系统] 执行会话已结束并留有评论，但未移至待验收；系统自动移入待验收。'
                 : '[系统] 执行会话已结束，但未按协议交接（无评论、未移至待验收）；系统自动移入待验收，请审查后退回或验收。'),
               systemKey: commented ? 'sys.endedWithComment' : 'sys.endedNoHandoff',
+              threadId: sessionId,
               version: 1,
               createdAt: now,
             })
@@ -945,6 +960,7 @@ export class ExecutionService {
                   body: normalizeBody(`[系统] 定期任务本轮执行完毕，定时已由新待办卡 ${successor.id} 承接，请审查本卡后验收。`),
                   systemKey: 'sys.periodicHandoff',
                   systemParams: { nextTaskId: successor.id },
+                  threadId: sessionId,
                   version: 1,
                   createdAt: now,
                 })
@@ -958,6 +974,7 @@ export class ExecutionService {
                 id: newCommentId(),
                 body: normalizeBody('[系统] 定期表达式已无未来触发时间，本轮结束后定时停用；如需继续请重新设置。'),
                 systemKey: 'sys.cronDead',
+                threadId: sessionId,
                 version: 1,
                 createdAt: now,
               })
@@ -1147,14 +1164,15 @@ export class ExecutionService {
    * - run: otherwise a comment-triggered run that continues the card's
    *   conversation (taskSessionId candidate, compatibility-checked) or
    *   degrades to a fresh one — comments appended verbatim by run().
-   * Agent comments are never delivered; already-delivered ones never repeat.
+   * Agent comments and host system messages are never delivered; already-
+  * delivered ones never repeat.
    */
   async deliverComments(taskId: string): Promise<DeliverCommentsResult> {
     const task = this.deps.store.get(taskId)
     if (task === undefined || task.trashedAt !== undefined) return { ok: false, error: `no task ${taskId}` }
     if (task.status !== 'in_review') return { ok: false, error: `comment wake requires in_review (current ${task.status})` }
     const pending = task.comments
-      .filter(c => c.threadId === undefined && c.deliveredAt === undefined)
+      .filter(c => c.systemKey === undefined && c.threadId === undefined && c.deliveredAt === undefined)
       .sort((a, b) => a.createdAt - b.createdAt)
     if (pending.length === 0) return { ok: false, error: '没有待投递的留言' }
     const running = task.executions.find(e => e.outcome === 'running')
@@ -1169,14 +1187,14 @@ export class ExecutionService {
         // firing messages into an orphaned conversation.
         return { ok: false, error: '执行会话状态不明（宿主可能重启过），请先停止执行再投递留言' }
       }
-      for (const c of pending) {
-        live.followup({
-          id: this.deps.mintMessageId?.() ?? MessageId(`msg-taskboard-${crypto.randomUUID()}`),
-          role: 'user' as const,
-          content: [{ type: 'text' as const, text: c.body }],
-          source: { kind: 'user' as const },
-        })
-      }
+      // Same ONE-message rule as the run channel (user decision 2026-10-23):
+      // the pending backlog joins into a single user message bubble.
+      live.followup({
+        id: this.deps.mintMessageId?.() ?? MessageId(`msg-taskboard-${crypto.randomUUID()}`),
+        role: 'user' as const,
+        content: [{ type: 'text' as const, text: mergeCommentBodies(pending.map(c => c.body)) }],
+        source: { kind: 'user' as const },
+      })
       await this.markCommentsDelivered(taskId, pending.map(c => c.id), running.id, liveSessionId, false)
       return { ok: true, delivered: 'live', count: pending.length, executionId: running.id, sessionId: liveSessionId }
     }
@@ -1260,7 +1278,7 @@ export class ExecutionService {
    */
   private commentFraming(task: TaskRecord, prepared?: PreparedMirror, degradeNote?: string): string {
     let text = `【任务看板】${task.title}（ID: ${task.id}）\n`
-      + `本会话由任务看板的「用户留言」触发：用户在本卡待验收时留言，留言已按原样作为下方的用户消息逐条投递——请逐条处理，不要遗漏。\n`
+      + `本会话由任务看板的「用户留言」触发：用户在本卡待验收时留言，留言已合并为下方的一条用户消息（多条之间以分隔线隔开、保持原文）——请逐条处理，不要遗漏。\n`
       + `处理完成后仍按序交接：\n`
       + `1. taskboard_get 读取本任务，取得最新 version\n`
       + `2. taskboard_execution_report 提交结构化执行报告（做了什么/改了哪些文件/如何验证/剩余风险）\n`

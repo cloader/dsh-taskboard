@@ -622,6 +622,7 @@ describe('client half', () => {
         { id: 'c1', body: '验收留言', version: 1, createdAt: 100 },
         { id: 'c2', body: '投过的留言', version: 1, createdAt: 110, deliveredAt: 120, deliveredExecutionId: 'e-1' },
         { id: 'c3', body: 'agent 汇报', version: 1, createdAt: 130, threadId: 'session-a' },
+        { id: 'c4', body: '[系统] 会话执行完毕，已自动进入待验收。', version: 1, createdAt: 140, systemKey: 'sys.sessionDone' },
       ],
       executions: [{ id: 'e-1', trigger: 'manual' as const, startedAt: 0, endedAt: 1, outcome: 'succeeded' as const, sessionId: 'session-a' }],
     })
@@ -653,6 +654,13 @@ describe('client half', () => {
     expect(bubbles[0]!.textContent).toContain('待投递')
     expect(bubbles[1]!.textContent).toContain('已投递')
     expect(bubbles[2]!.textContent).not.toContain('待投递')
+    // Author kinds are labeled distinctly; host system messages never join
+    // the pending-delivery backlog (the deliver badge above stays (1)).
+    expect(bubbles[0]!.getAttribute('data-from')).toBe('user')
+    expect(bubbles[2]!.getAttribute('data-from')).toBe('agent')
+    expect(bubbles[3]!.getAttribute('data-from')).toBe('system')
+    expect(bubbles[3]!.querySelector('.dsh-atb-bubble-meta b')!.textContent).toBe('系统')
+    expect(bubbles[3]!.textContent).not.toContain('待投递')
     // Click with an empty composer still flushes the backlog through the controller.
     deliver()!.click()
     await new Promise(r => setTimeout(r, 10))

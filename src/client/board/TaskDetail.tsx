@@ -660,7 +660,7 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
   // Issue #51 Plan A: pending = user comments not yet delivered to the
   // conversation. The deliver action exists ONLY on in_review cards (the
   // acceptance-review loop); the host gate enforces the same invariant.
-  const pendingCommentCount = task.comments.filter(c => c.threadId === undefined && c.deliveredAt === undefined).length
+  const pendingCommentCount = task.comments.filter(c => c.systemKey === undefined && c.threadId === undefined && c.deliveredAt === undefined).length
   const canDeliver = task.status === 'in_review' && (comment.trim().length > 0 || pendingCommentCount > 0)
 
   /** Fire one top action under the shared busy guard; re-enable on settle. */
@@ -1022,14 +1022,18 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
           ? <div className="dsh-atb-empty2">{t('detail.comments.empty')}</div>
           : (
               <div className="dsh-atb-commentlist">
-                {task.comments.map(c => (
-                  <div key={c.id} className="dsh-atb-bubble" data-from={c.threadId !== undefined ? 'agent' : 'user'}>
-                    <div className="dsh-atb-bubble-avatar">{c.threadId !== undefined ? '🤖' : '👤'}</div>
+                {task.comments.map(c => {
+                  // Three author kinds: host system message (systemKey), agent
+                  // session (threadId), user comment (default fallback).
+                  const from = c.systemKey !== undefined ? 'system' : c.threadId !== undefined ? 'agent' : 'user'
+                  return (
+                  <div key={c.id} className="dsh-atb-bubble" data-from={from}>
+                    <div className="dsh-atb-bubble-avatar">{from === 'agent' ? '🤖' : from === 'system' ? '⚙️' : '👤'}</div>
                     <div className="dsh-atb-bubble-main">
                       <div className="dsh-atb-bubble-meta">
-                        <b>{c.threadId !== undefined ? `agent ${shortId(c.threadId)}` : t('detail.comments.user')}</b>
+                        <b>{from === 'agent' ? `agent ${shortId(c.threadId!)}` : from === 'system' ? t('detail.comments.system') : t('detail.comments.user')}</b>
                         <span>{fmtTime(c.createdAt)}</span>
-                        {c.threadId === undefined && c.deliveredAt === undefined && task.status === 'in_review' && (
+                        {from === 'user' && c.deliveredAt === undefined && task.status === 'in_review' && (
                           <span className="dsh-atb-comment-pending">{t('detail.comment.pending')}</span>
                         )}
                         {c.deliveredExecutionId !== undefined && (() => {
@@ -1051,7 +1055,8 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
                       <div className="dsh-atb-bubble-body"><MarkdownContent text={commentBody(t, c)} /></div>
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
         <div className="dsh-atb-composer">

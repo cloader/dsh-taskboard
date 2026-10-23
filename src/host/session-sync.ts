@@ -783,6 +783,7 @@ export class ExternalSessionSyncService {
             body: normalizeBody(`[系统] 会话执行异常：${errorMessage.slice(0, 300)}；任务已退回待办。`),
             systemKey: 'sys.sessionError',
             systemParams: { error: errorMessage.slice(0, 300) },
+            threadId: sessionId,
             version: 1,
             createdAt: now,
           })
@@ -795,6 +796,7 @@ export class ExternalSessionSyncService {
             id: newCommentId(),
             body: normalizeBody('[系统] 会话执行完毕，已自动进入待验收。'),
             systemKey: 'sys.sessionDone',
+            threadId: sessionId,
             version: 1,
             createdAt: now,
           })
@@ -812,6 +814,7 @@ export class ExternalSessionSyncService {
                 body: normalizeBody(`[系统] 定期任务本轮执行完毕，定时已由新待办卡 ${successor.id} 承接，请审查本卡后验收。`),
                 systemKey: 'sys.periodicHandoff',
                 systemParams: { nextTaskId: successor.id },
+                threadId: sessionId,
                 version: 1,
                 createdAt: now,
               })
@@ -823,6 +826,7 @@ export class ExternalSessionSyncService {
               id: newCommentId(),
               body: normalizeBody('[系统] 定期表达式已无未来触发时间，本轮结束后定时停用；如需继续请重新设置。'),
               systemKey: 'sys.cronDead',
+              threadId: sessionId,
               version: 1,
               createdAt: now,
             })

@@ -366,6 +366,7 @@ describe('ExecutionService', () => {
     expect(t.comments).toHaveLength(1)
     expect(t.comments[0]!.body).toContain('[系统]')
     expect(t.comments[0]!.body).toContain('未按协议交接')
+    expect(t.comments[0]!.threadId).toBe(result.sessionId)
   })
 
   it('re-arms a periodic task even when its agent already moved it to in_review', async () => {
@@ -1582,15 +1583,19 @@ describe('comment wake (issue #51 Plan A)', () => {
       if (!result.ok) return
       expect(result.delivered).toBe('run')
       expect(result.count).toBe(2)
-      // Fresh session (no history), review framing, ONE user message per comment.
+      // Fresh session (no history), review framing, and ONE merged user
+      // message: N comments never become N bubbles (user decision 2026-10-23).
       expect(agents.created).toHaveLength(1)
       expect(JSON.stringify(agents.injects)).toContain('用户留言')
-      expect(agents.followups).toHaveLength(2)
-      expect(JSON.stringify(agents.followups[0])).toContain('第一条留言')
-      expect(JSON.stringify(agents.followups[1])).toContain('第二条留言')
+      expect(agents.followups).toHaveLength(1)
+      const merged = JSON.stringify(agents.followups[0])
+      expect(merged).toContain('用户共留言 2 条')
+      expect(merged).toContain('第一条留言')
+      expect(merged).toContain('----')
+      expect(merged).toContain('第二条留言')
       // Agent comments and already-delivered ones never re-deliver.
-      expect(JSON.stringify(agents.followups)).not.toContain('agent 回复')
-      expect(JSON.stringify(agents.followups)).not.toContain('已投递过的留言')
+      expect(merged).not.toContain('agent 回复')
+      expect(merged).not.toContain('已投递过的留言')
       // Ledger: comments marked, wake trace left, card re-claimed, trigger recorded.
       const t = store.get('t-review')!
       expect(t.status).toBe('in_progress')
@@ -1616,7 +1621,8 @@ describe('comment wake (issue #51 Plan A)', () => {
       if (!result.ok) return
       expect(fake.resumeCalls).toEqual(['session-prev-1'])
       expect(fake.created).toHaveLength(0)
-      expect(fake.followups).toHaveLength(2)
+      expect(fake.followups).toHaveLength(1)
+      expect(JSON.stringify(fake.followups[0])).toContain('用户共留言 2 条')
       const t = store.get('t-review')!
       expect(t.claimedBy).toBe('session-prev-1')
       const wake = t.executions[t.executions.length - 1]!
@@ -1640,7 +1646,7 @@ describe('comment wake (issue #51 Plan A)', () => {
       const wake = t.executions[t.executions.length - 1]!
       expect(wake.trigger).toBe('comment')
       expect(wake.reuseFallbackNote).toContain('incompatible')
-      expect(fake.followups).toHaveLength(2)
+      expect(fake.followups).toHaveLength(1)
     } finally { svc.dispose() }
   })
 
@@ -1670,6 +1676,20 @@ describe('comment wake (issue #51 Plan A)', () => {
       const result = await svc.deliverComments('t-review')
       expect(result).toEqual({ ok: false, error: '没有待投递的留言' })
       expect(agents.created).toHaveLength(0)
+    } finally { svc.dispose() }
+  })
+
+  it('never delivers host system comments, even legacy ones without threadId', async () => {
+    const store = await storeWith(reviewTask({ comments: [
+      { id: 'c-sys', body: '[系统] 会话执行完毕，已自动进入待验收。', version: 1, createdAt: 150, systemKey: 'sys.sessionDone' },
+    ] }))
+    const agents = fakeAgents()
+    const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: () => 1_000 })
+    try {
+      const result = await svc.deliverComments('t-review')
+      expect(result).toEqual({ ok: false, error: '没有待投递的留言' })
+      expect(agents.created).toHaveLength(0)
+      expect(agents.followups).toHaveLength(0)
     } finally { svc.dispose() }
   })
 
@@ -1723,8 +1743,12 @@ describe('comment wake (issue #51 Plan A)', () => {
       expect(result.delivered).toBe('live')
       expect(result.count).toBe(2)
       expect(result.executionId).toBe(run.executionId)
-      expect(liveFollowups).toHaveLength(2)
-      expect(JSON.stringify(liveFollowups[0])).toContain('验收意见一')
+      // Live channel follows the same ONE-message rule as the run channel.
+      expect(liveFollowups).toHaveLength(1)
+      const liveMerged = JSON.stringify(liveFollowups[0])
+      expect(liveMerged).toContain('用户共留言 2 条')
+      expect(liveMerged).toContain('验收意见一')
+      expect(liveMerged).toContain('验收意见二')
       // No second execution; the card stays in review; comments are marked.
       const t = store.get('t-live-review')!
       expect(t.executions).toHaveLength(1)

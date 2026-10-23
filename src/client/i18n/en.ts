@@ -326,6 +326,7 @@ export const en: TaskboardDict = {
   'detail.comments.title': 'Comments',
   'detail.comments.empty': 'No comments yet — the agent reports changes and verification here at handoff',
   'detail.comments.user': 'User',
+  'detail.comments.system': 'System',
   'detail.composer.placeholder': 'Leave a comment as the user (the agent reads it before starting)…',
   'detail.composer.send': 'Post',
   // Issue #51 Plan A: explicit comment delivery (in_review only)
