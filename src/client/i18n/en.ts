@@ -337,6 +337,7 @@ export const en: TaskboardDict = {
   'detail.comment.deliveredTitle': 'Delivered to the conversation as a user message — click to open it',
   'detail.comment.agentTitle': 'Jump to session {id}',
   'detail.exec.title': 'Executions',
+  'detail.exec.toggleTitle': 'Click to expand/collapse executions',
   'detail.exec.prunedTitle': '{n} older execution records were pruned at the retention cap',
   'detail.exec.pruned': '+{n} pruned',
   'detail.exec.trigger.manual': 'Manual',

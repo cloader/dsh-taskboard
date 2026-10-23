@@ -623,6 +623,7 @@ describe('client half', () => {
         { id: 'c2', body: '投过的留言', version: 1, createdAt: 110, deliveredAt: 120, deliveredExecutionId: 'e-1' },
         { id: 'c3', body: 'agent 汇报', version: 1, createdAt: 130, threadId: 'session-a' },
         { id: 'c4', body: '[系统] 会话执行完毕，已自动进入待验收。', version: 1, createdAt: 140, systemKey: 'sys.sessionDone' },
+        { id: 'c5', body: '[系统] 用户留言已投递，唤醒会话处理。', version: 1, createdAt: 150, threadId: 'session-wake12', systemKey: 'sys.commentWoke' },
       ],
       executions: [{ id: 'e-1', trigger: 'manual' as const, startedAt: 0, endedAt: 1, outcome: 'succeeded' as const, sessionId: 'session-a' }],
     })
@@ -636,6 +637,8 @@ describe('client half', () => {
       commentRun: async (id: string, body: string) => { commentRunCalls.push([id, body]); return { delivered: 'run', count: 1 } },
     }
     const controller = new BoardController(client as never)
+    const openSessions: string[] = []
+    controller.installSessionJumper(async id => { openSessions.push(id); return 'missing' as never })
     controller.start()
     await new Promise(r => setTimeout(r, 10))
 
@@ -654,13 +657,36 @@ describe('client half', () => {
     expect(bubbles[0]!.textContent).toContain('待投递')
     expect(bubbles[1]!.textContent).toContain('已投递')
     expect(bubbles[2]!.textContent).not.toContain('待投递')
-    // Author kinds are labeled distinctly; host system messages never join
-    // the pending-delivery backlog (the deliver badge above stays (1)).
+    // Two author kinds only: threadId → agent, else → user. System comments
+    // are attributed via threadId; a legacy one (no threadId) falls back to
+    // the user label but never joins the pending-delivery backlog (the
+    // deliver badge above stays (1)).
     expect(bubbles[0]!.getAttribute('data-from')).toBe('user')
     expect(bubbles[2]!.getAttribute('data-from')).toBe('agent')
-    expect(bubbles[3]!.getAttribute('data-from')).toBe('system')
-    expect(bubbles[3]!.querySelector('.dsh-atb-bubble-meta b')!.textContent).toBe('系统')
+    expect(bubbles[3]!.getAttribute('data-from')).toBe('user')
     expect(bubbles[3]!.textContent).not.toContain('待投递')
+    expect(bubbles[4]!.getAttribute('data-from')).toBe('agent')
+    // Session-backed agent labels render as jump buttons; clicking jumps to
+    // the session. Synthetic ('sched'/'host') and legacy ids stay plain.
+    const agentBtn = bubbles[2]!.querySelector<HTMLButtonElement>('.dsh-atb-comment-agent')
+    expect(agentBtn).not.toBeNull()
+    expect(agentBtn!.textContent).toBe('agent a')
+    expect(bubbles[4]!.querySelector('.dsh-atb-bubble-meta b')).toBeNull()
+    const sysBtn = bubbles[4]!.querySelector<HTMLButtonElement>('.dsh-atb-comment-agent')
+    expect(sysBtn!.textContent).toBe('agent wake12')
+    agentBtn!.click()
+    await new Promise(r => setTimeout(r, 10))
+    expect(openSessions).toEqual(['session-a'])
+    // Executions section: collapsed by default, the header toggles it.
+    expect(host.querySelector('.dsh-atb-execlist')).toBeNull()
+    host.querySelector<HTMLButtonElement>('.dsh-atb-section-toggle')!.click()
+    await new Promise(r => setTimeout(r, 10))
+    const execList = host.querySelector('.dsh-atb-execlist')
+    expect(execList).not.toBeNull()
+    expect(execList!.children.length).toBe(1)
+    host.querySelector<HTMLButtonElement>('.dsh-atb-section-toggle')!.click()
+    await new Promise(r => setTimeout(r, 10))
+    expect(host.querySelector('.dsh-atb-execlist')).toBeNull()
     // Click with an empty composer still flushes the backlog through the controller.
     deliver()!.click()
     await new Promise(r => setTimeout(r, 10))

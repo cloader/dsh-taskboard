@@ -1183,6 +1183,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
                 next.comments.push({
                   id: newCommentId(),
                   body: normalizeBody(body),
+                  threadId: 'host',
                   ...(system !== undefined ? {
                     systemKey: system.key,
                     ...(system.params !== undefined ? { systemParams: system.params } : {}),

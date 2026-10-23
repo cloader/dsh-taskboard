@@ -931,7 +931,9 @@ export class ExecutionService {
             return [t]
           }
           if (t.status === 'in_progress') {
-            const commented = t.comments.some(c => c.threadId === sessionId && c.createdAt >= (execution.startedAt ?? 0))
+            // Host system comments carry threadId too — only a real agent
+            // comment (no systemKey) proves the session handed off.
+            const commented = t.comments.some(c => c.threadId === sessionId && c.systemKey === undefined && c.createdAt >= (execution.startedAt ?? 0))
             t.comments.push({
               id: newCommentId(),
               body: normalizeBody(commented
@@ -1228,6 +1230,7 @@ export class ExecutionService {
           body: normalizeBody(`[系统] 用户留言已投递，唤醒会话 ${sessionId} 处理。`),
           systemKey: 'sys.commentWoke',
           systemParams: { id: sessionId },
+          threadId: sessionId,
           version: 1,
           createdAt: now,
         })

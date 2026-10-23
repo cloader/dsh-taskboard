@@ -638,6 +638,8 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
   // share one in-flight guard: a double click used to fire duplicate runs or
   // copies while the first round-trip was still pending (review P0).
   const [actionBusy, setActionBusy] = useState(false)
+  // 执行记录默认折叠：细节按需展开，避免长卡（用户要求 0.9.x）。
+  const [execOpen, setExecOpen] = useState(false)
   const { alert: showAlert, el: alertEl } = useAlert()
   const ws = controller.getSnapshot().workspaces.find(w => w.id === task.workspaceId)
   const runningExecution = task.executions.find(e => e.outcome === 'running')
@@ -1022,18 +1024,25 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
           ? <div className="dsh-atb-empty2">{t('detail.comments.empty')}</div>
           : (
               <div className="dsh-atb-commentlist">
-                {task.comments.map(c => {
-                  // Three author kinds: host system message (systemKey), agent
-                  // session (threadId), user comment (default fallback).
-                  const from = c.systemKey !== undefined ? 'system' : c.threadId !== undefined ? 'agent' : 'user'
-                  return (
-                  <div key={c.id} className="dsh-atb-bubble" data-from={from}>
-                    <div className="dsh-atb-bubble-avatar">{from === 'agent' ? '🤖' : from === 'system' ? '⚙️' : '👤'}</div>
+                {task.comments.map(c => (
+                  <div key={c.id} className="dsh-atb-bubble" data-from={c.threadId !== undefined ? 'agent' : 'user'}>
+                    <div className="dsh-atb-bubble-avatar">{c.threadId !== undefined ? '🤖' : '👤'}</div>
                     <div className="dsh-atb-bubble-main">
                       <div className="dsh-atb-bubble-meta">
-                        <b>{from === 'agent' ? `agent ${shortId(c.threadId!)}` : from === 'system' ? t('detail.comments.system') : t('detail.comments.user')}</b>
+                        {c.threadId !== undefined && c.threadId.startsWith('session-') ? (
+                          <button
+                            type="button"
+                            className="dsh-atb-comment-agent"
+                            title={t('detail.comment.agentTitle', { id: c.threadId })}
+                            onClick={() => jumpToSession(c.threadId!)}
+                          >
+                            {`agent ${shortId(c.threadId)}`}
+                          </button>
+                        ) : (
+                          <b>{c.threadId !== undefined ? `agent ${shortId(c.threadId)}` : t('detail.comments.user')}</b>
+                        )}
                         <span>{fmtTime(c.createdAt)}</span>
-                        {from === 'user' && c.deliveredAt === undefined && task.status === 'in_review' && (
+                        {c.systemKey === undefined && c.threadId === undefined && c.deliveredAt === undefined && task.status === 'in_review' && (
                           <span className="dsh-atb-comment-pending">{t('detail.comment.pending')}</span>
                         )}
                         {c.deliveredExecutionId !== undefined && (() => {
@@ -1055,8 +1064,7 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
                       <div className="dsh-atb-bubble-body"><MarkdownContent text={commentBody(t, c)} /></div>
                     </div>
                   </div>
-                  )
-                })}
+                ))}
               </div>
             )}
         <div className="dsh-atb-composer">
@@ -1123,12 +1131,21 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
 
       {task.executions.length > 0 && (
         <div className="dsh-atb-section">
-          <h4>{t('detail.exec.title')}<span className="dsh-atb-count2">{task.executions.length}</span>
-            {task.executionsPruned !== undefined && task.executionsPruned > 0 && (
-              <span className="dsh-atb-count2" title={t('detail.exec.prunedTitle', { n: task.executionsPruned })}>{t('detail.exec.pruned', { n: task.executionsPruned })}</span>
-            )}
+          <h4>
+            <button
+              type="button"
+              className="dsh-atb-section-toggle"
+              title={t('detail.exec.toggleTitle')}
+              onClick={() => setExecOpen(v => !v)}
+            >
+              <span className="dsh-atb-toggle-caret">{execOpen ? '▾' : '▸'}</span>
+              {t('detail.exec.title')}<span className="dsh-atb-count2">{task.executions.length}</span>
+              {task.executionsPruned !== undefined && task.executionsPruned > 0 && (
+                <span className="dsh-atb-count2" title={t('detail.exec.prunedTitle', { n: task.executionsPruned })}>{t('detail.exec.pruned', { n: task.executionsPruned })}</span>
+              )}
+            </button>
           </h4>
-          <div className="dsh-atb-execlist">
+          {execOpen && <div className="dsh-atb-execlist">
             {[...task.executions].reverse().map(e => (
               <div key={e.id} className="dsh-atb-exec-row">
                 <span className="dsh-atb-exec-dot" data-outcome={e.outcome} />
@@ -1148,7 +1165,7 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
                 {e.error !== undefined && <span className="dsh-atb-exec-error" title={e.error}>{e.error.slice(0, 80)}{e.error.length > 80 ? '…' : ''}</span>}
               </div>
             ))}
-          </div>
+          </div>}
         </div>
       )}
 

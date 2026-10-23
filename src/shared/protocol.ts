@@ -512,7 +512,11 @@ export type CommentRecord = {
   /** Optimistic-concurrency version of this comment. */
   version: number
   createdAt: number
-  /** The session that wrote this comment; absent for user-written ones. */
+  /**
+   * The session that wrote this comment; absent for user-written ones. Host
+   * system comments carry the acting session id, or a stable source tag
+   * ('sched' / 'host') when no session is involved.
+   */
   threadId?: string
   /**
    * i18n key of a host-generated system message (0.6.4). The GUI localizes it

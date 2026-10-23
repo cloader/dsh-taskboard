@@ -1605,7 +1605,9 @@ describe('comment wake (issue #51 Plan A)', () => {
       expect(t.comments.find(c => c.id === 'c3')!.deliveredAt).toBeDefined()
       expect(t.comments.find(c => c.id === 'c2')!.deliveredAt).toBeUndefined()
       expect(t.comments.find(c => c.id === 'c4')!.deliveredExecutionId).toBe('e-old')
-      expect(t.comments.some(c => c.systemKey === 'sys.commentWoke')).toBe(true)
+      const woke = t.comments.find(c => c.systemKey === 'sys.commentWoke')
+      expect(woke).toBeDefined()
+      expect(woke!.threadId).toBe(result.sessionId)
     } finally { svc.dispose() }
   })
 
@@ -1690,6 +1692,24 @@ describe('comment wake (issue #51 Plan A)', () => {
       expect(result).toEqual({ ok: false, error: '没有待投递的留言' })
       expect(agents.created).toHaveLength(0)
       expect(agents.followups).toHaveLength(0)
+    } finally { svc.dispose() }
+  })
+
+  it('wake trace does not count as the session handoff comment', async () => {
+    const store = await storeWith(reviewTask())
+    const agents = fakeAgents()
+    const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: () => 1_000 })
+    try {
+      const result = await svc.deliverComments('t-review')
+      if (!result.ok) throw new Error('wake failed')
+      agents.idle(result.sessionId)
+      await waitFor(() => store.get('t-review')!.executions.every(e => e.outcome !== 'running'))
+      const t = store.get('t-review')!
+      // The commentWoke trace carries the wake session's threadId, but the
+      // handoff heuristic only counts real agent comments (no systemKey).
+      expect(t.comments.find(c => c.systemKey === 'sys.endedNoHandoff')).toBeDefined()
+      expect(t.comments.find(c => c.systemKey === 'sys.endedWithComment')).toBeUndefined()
+      expect(t.status).toBe('in_review')
     } finally { svc.dispose() }
   })
 

@@ -518,8 +518,11 @@ button.dsh-atb-chip2.dsh-atb-chip-btn:hover {
 .dsh-atb-bubble-meta { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; }
 .dsh-atb-bubble-meta b { font-size: 11.5px; font-weight: 600; color: var(--dsw-text-primary, inherit); }
 .dsh-atb-bubble[data-from="agent"] .dsh-atb-bubble-meta b { color: #a06ce0; }
-.dsh-atb-bubble[data-from="system"] .dsh-atb-bubble-main { border-color: rgba(100,116,139,.3); background: rgba(100,116,139,.07); }
-.dsh-atb-bubble[data-from="system"] .dsh-atb-bubble-meta b { color: #64748b; }
+.dsh-atb-comment-agent {
+  border: none; background: none; padding: 0; font: inherit; cursor: pointer; text-align: left;
+  font-size: 11.5px; font-weight: 600; color: #a06ce0;
+}
+.dsh-atb-comment-agent:hover { text-decoration: underline; }
 .dsh-atb-bubble-meta span { font-size: 10.5px; color: var(--dsw-text-secondary, gray); }
 .dsh-atb-bubble-body { font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 
@@ -583,6 +586,12 @@ span.dsh-atb-comment-delivered { cursor: default; }
 .dsh-atb-image-add:disabled { opacity: .45; cursor: default; }
 .dsh-atb-image-hint { font-size: 10.5px; color: var(--dsw-text-secondary, gray); }
 
+.dsh-atb-section-toggle {
+  border: none; background: none; padding: 0; font: inherit; cursor: pointer; text-align: left;
+  display: inline-flex; align-items: baseline; gap: 6px; color: inherit;
+}
+.dsh-atb-section-toggle:hover { opacity: .8; }
+.dsh-atb-toggle-caret { display: inline-block; width: 1em; font-size: 10px; }
 .dsh-atb-execlist { display: flex; flex-direction: column; gap: 5px; }
 .dsh-atb-exec-row {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px;

@@ -281,6 +281,7 @@ export class SchedulerService {
           ? '[系统] 已被手动清出执行队列，本次不再补跑；可手动执行或修改定时。'
           : '[系统] 排队中的定时执行已超过保留时长，本次不再补跑；可手动执行或修改定时。'),
         systemKey: reason === 'cleared' ? 'sys.queueCleared' : 'sys.queuedExpired',
+        threadId: 'sched',
         version: 1,
         createdAt: now,
       })
@@ -303,6 +304,7 @@ export class SchedulerService {
           id: newCommentId(),
           body: normalizeBody('[系统] 已被手动清出执行队列，本次不再补跑；可手动执行或修改定时。'),
           systemKey: 'sys.queueCleared',
+          threadId: 'sched',
           version: 1,
           createdAt: now,
         })
@@ -371,6 +373,7 @@ export class SchedulerService {
           id: newCommentId(),
           body: normalizeBody('[系统] 定时执行错过触发时间（主机当时未运行），本次不再补跑；可手动执行或修改定时。'),
           systemKey: 'sys.runAtMissed',
+          threadId: 'sched',
           version: 1,
           createdAt: now,
         })
@@ -403,6 +406,7 @@ export class SchedulerService {
           body: normalizeBody(`[系统] 定时表达式 ${deadCron} 在 4 年内没有可触发时间，已停用定时；请修正 cron 后重新开启。`),
           systemKey: 'sys.cronDead',
           systemParams: { cron: deadCron },
+          threadId: 'sched',
           version: 1,
           createdAt: now,
         })
@@ -415,6 +419,7 @@ export class SchedulerService {
           id: newCommentId(),
           body: normalizeBody('[系统] 定期执行错过触发时间（主机当时未运行），本次不再补跑；可手动执行或修改定时。'),
           systemKey: 'sys.cronMissed',
+          threadId: 'sched',
           version: 1,
           createdAt: now,
         })

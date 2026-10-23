@@ -339,6 +339,7 @@ export const zh = {
   'detail.comment.deliveredTitle': '已作为用户消息投递给会话，点击打开',
   'detail.comment.agentTitle': '跳转到会话 {id}',
   'detail.exec.title': '执行记录',
+  'detail.exec.toggleTitle': '点击展开/收起执行记录',
   'detail.exec.prunedTitle': '更早的 {n} 条执行记录已按保留上限清理',
   'detail.exec.pruned': '+{n} 已清理',
   'detail.exec.trigger.manual': '手动',

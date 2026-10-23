@@ -123,7 +123,7 @@ function taskDetail(t: TaskRecord & { effectivePrompt?: string }): string {
   if (t.comments.length > 0) {
     lines.push(`评论 (${t.comments.length}):`)
     for (const c of t.comments) {
-      const who = c.systemKey !== undefined ? 'system' : c.threadId !== undefined ? `agent ${String(c.threadId).slice(0, 24)}` : 'user'
+      const who = c.threadId !== undefined ? `agent ${String(c.threadId).slice(0, 24)}` : 'user'
       lines.push(`  - [${who} ${new Date(c.createdAt).toISOString()}] ${c.body}`)
     }
   } else {
@@ -733,10 +733,10 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       schema: JSON_OUT,
       render: (_args, value) => {
         const v = value as { comments?: unknown[] }
-        const list = v.comments as Array<{ body: string; createdAt: number; threadId?: string; systemKey?: string }> | undefined
+        const list = v.comments as Array<{ body: string; createdAt: number; threadId?: string }> | undefined
         if (list === undefined || list.length === 0) return [{ type: 'text', text: '无评论。' }]
         const lines = list.map(c => {
-          const who = c.systemKey !== undefined ? 'system' : c.threadId !== undefined ? `agent ${String(c.threadId).slice(0, 24)}` : 'user'
+          const who = c.threadId !== undefined ? `agent ${String(c.threadId).slice(0, 24)}` : 'user'
           return `- [${who} ${new Date(c.createdAt).toISOString()}] ${c.body}`
         })
         return [{ type: 'text', text: `评论 ${list.length} 条：\n${lines.join('\n')}` }]
