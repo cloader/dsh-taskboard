@@ -347,10 +347,83 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           <div className="dsh-atb-columns">
             {MAIN_STATUSES.map(status => {
               const rawColumnTasks = live.filter(t => t.status === status)
+              const isBacklog = status === 'backlog'
               const isDone = status === 'done'
               const columnTasks = isDone && state.sortBy !== 'title'
                 ? sortDoneTasks(rawColumnTasks)
                 : rawColumnTasks
+
+              const onDragOver = (e: React.DragEvent<HTMLElement>) => {
+                if (e.dataTransfer.types.includes(DRAG_TYPE)) {
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  e.currentTarget.dataset.dragover = 'true'
+                }
+              }
+              const onDragLeave = (e: React.DragEvent<HTMLElement>) => {
+                delete e.currentTarget.dataset.dragover
+              }
+              const onDrop = (e: React.DragEvent<HTMLElement>) => {
+                e.preventDefault()
+                delete e.currentTarget.dataset.dragover
+                const id = e.dataTransfer.getData(DRAG_TYPE)
+                if (id.length === 0) return
+                const task = state.ledger.tasks.find(t => t.id === id)
+                if (task === undefined || task.status === status) return
+                if (!canTransition(task.status, status)) {
+                  showAlert(t('board.drag.forbidden', { from: t(COLUMN_KEYS[task.status]), to: t(COLUMN_KEYS[status]) }))
+                  return
+                }
+                void controller.move(id, task.version, status)
+              }
+
+              const isCollapsed = (isBacklog && state.backlogCollapsed) || (isDone && state.doneCollapsed)
+              if (isCollapsed) {
+                const isBacklogCollapse = isBacklog && state.backlogCollapsed
+                const expandTitle = isBacklogCollapse ? t('board.column.expandBacklog') : t('board.column.expandDone')
+                const onExpand = () => {
+                  if (isBacklogCollapse) controller.setBacklogCollapsed(false)
+                  else controller.setDoneCollapsed(false)
+                }
+                const count = isBacklogCollapse ? columnTasks.length : (state.doneCount ?? columnTasks.length)
+
+                return (
+                  <div
+                    className="dsh-atb-column"
+                    key={status}
+                    data-collapsed="true"
+                    onDragOver={onDragOver}
+                    onDragLeave={onDragLeave}
+                    onDrop={onDrop}
+                  >
+                    <div
+                      className="dsh-atb-col-collapsed-bar"
+                      title={expandTitle}
+                      onClick={onExpand}
+                    >
+                      <button
+                        type="button"
+                        className="dsh-atb-colfoldbtn"
+                        title={expandTitle}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onExpand()
+                        }}
+                      >
+                        <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+                          <path d="M6 3.5a.5.5 0 0 1 .854-.354l4 4a.5.5 0 0 1 0 .708l-4 4A.5.5 0 0 1 6 11.5v-8z" />
+                        </svg>
+                      </button>
+                      <div className="dsh-atb-col-collapsed-title">
+                        <span className="dsh-atb-dot" data-status={status} />
+                        <span className="dsh-atb-col-collapsed-text">{t(COLUMN_KEYS[status])}</span>
+                      </div>
+                      <span className="dsh-atb-colcount">{count}</span>
+                    </div>
+                  </div>
+                )
+              }
+
               const doneLimit = completedDisplayLimitOf(state.ledger.settings)
               const isSearching = state.search.trim().length > 0
               const isFolded = isDone && !isSearching && !doneExpanded && columnTasks.length > doneLimit
@@ -369,88 +442,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 groupSortOrder,
               )
 
-              if (isDone && state.doneCollapsed) {
-                const doneTotalCount = state.doneCount ?? columnTasks.length
-                return (
-                  <div
-                    className="dsh-atb-column"
-                    key={status}
-                    data-collapsed="true"
-                    onDragOver={(e) => {
-                      if (e.dataTransfer.types.includes(DRAG_TYPE)) {
-                        e.preventDefault()
-                        e.dataTransfer.dropEffect = 'move'
-                        e.currentTarget.dataset.dragover = 'true'
-                      }
-                    }}
-                    onDragLeave={(e) => { delete e.currentTarget.dataset.dragover }}
-                    onDrop={(e) => {
-                      e.preventDefault()
-                      delete e.currentTarget.dataset.dragover
-                      const id = e.dataTransfer.getData(DRAG_TYPE)
-                      if (id.length === 0) return
-                      const task = state.ledger.tasks.find(t => t.id === id)
-                      if (task === undefined || task.status === status) return
-                      if (!canTransition(task.status, status)) {
-                        showAlert(t('board.drag.forbidden', { from: t(COLUMN_KEYS[task.status]), to: t(COLUMN_KEYS[status]) }))
-                        return
-                      }
-                      void controller.move(id, task.version, status)
-                    }}
-                  >
-                    <div
-                      className="dsh-atb-col-collapsed-bar"
-                      title={t('board.column.expandDone')}
-                      onClick={() => controller.setDoneCollapsed(false)}
-                    >
-                      <button
-                        type="button"
-                        className="dsh-atb-colfoldbtn"
-                        title={t('board.column.expandDone')}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          controller.setDoneCollapsed(false)
-                        }}
-                      >
-                        <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
-                          <path d="M6 3.5a.5.5 0 0 1 .854-.354l4 4a.5.5 0 0 1 0 .708l-4 4A.5.5 0 0 1 6 11.5v-8z" />
-                        </svg>
-                      </button>
-                      <div className="dsh-atb-col-collapsed-title">
-                        <span className="dsh-atb-dot" data-status={status} />
-                        <span className="dsh-atb-col-collapsed-text">{t(COLUMN_KEYS[status])}</span>
-                      </div>
-                      <span className="dsh-atb-colcount">{doneTotalCount}</span>
-                    </div>
-                  </div>
-                )
-              }
-
               return (
                 <div
                   className="dsh-atb-column"
                   key={status}
-                  onDragOver={(e) => {
-                    if (e.dataTransfer.types.includes(DRAG_TYPE)) {
-                      e.preventDefault()
-                      e.dataTransfer.dropEffect = 'move'
-                      e.currentTarget.dataset.dragover = 'true'
-                    }
-                  }}
-                  onDragLeave={(e) => { delete e.currentTarget.dataset.dragover }}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    delete e.currentTarget.dataset.dragover
-                    const id = e.dataTransfer.getData(DRAG_TYPE)
-                    if (id.length === 0) return
-                    const task = state.ledger.tasks.find(t => t.id === id)
-                    if (task === undefined || task.status === status) return
-                    if (!canTransition(task.status, status)) {
-                      showAlert(t('board.drag.forbidden', { from: t(COLUMN_KEYS[task.status]), to: t(COLUMN_KEYS[status]) }))
-                      return
-                    }
-                    void controller.move(id, task.version, status)
-                  }}
+                  onDragOver={onDragOver}
+                  onDragLeave={onDragLeave}
+                  onDrop={onDrop}
                 >
                   <div className="dsh-atb-colhead">
                     <span className="dsh-atb-dot" data-status={status} />
@@ -464,6 +462,18 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                         data-bad={(state.queue?.depth ?? 0) > 0 ? 'true' : undefined}
                         onClick={() => controller.openQueuePanel()}
                       >{t('board.queue.chip', { n: state.queue?.depth ?? 0 })}</button>
+                    )}
+                    {isBacklog && (
+                      <button
+                        type="button"
+                        className="dsh-atb-colfoldbtn"
+                        title={t('board.column.collapseBacklog')}
+                        onClick={() => controller.setBacklogCollapsed(true)}
+                      >
+                        <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+                          <path d="M10 3.5a.5.5 0 0 0-.854-.354l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .854-.354v-8z" />
+                        </svg>
+                      </button>
                     )}
                     {isDone && (
                       <button

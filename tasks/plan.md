@@ -1,66 +1,94 @@
-# Implementation Plan: 任务看板“已完成”列收起、按需加载与状态持久化
+# Implementation Plan: 任务看板「待规划」栏侧边收起（参考已完成栏）
 
 ## Overview
-在任务看板中为“已完成（done）”列增加整体收起折叠功能，并实现视图状态持久化与后端按需返回数据：
-1. **收起状态持久化**：用户收起或展开“已完成”列的状态持久化到浏览器的 `localStorage`（复用现有 `dsh-taskboard-view-v1` 机制），刷新后保持用户偏好。
-2. **后端按需过滤（性能优化）**：收起状态下，向后端请求 `/dsh-taskboard/state` 时附带 `excludeDone=true` 参数，后端不返回 `done` 状态的数据条目，避免无谓的网络传输与内存开销；同时返回 `doneCount` 总计数值，确保折叠条依然能直观展示完成数量。
-3. **列内竖向折叠与拖拽兼容**：收起时，已完成列收缩为紧凑竖条，显示垂直排布的状态点、文案与计数，并保留作为 Drop Target 的能力，允许拖拽卡片直接放入标记为完成。展开时平滑还原为标准列，并自动拉取全量已完成任务。
+参考任务看板中「已完成（done）」栏的侧边收起（折叠）机制，为「待规划（backlog）」栏实现完全对齐的侧边收起与展开功能：
+1. **状态持久化**：用户收起或展开「待规划」栏的状态持久化到浏览器的 `localStorage`（复用现有 `dsh-taskboard-view-v1` 机制），默认展开（`backlogCollapsed: false`），页面刷新后保持用户偏好。
+2. **Controller 状态与控制方法**：在 `BoardController` 中管理 `backlogCollapsed: boolean`，提供 `setBacklogCollapsed(collapsed: boolean)` 方法。
+3. **收起形态与拖拽兼容**：收起时，待规划栏收缩为 42px 宽的紧凑竖条，垂直居中展示状态圆点、竖排标题「待规划」、任务数量徽章与展开按钮；同时保留 Drop Target 功能，支持卡片拖拽放入流转为 `backlog`。
+4. **展开形态的列头折叠按钮**：在「待规划」列头部右侧放置收起按钮，点击一键侧边收起。
+5. **国际化支持**：在 `zh.ts` 和 `en.ts` 中补充 `board.column.collapseBacklog` 与 `board.column.expandBacklog`。
 
-## Architecture Decisions
-1. **客户端视图偏好持久化（Local Persistence First）**：
-   - 收起属于当前用户的个人工作流偏好，保存在客户端 `localStorage` 的 `dsh-taskboard-view-v1` 中（字段 `doneCollapsed: boolean`，默认为 `false` 或用户上次的选择），不污染全局共享的 `BoardSettings`。
-2. **条件查询与统计回传（Exclude & Count Protocol）**：
-   - 扩展 `GET /dsh-taskboard/state` 接口：支持查询参数 `?excludeDone=true`。
-   - 当 `excludeDone=true` 时，后端在过滤任务时剔除 `status === 'done'` 的任务，但计算并回传 `doneCount: number`（有效未进回收站的已完成任务总数）。
-   - 当未传或为 false 时，返回全量任务，同时附带 `doneCount`，保持协议前后一致与向后兼容。
-3. **Controller 状态机与按需刷新（State & Lifecycle）**：
-   - `ControllerState` 记录 `doneCollapsed: boolean` 与 `doneCount?: number`。
-   - `refresh()` 根据 `doneCollapsed` 动态决定是否带参请求。
-   - 当用户从收起点击“展开”时，切换状态、写入本地存储，并立即触发一次 `refresh()` 补充拉取所有已完成卡片。
-4. **UI 布局与拖拽体验（Compact Column & Drag-and-Drop）**：
-   - 收起后的已完成列使用 `data-collapsed="true"` 属性，采用紧凑宽度（约 40px~48px），避免看板其余列宽度产生剧烈晃动。
-   - 竖向显示折叠条头部、展开按钮与任务计数，保留 `onDragOver` 和 `onDrop` 事件监听，拖拽卡片至折叠条同样能触发任务流转到 `done`。
+## Architecture Decisions & Contract Signatures
+
+### 1. 状态定义与方法契约 (`src/client/controller.ts`)
+```ts
+export interface ControllerState {
+  ...
+  /** Backlog (待规划) column collapsed state; persisted in localStorage. */
+  backlogCollapsed: boolean
+  ...
+}
+
+function loadView(): {
+  workspaceId?: string
+  urgencies: Urgency[]
+  sortBy: SortBy
+  doneCollapsed: boolean
+  backlogCollapsed: boolean
+}
+
+export class BoardController {
+  ...
+  /** Set the backlog (待规划) column collapsed state (persisted). */
+  setBacklogCollapsed(collapsed: boolean): void
+}
+```
+
+### 2. 国际化字典契约 (`src/client/i18n/zh.ts` & `en.ts`)
+```ts
+// zh.ts
+'board.column.collapseBacklog': '收起「待规划」列',
+'board.column.expandBacklog': '展开「待规划」列',
+
+// en.ts
+'board.column.collapseBacklog': 'Collapse "Backlog" column',
+'board.column.expandBacklog': 'Expand "Backlog" column',
+```
+
+### 3. 组件渲染契约 (`src/client/board/TaskBoard.tsx`)
+- 当 `status === 'backlog' && state.backlogCollapsed` 时：
+  渲染 `.dsh-atb-column[data-collapsed="true"]`，包含展开按钮、圆点、竖排文本、计数 `columnTasks.length`，以及 `onDragOver` / `onDrop` 处理。
+- 当 `status === 'backlog'` 处于展开态时：
+  列头 `dsh-atb-colhead` 渲染收起按钮 `button.dsh-atb-colfoldbtn`，点击调用 `controller.setBacklogCollapsed(true)`。
+
+### 4. 仓库原生验证命令
+- 单元测试：`pnpm test` 或 `npx vitest run tests/client.spec.ts tests/i18n.spec.ts`
+- 类型检查：`pnpm run typecheck`
+- 构建命令：`pnpm run build`
 
 ## Task List
 
-### Phase 1: 协议与后端路由扩展 (Host & Shared API)
-- [x] Task 1: 共享类型扩展与 `/dsh-taskboard/state` 路由支持 `excludeDone` 与 `doneCount` (`src/shared/api.ts`, `src/host/routes.ts` & `tests/routes.spec.ts`)
-
-### Checkpoint: Host & API
-- [x] 验证后端在 `excludeDone=true` 时返回过滤后的 tasks 以及准确的 `doneCount`。
-- [x] 验证不传参数时仍返回全量 tasks 及 `doneCount`。
-- [x] 单元测试 `tests/routes.spec.ts` 绿灯。
-
-### Phase 2: 客户端 Controller 状态与数据联动 (Client Core)
-- [x] Task 2: 客户端 API 适配、Controller 视图持久化与条件刷新 (`src/client/api.ts`, `src/client/controller.ts` & `tests/client.spec.ts`)
+### Phase 1: Controller 状态管理与持久化 (Client Core)
+- [ ] Task 1: 在 Controller 中支持 `backlogCollapsed` 状态读写与 localStorage 持久化 (`src/client/controller.ts` & `tests/client.spec.ts`)
 
 ### Checkpoint: Client Core
-- [x] 验证 `localStorage` 正常读写 `doneCollapsed`。
-- [x] 验证收起时发起带参请求，展开时发起全量刷新。
-- [x] 单元测试 `tests/client.spec.ts` 绿灯。
+- [ ] `loadView()` 正常解析 `backlogCollapsed`，缺失时默认 `false`
+- [ ] `setBacklogCollapsed(collapsed)` 正常触发状态更新与本地持久化
+- [ ] 对应单元测试绿灯
 
-### Phase 3: 看板 UI 紧凑竖条交互与样式 (Client UI)
-- [x] Task 3: 看板“已完成”列竖向收起、展开交互与拖拽放置支持 (`src/client/board/TaskBoard.tsx`, `src/client/styles.ts`, `src/client/i18n/zh.ts`, `en.ts`)
+### Phase 2: 国际化与看板 UI 渲染 (Client UI)
+- [ ] Task 2: 补充国际化词条并在 `TaskBoard.tsx` 中实现待规划栏收起/展开交互与拖拽 (`src/client/i18n/zh.ts`, `en.ts`, `src/client/board/TaskBoard.tsx`)
 
-### Checkpoint: UI & Interaction
-- [x] 看板已完成列具备收起/展开按钮，收起后呈现规整竖条并展示完成总数。
-- [x] 拖拽卡片至收起竖条可正确移入“已完成”。
-- [x] 中英文字典翻译完整无缺失。
+### Checkpoint: Client UI
+- [ ] 待规划列头部具备收起按钮，点击可收起
+- [ ] 收起后展示竖直紧凑条，展示数量徽章与展开按钮，点击可展开
+- [ ] 拖拽卡片到收起的待规划栏可正常触发 drop 流转为 `backlog`
+- [ ] 中英文字典测试完整
 
-### Phase 4: 端到端验证与构建验收 (Integration & Verification)
-- [x] Task 4: 端到端集成验证与全量回归测试 (`tests/` 全量套件, `npm run typecheck`, `npm run build`)
+### Phase 3: 全量测试与端到端验证 (Verification)
+- [ ] Task 3: 运行全量单元测试与构建检查，确保无回归与破损
 
 ### Checkpoint: Complete
-- [x] 全套测试通过 (`npm run test`)
-- [x] 类型检查通过 (`npm run typecheck`)
-- [x] 前后端构建打包成功 (`npm run build`)
+- [ ] `pnpm test` 全绿
+- [ ] `pnpm run typecheck` 通过
+- [ ] `pnpm run build` 成功
 
 ## Risks and Mitigations
 | Risk | Impact | Mitigation |
 | :--- | :--- | :--- |
-| 收起状态下 SSE 推送了新变更，卡片移到 done 后消失但计数未同步 | Medium | 后端 SSE 变更时客户端照常调用 `refresh()`（带 `excludeDone=true`），后端回传最新的 `doneCount`，确保计数实时准确。 |
-| 用户在收起状态下搜索已完成的任务找不到 | Low | 在收起状态下的折叠条中高亮显示计数并提供一键展开提示，避免用户误以为任务丢失。 |
-| 收起为竖条后拖拽放置判定区过窄 | Medium | 竖条整体作为 dragover 和 drop 容器，并设置明显的边框与背景激活色反馈。 |
+| `VIEW_KEY` 存有旧版本数据，缺少 `backlogCollapsed` 字段 | Low | `loadView` 严格执行 `parsed.backlogCollapsed === true`，缺失或无效值安全降级为 `false`。 |
+| 待规划列与已完成列同时收起时，剩余三列布局异常 | Medium | 看板列使用已验证的 flex 布局（`.dsh-atb-column { flex: 1 1 0; }`，折叠列 `flex: 0 0 42px;`），中间列会自动平分剩余空间。 |
+| 拖拽到收起栏时的交互反馈不明显 | Low | 复用已有的 dragover 数据属性与 hover 样式，提供一致的高亮反馈。 |
 
 ## Open Questions
-- 默认状态：初始无 localStorage 时默认为展开还是收起？（方案定为默认展开 `doneCollapsed: false`，保证新用户首屏可见性，用户一旦点击收起后持久化生效）。
+- 待规划栏是否有任务数量上限折叠（类似已完成栏的 limit 截断折叠条）？已在需求澄清中明确：否，待规划栏只做整列侧边收起，不做内部任务分页截断。

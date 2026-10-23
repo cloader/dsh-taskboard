@@ -244,6 +244,32 @@ describe('host system message localization', () => {
     expect(merged).toContain('sub ⟲')
     expect(merged).toContain('x ✗ conflict')
   })
+
+  // @tc TC-FUNC-014
+  it('zh and en contain collapseBacklog and expandBacklog with expected translations', () => {
+    expect(zh).toHaveProperty('board.column.collapseBacklog')
+    expect(zh).toHaveProperty('board.column.expandBacklog')
+    expect(en).toHaveProperty('board.column.collapseBacklog')
+    expect(en).toHaveProperty('board.column.expandBacklog')
+
+    expect(zh['board.column.collapseBacklog']).toBe('收起「待规划」列')
+    expect(zh['board.column.expandBacklog']).toBe('展开「待规划」列')
+    expect(en['board.column.collapseBacklog']).toBe('Collapse "Backlog" column')
+    expect(en['board.column.expandBacklog']).toBe('Expand "Backlog" column')
+  })
+
+  // @tc TC-FUNC-015
+  it('translate dynamically resolves collapseBacklog and expandBacklog based on active locale', () => {
+    document.documentElement.lang = 'zh-CN'
+    disposeI18n()
+    expect(translate('board.column.collapseBacklog')).toBe('收起「待规划」列')
+    expect(translate('board.column.expandBacklog')).toBe('展开「待规划」列')
+
+    document.documentElement.lang = 'en-US'
+    disposeI18n()
+    expect(translate('board.column.collapseBacklog')).toBe('Collapse "Backlog" column')
+    expect(translate('board.column.expandBacklog')).toBe('Expand "Backlog" column')
+  })
 })
 
 describe('source scan', () => {

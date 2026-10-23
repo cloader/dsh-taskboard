@@ -1,134 +1,118 @@
-# Tasks: 任务看板“已完成”列收起、按需加载与状态持久化
+# Tasks: 任务看板「待规划」栏侧边收起（参考已完成栏）
 
-## Task 1: 共享类型扩展与 `/dsh-taskboard/state` 路由支持 `excludeDone` 与 `doneCount`
+## Task 1: 在 Controller 中支持 `backlogCollapsed` 状态读写与 localStorage 持久化 (Client Core)
 
-**Description:** 在 `src/shared/api.ts` 中扩展 `StateResponse` 接口，增加可选字段 `doneCount?: number`。在 `src/host/routes.ts` 的 `GET /dsh-taskboard/state` 路由处理中，读取查询参数 `excludeDone`（支持 `true` 或 `1`）；在返回响应时，计算有效（未软删除）的已完成任务数量为 `doneCount`；若 `excludeDone` 为真，则在 `ledger.tasks` 中过滤掉 `status === 'done'` 的任务条目，并将 `doneCount` 一并返回给客户端。
+**Description:**
+在 `src/client/controller.ts` 中：
+1. `ControllerState` 增加 `backlogCollapsed: boolean` 状态字段；
+2. 扩展 `VIEW_KEY` (`dsh-taskboard-view-v1`) 本地持久化数据结构，`loadView()` 支持从 `localStorage` 解析 `backlogCollapsed`，严格全等 `=== true` 防御脏数据，异常或缺失默认 `false`；
+3. `persistView()` 同步保存 `backlogCollapsed`，异常时静默降级；
+4. 实现 `setBacklogCollapsed(collapsed: boolean)` 控制器方法，包含状态防重幂等判断，且纯前端控制不触发 `refresh()`；
+5. 在 `tests/client.spec.ts` 中以 TDD 方式编写对应测试用例（覆盖 `TC-FUNC-001` ~ `TC-FUNC-005`, `TC-EDGE-001` ~ `TC-EDGE-004`, `TC-ERR-001`, `TC-ERR-002`, `TC-CONC-001`, `TC-CONC-004`），并在每个测试前标注 `// @tc TC-xxx` 锚点。
 
 **Acceptance criteria:**
-- [x] `StateResponse` 类型声明 `doneCount?: number`
-- [x] `GET /dsh-taskboard/state` 支持 `?excludeDone=true` / `?excludeDone=1` 查询参数
-- [x] 当请求携带 `excludeDone` 时，返回的 `tasks` 数组不包含 `status === 'done'` 的条目，且返回的 `doneCount` 为全部有效已完成任务的总数
-- [x] 当请求未携带 `excludeDone` 时，返回完整的 `tasks` 数组，且同时返回正确的 `doneCount`
-- [x] 在 `tests/routes.spec.ts` 中增加测试用例覆盖上述参数行为与返回字段
+- [x] `ControllerState` 包含 `backlogCollapsed: boolean`
+- [x] 初始默认状态 `backlogCollapsed` 为 `false` (`TC-FUNC-001`)
+- [x] `setBacklogCollapsed(true)` 更新状态并持久化，不触发 `refresh()` (`TC-FUNC-002`)
+- [x] `setBacklogCollapsed(false)` 恢复状态，不触发 `refresh()` (`TC-FUNC-003`, RT-001)
+- [x] `persistView()` 正常保存 `backlogCollapsed` 且保留其他视图状态 (`TC-FUNC-004`)
+- [x] `loadView()` 正常从 `localStorage` 读取 `backlogCollapsed: true` (`TC-FUNC-005`)
+- [x] `loadView()` 在 `null`、损坏 JSON、脏类型 (`"true"`, `1`, `{}`) 或旧数据时安全降级为 `false` (`TC-EDGE-001`, `TC-EDGE-002`, `TC-EDGE-003`, `TC-EDGE-004`, RT-003)
+- [x] `setBacklogCollapsed` 重复赋值幂等防重 (`TC-ERR-001`)
+- [x] `persistView()` 在 `localStorage` 抛出 `QuotaExceededError` 时静默隔离 (`TC-ERR-002`)
+- [x] 高频切换快速调用保持最终一致性 (`TC-CONC-001`)
+- [x] `doneCollapsed` 与 `backlogCollapsed` 独立变更互不干扰 (`TC-CONC-004`)
 
 **Verification:**
-- [x] Tests pass: `npx vitest run tests/routes.spec.ts`
-- [x] Build succeeds: `npm run typecheck`
+- [x] Tests pass: `npx vitest run tests/client.spec.ts`
+- [x] Typecheck: `pnpm run typecheck`
 
 **Dependencies:** None
 
 **Files likely touched:**
-- `src/shared/api.ts`
-- `src/host/routes.ts`
-- `tests/routes.spec.ts`
-
-**Estimated scope:** Small (2-3 files)
-
----
-
-## Checkpoint: Host & API
-- [x] Task 1 完成
-- [x] `npx vitest run tests/routes.spec.ts` 全部测试通过
-
----
-
-## Task 2: 客户端 API 适配、Controller 视图持久化与条件刷新
-
-**Description:** 在 `src/client/api.ts` 中让 `client.state` 方法支持可选入参 `{ excludeDone?: boolean }`，在发起 fetch 时自动拼接查询参数。在 `src/client/controller.ts` 中：
-1. 扩展 `VIEW_KEY` (`dsh-taskboard-view-v1`) 本地持久化数据结构，支持读取与保存 `doneCollapsed?: boolean`，默认为 `false`；
-2. `ControllerState` 增加 `doneCollapsed: boolean` 与 `doneCount?: number`；
-3. 提供 `setDoneCollapsed(collapsed: boolean)` 控制器方法，更新状态、调用 `persistView()`，并在由收起切换到展开时（`!collapsed`）立即触发 `this.refresh()`；
-4. 在 `refresh()` 方法中，当 `this.state.doneCollapsed` 为 true 时，向后端传递 `{ excludeDone: true }`；并将接口返回的 `doneCount` 存储到 ControllerState。
-
-**Acceptance criteria:**
-- [x] `client.state({ excludeDone: true })` 正确请求 `/dsh-taskboard/state?excludeDone=true`
-- [x] `loadView()` 正确从 `localStorage` 中解析 `doneCollapsed` 布尔值
-- [x] `controller.setDoneCollapsed(true)` 更新 `doneCollapsed`，写入 `localStorage`
-- [x] 在收起状态下，`refresh()` 附带 `excludeDone: true` 请求后端；在展开状态或切换为展开时拉取全量数据
-- [x] 在 `tests/client.spec.ts` 中增加测试，验证 `doneCollapsed` 持久化、状态切换与带参刷新行为
-
-**Verification:**
-- [x] Tests pass: `npx vitest run tests/client.spec.ts`
-- [x] Build succeeds: `npm run typecheck`
-
-**Dependencies:** Task 1
-
-**Files likely touched:**
-- `src/client/api.ts`
 - `src/client/controller.ts`
 - `tests/client.spec.ts`
 
-**Estimated scope:** Medium (3 files)
+**Estimated scope:** Small (2 files)
 
 ---
 
 ## Checkpoint: Client Core
-- [x] Task 1 与 Task 2 完成
-- [x] `npx vitest run tests/routes.spec.ts tests/client.spec.ts` 全部测试通过
+- [x] Task 1 完成
+- [x] `npx vitest run tests/client.spec.ts` 绿灯通过且包含 Task 1 的全部 `@tc` 锚点
 
 ---
 
-## Task 3: 看板 UI“已完成”列竖向收起、展开交互与拖拽放置支持
+## Task 2: 国际化词条与看板 UI 待规划栏侧边收起与展开 (Client UI)
 
-**Description:** 在 `src/client/board/TaskBoard.tsx` 中：
-1. 在“已完成”列头部增加收起按钮（带折叠图标与提示文案）；
-2. 当 `state.doneCollapsed` 为 true 时，“已完成”列渲染为紧凑竖条（带有 `data-collapsed="true"` 属性），垂直居中展示状态点、标题与任务总数（优先取 `state.doneCount`，兜底取 `columnTasks.length`），并带有展开按钮；
-3. 收起竖条保留 `onDragOver` 和 `onDrop` 事件处理，支持拖拽任务卡片直接放入标记为已完成；
-4. 在 `src/client/styles.ts` 中增加 `.dsh-atb-column[data-collapsed="true"]` 相关的紧凑竖条布局、垂直文本、悬浮与拖拽高亮样式；
-5. 在 `src/client/i18n/zh.ts` 和 `en.ts` 中补充收起与展开相关的国际化键（如 `board.column.collapseDone`, `board.column.expandDone`）。
+**Description:**
+1. 在 `src/client/i18n/zh.ts` 和 `en.ts` 中添加 `board.column.collapseBacklog` 与 `board.column.expandBacklog`；
+2. 在 `src/client/board/TaskBoard.tsx` 中：
+   - 当 `status === 'backlog'` 且处于展开态时，列头部 `.dsh-atb-colhead` 渲染收起按钮 `.dsh-atb-colfoldbtn`，点击调用 `controller.setBacklogCollapsed(true)`；
+   - 当 `status === 'backlog'` 且 `state.backlogCollapsed === true` 时，渲染 42px 宽度的折叠侧边栏紧凑条（`data-collapsed="true"`），包含 `.dsh-atb-col-collapsed-bar`、展开按钮（带 `e.stopPropagation()` 避免冒泡）、圆点、竖排标题、以及筛选后的任务数徽章 `columnTasks.length`；
+   - 折叠条完整支持 `onDragOver`（高亮反馈）、`onDragLeave` 与 `onDrop` 事件，严格具备 `canTransition` 合法性检查与非法弹窗提示，支持将卡片拖入流转为 `backlog`；
+3. 在 `tests/i18n.spec.ts` 与 `tests/client.spec.ts` 中以 TDD 方式编写 UI 渲染、交互与异常测试用例（覆盖 `TC-FUNC-006` ~ `TC-FUNC-015`, `TC-EDGE-005` ~ `TC-EDGE-008`, `TC-ERR-003` ~ `TC-ERR-006`, `TC-CONC-002`, `TC-CONC-003`），标注 `// @tc TC-xxx` 锚点。
 
 **Acceptance criteria:**
-- [x] “已完成”列头部具备收起按钮，点击后触发 `controller.setDoneCollapsed(true)`
-- [x] 收起后列宽变为紧凑竖条（约 40-48px），垂直显示“已完成 (N)”及展开按钮，点击可展开
-- [x] 任务卡片拖拽到收起的已完成竖条能够触发高亮，并在 drop 时成功调用 `controller.move(id, version, 'done')`
-- [x] 中英文字典翻译完整，`tests/i18n.spec.ts` 测试通过
+- [x] 国际化字典包含中英文 `board.column.collapseBacklog` 与 `board.column.expandBacklog` (`TC-FUNC-014`, `TC-FUNC-015`)
+- [x] 待规划栏展开态渲染列头收起按钮并能点击收起 (`TC-FUNC-006`, `TC-FUNC-007`)
+- [x] 待规划栏收起态渲染紧凑竖条及内部结构完整 (`TC-FUNC-008`, `TC-FUNC-009`)
+- [x] 点击收起态展开按钮与空白背景均能恢复展开 (`TC-FUNC-010`, `TC-FUNC-011`, RT-005)
+- [x] 收起态支持 dragover 高亮及 drop 流转为 `backlog` (`TC-FUNC-012`, `TC-FUNC-013`)
+- [x] 零任务与大数值徽标渲染正常 (`TC-EDGE-005`, `TC-EDGE-006`, RT-004)
+- [x] 双端同时折叠布局正常 (`TC-EDGE-007`)
+- [x] 过滤搜索联动实时更新收起徽标数量 (`TC-EDGE-008`)
+- [x] 非法流转拖拽弹窗拦截不移动 (`TC-ERR-003`, RT-002)
+- [x] 空白/脏拖拽数据、不存在任务、同状态任务安全忽略 (`TC-ERR-004`, `TC-ERR-005`, `TC-ERR-006`)
+- [x] 收起态接收 SSE 推流实时更新徽标且保持收起 (`TC-CONC-002`)
+- [x] 拖拽流转版本冲突时优雅提示且视图正常 (`TC-CONC-003`)
 
 **Verification:**
 - [x] Tests pass: `npx vitest run tests/client.spec.ts tests/i18n.spec.ts`
-- [x] Build succeeds: `npm run typecheck`
+- [x] Typecheck: `pnpm run typecheck`
+
+**Dependencies:** Task 1
+
+**Files likely touched:**
+- `src/client/i18n/zh.ts`
+- `src/client/i18n/en.ts`
+- `src/client/board/TaskBoard.tsx`
+- `tests/i18n.spec.ts`
+- `tests/client.spec.ts`
+
+**Estimated scope:** Medium (5 files)
+
+---
+
+## Checkpoint: Client UI
+- [x] Task 2 完成
+- [x] `npx vitest run tests/client.spec.ts tests/i18n.spec.ts` 绿灯通过且包含 Task 2 的全部 `@tc` 锚点
+
+---
+
+## Task 3: 全量回归测试与端到端构建检查 (Verification)
+
+**Description:**
+执行项目全量单元测试套件、TypeScript 类型检查以及打包构建，验证所有 33 个 `@tc` 锚点完整覆盖，无任何回归。
+
+**Acceptance criteria:**
+- [x] `pnpm test` 全部测试绿灯通过
+- [x] `pnpm run typecheck` 零类型报错
+- [x] `pnpm run build` 打包构建成功
+- [x] 33 个 `TC-*` 用例全部具备 `@tc` 注释锚点并在测试套件中成功运行
+
+**Verification:**
+- [x] Tests pass: `pnpm test`
+- [x] Build succeeds: `pnpm run typecheck && pnpm run build`
 
 **Dependencies:** Task 2
 
-**Files likely touched:**
-- `src/client/board/TaskBoard.tsx`
-- `src/client/styles.ts`
-- `src/client/i18n/zh.ts`
-- `src/client/i18n/en.ts`
-- `tests/client.spec.ts`
-
-**Estimated scope:** Medium (4-5 files)
-
----
-
-## Checkpoint: UI & Interaction
-- [x] Task 1、Task 2、Task 3 全部完成
-- [x] 看板在收起与展开之间平滑切换，拖拽放置正常运作，国际化全覆盖
-
----
-
-## Task 4: 端到端验证与全量回归测试
-
-**Description:** 运行完整的测试套件、TypeScript 编译检查和生产环境打包构建，确保没有引入任何回归问题，并验证在 SSE 变更推送与搜索状态下的协同行为。
-
-**Acceptance criteria:**
-- [x] 全部单元测试与回归测试通过（无新增失败）
-- [x] TypeScript 类型检查 0 报错（`npm run typecheck`）
-- [x] 生产打包构建成功（`npm run build`）
-
-**Verification:**
-- [x] Tests pass: `npm run test`
-- [x] Typecheck: `npm run typecheck`
-- [x] Build: `npm run build`
-
-**Dependencies:** Task 1, Task 2, Task 3
-
-**Files likely touched:**
-- 无新文件，校验全工程构建产物
+**Files likely touched:** None
 
 **Estimated scope:** Small
 
 ---
 
 ## Checkpoint: Complete
-- [x] 所有 Task 与 Checkpoint 达成
-- [x] 交付准备就绪，可以安全移交用户或实施
+- [x] 所有任务与测试通过
+- [x] 构建产物完整无误

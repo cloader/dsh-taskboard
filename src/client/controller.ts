@@ -30,20 +30,21 @@ export type SortBy = 'default' | 'updated' | 'urgency' | 'created' | 'title'
 const VIEW_KEY = 'dsh-taskboard-view-v1'
 
 /** Load the persisted view state (never throws; fresh on any parse error). */
-function loadView(): { workspaceId?: string; urgencies: Urgency[]; sortBy: SortBy; doneCollapsed: boolean } {
+function loadView(): { workspaceId?: string; urgencies: Urgency[]; sortBy: SortBy; doneCollapsed: boolean; backlogCollapsed: boolean } {
   try {
     const raw = localStorage.getItem(VIEW_KEY)
-    if (raw === null) return { urgencies: [], sortBy: 'default', doneCollapsed: false }
-    const parsed = JSON.parse(raw) as { workspaceId?: string; urgencies?: Urgency[]; sortBy?: SortBy; doneCollapsed?: boolean }
+    if (raw === null) return { urgencies: [], sortBy: 'default', doneCollapsed: false, backlogCollapsed: false }
+    const parsed = JSON.parse(raw) as { workspaceId?: string; urgencies?: Urgency[]; sortBy?: SortBy; doneCollapsed?: boolean; backlogCollapsed?: boolean }
     const sortBy = parsed.sortBy === 'updated' || parsed.sortBy === 'urgency' || parsed.sortBy === 'created' || parsed.sortBy === 'title' ? parsed.sortBy : 'default'
     return {
       workspaceId: typeof parsed.workspaceId === 'string' ? parsed.workspaceId : undefined,
       urgencies: Array.isArray(parsed.urgencies) ? parsed.urgencies.filter(u => u === 'urgent' || u === 'normal' || u === 'relaxed') : [],
       sortBy,
       doneCollapsed: parsed.doneCollapsed === true,
+      backlogCollapsed: parsed.backlogCollapsed === true,
     }
   } catch {
-    return { urgencies: [], sortBy: 'default', doneCollapsed: false }
+    return { urgencies: [], sortBy: 'default', doneCollapsed: false, backlogCollapsed: false }
   }
 }
 
@@ -61,6 +62,8 @@ export interface ControllerState {
   sortBy: SortBy
   /** Completed (done) column collapsed state; persisted in localStorage. */
   doneCollapsed: boolean
+  /** Backlog (待规划) column collapsed state; persisted in localStorage. */
+  backlogCollapsed: boolean
   /** Total count of live completed tasks reported by the host. */
   doneCount?: number
   /** Selected task id (detail view); undefined closes the detail. */
@@ -108,6 +111,7 @@ function initialState(): ControllerState {
     search: '',
     sortBy: view.sortBy,
     doneCollapsed: view.doneCollapsed,
+    backlogCollapsed: view.backlogCollapsed,
     composerOpen: false,
     secondaryOpen: false,
     diagOpen: false,
@@ -318,6 +322,13 @@ export class BoardController {
     }
   }
 
+  /** Set the backlog (待规划) column collapsed state (persisted). */
+  setBacklogCollapsed(collapsed: boolean): void {
+    if (this.state.backlogCollapsed === collapsed) return
+    this.setState({ backlogCollapsed: collapsed })
+    this.persistView()
+  }
+
   /** Write the current view state to localStorage (best effort). */
   private persistView(): void {
     try {
@@ -326,6 +337,7 @@ export class BoardController {
         urgencies: this.state.filters.urgencies,
         sortBy: this.state.sortBy,
         doneCollapsed: this.state.doneCollapsed,
+        backlogCollapsed: this.state.backlogCollapsed,
       }))
     } catch { /* storage unavailable (private mode etc.) — view just won't persist */ }
   }

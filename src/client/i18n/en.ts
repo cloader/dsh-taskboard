@@ -471,6 +471,8 @@ export const en: TaskboardDict = {
   'board.done.showing': '(showing latest {n})',
   'board.column.collapseDone': 'Collapse "Done" column',
   'board.column.expandDone': 'Expand "Done" column',
+  'board.column.collapseBacklog': 'Collapse "Backlog" column',
+  'board.column.expandBacklog': 'Expand "Backlog" column',
   'board.workspace.unassigned': 'Unassigned workspace',
   'card.badge.permReadOnly': '🔒 Read-only',
   'card.badge.permReadOnlyTitle': 'Permission: read-only',

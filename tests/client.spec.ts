@@ -1034,6 +1034,142 @@ describe('client half', () => {
     localStorage.clear()
   })
 
+  it('controller: backlogCollapsed state lifecycle, view persistence, error isolation and concurrency', async () => {
+    localStorage.clear()
+    const { BoardController } = await import('../src/client/controller.ts')
+    let refreshCalls = 0
+    const client = {
+      state: async () => {
+        refreshCalls++
+        return {
+          schemaVersion: 1,
+          revision: 1,
+          tasks: [],
+          doneCount: 0,
+        }
+      },
+      workspaces: async () => [],
+      stream: () => () => {},
+    }
+
+    // @tc TC-FUNC-001
+    // 实例化全新 BoardController，默认未折叠，初始值为 false
+    const controller = new BoardController(client as never)
+    expect(controller.getSnapshot().backlogCollapsed).toBe(false)
+
+    // @tc TC-FUNC-002
+    // 切换为收起：快照变为 true，通知订阅者，不触发网络请求或全量刷新
+    let notifyCount = 0
+    const unsub = controller.subscribe(() => { notifyCount++ })
+    refreshCalls = 0
+    controller.setBacklogCollapsed(true)
+    expect(controller.getSnapshot().backlogCollapsed).toBe(true)
+    expect(notifyCount).toBe(1)
+    expect(refreshCalls).toBe(0)
+
+    // @tc TC-FUNC-004
+    // persistView 正常保存 backlogCollapsed 且保留其他视图状态
+    const persisted = JSON.parse(localStorage.getItem('dsh-taskboard-view-v1')!) as { backlogCollapsed?: boolean }
+    expect(persisted.backlogCollapsed).toBe(true)
+
+    // @tc TC-FUNC-003
+    // 切换为展开：快照恢复为 false，且不得触发 refresh()（RT-001 质询明确要求）
+    controller.setBacklogCollapsed(false)
+    expect(controller.getSnapshot().backlogCollapsed).toBe(false)
+    await new Promise(r => setTimeout(r, 10))
+    expect(refreshCalls).toBe(0)
+
+    // @tc TC-ERR-001
+    // 幂点操作防重：重复调用相同值不触发多余通知
+    notifyCount = 0
+    controller.setBacklogCollapsed(false)
+    expect(notifyCount).toBe(0)
+    controller.setBacklogCollapsed(true)
+    expect(notifyCount).toBe(1)
+    controller.setBacklogCollapsed(true)
+    expect(notifyCount).toBe(1)
+
+    // @tc TC-FUNC-005
+    // loadView 预设 {"backlogCollapsed": true, "sortBy": "title"} 时新实例正确读取
+    localStorage.setItem('dsh-taskboard-view-v1', JSON.stringify({ backlogCollapsed: true, sortBy: 'title' }))
+    const hydratedController = new BoardController(client as never)
+    expect(hydratedController.getSnapshot().backlogCollapsed).toBe(true)
+    expect(hydratedController.getSnapshot().sortBy).toBe('title')
+    hydratedController.dispose()
+
+    // @tc TC-EDGE-001
+    // 存储为 null 时安全降级为 false
+    localStorage.clear()
+    const nullController = new BoardController(client as never)
+    expect(nullController.getSnapshot().backlogCollapsed).toBe(false)
+    nullController.dispose()
+
+    // @tc TC-EDGE-002
+    // 损坏的存储数据 (Malformed JSON) 安全降级为 false
+    localStorage.setItem('dsh-taskboard-view-v1', '{ invalid json')
+    const malformedController = new BoardController(client as never)
+    expect(malformedController.getSnapshot().backlogCollapsed).toBe(false)
+    malformedController.dispose()
+
+    // @tc TC-EDGE-003
+    // 脏数据类型防御：非布尔 true（"true", 1, {}, null）严格 === true 检查并降级为 false (RT-003)
+    for (const dirtyVal of ['true', 1, {}, null, [true]]) {
+      localStorage.setItem('dsh-taskboard-view-v1', JSON.stringify({ backlogCollapsed: dirtyVal }))
+      const dirtyController = new BoardController(client as never)
+      expect(dirtyController.getSnapshot().backlogCollapsed).toBe(false)
+      dirtyController.dispose()
+    }
+
+    // @tc TC-EDGE-004
+    // 历史版本数据迁移兼容：已有 urgencies/sortBy/doneCollapsed 但无 backlogCollapsed
+    localStorage.setItem('dsh-taskboard-view-v1', JSON.stringify({ urgencies: ['urgent'], sortBy: 'urgency', doneCollapsed: true }))
+    const legacyController = new BoardController(client as never)
+    expect(legacyController.getSnapshot().doneCollapsed).toBe(true)
+    expect(legacyController.getSnapshot().backlogCollapsed).toBe(false)
+    expect(legacyController.getSnapshot().sortBy).toBe('urgency')
+    legacyController.dispose()
+
+    // @tc TC-ERR-002
+    // 存储受限与异常隔离：localStorage.setItem 抛出 QuotaExceededError 时静默降级
+    const origSetItem = localStorage.setItem
+    try {
+      localStorage.setItem = () => {
+        throw new DOMException('QuotaExceededError')
+      }
+      expect(() => { controller.setBacklogCollapsed(false) }).not.toThrow()
+      expect(controller.getSnapshot().backlogCollapsed).toBe(false)
+    } finally {
+      localStorage.setItem = origSetItem
+    }
+
+    // @tc TC-CONC-001
+    // 高频连续切换收起与展开，维持最终一致性
+    controller.setBacklogCollapsed(true)
+    controller.setBacklogCollapsed(false)
+    controller.setBacklogCollapsed(true)
+    expect(controller.getSnapshot().backlogCollapsed).toBe(true)
+    const finalPersisted = JSON.parse(localStorage.getItem('dsh-taskboard-view-v1')!) as { backlogCollapsed?: boolean }
+    expect(finalPersisted.backlogCollapsed).toBe(true)
+
+    // @tc TC-CONC-004
+    // 独立性互不干扰：doneCollapsed 与 backlogCollapsed 并发修改
+    controller.setDoneCollapsed(true)
+    controller.setBacklogCollapsed(true)
+    refreshCalls = 0
+    controller.setDoneCollapsed(false)
+    await new Promise(r => setTimeout(r, 10))
+    expect(refreshCalls).toBe(1) // setDoneCollapsed(false) 触发 refresh
+    expect(controller.getSnapshot().doneCollapsed).toBe(false)
+    expect(controller.getSnapshot().backlogCollapsed).toBe(true) // backlog 依然为 true
+    const dualPersisted = JSON.parse(localStorage.getItem('dsh-taskboard-view-v1')!) as { doneCollapsed?: boolean; backlogCollapsed?: boolean }
+    expect(dualPersisted.doneCollapsed).toBe(false)
+    expect(dualPersisted.backlogCollapsed).toBe(true)
+
+    unsub()
+    controller.dispose()
+    localStorage.clear()
+  })
+
   it('checklist editor: template prefill, add/remove rows, create submits texts, edit submits items', async () => {
     localStorage.clear()
     const React = await import('react')
@@ -2720,7 +2856,8 @@ describe('client half', () => {
     // 找到已完成列的收起按钮并点击
     const foldBtns = host.querySelectorAll<HTMLButtonElement>('.dsh-atb-colfoldbtn')
     expect(foldBtns.length).toBeGreaterThan(0)
-    foldBtns[0]!.click()
+    const doneFoldBtn = Array.from(foldBtns).find(btn => btn.title.includes('已完成')) ?? foldBtns[foldBtns.length - 1]!
+    doneFoldBtn.click()
     await new Promise(r => setTimeout(r, 10))
 
     // 2. 收起状态：渲染 data-collapsed="true" 竖条，展示总数
@@ -2763,6 +2900,331 @@ describe('client half', () => {
     await new Promise(r => setTimeout(r, 10))
     expect(controller.getSnapshot().doneCollapsed).toBe(false)
     expect(host.querySelector('.dsh-atb-column[data-collapsed="true"]')).toBeNull()
+
+    root.unmount()
+    host.remove()
+    controller.dispose()
+    localStorage.clear()
+  })
+
+  it('TaskBoard: backlog column collapse toggle, rendering, drag and drop, and edge cases', async () => {
+    localStorage.clear()
+    const React = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { TaskBoard } = await import('../src/client/board/TaskBoard.tsx')
+
+    const taskB1 = {
+      id: 't-b1', title: 'Backlog Task 1', description: '', prompt: '', workspaceId: 'ws-a',
+      urgency: 'normal' as const, status: 'backlog' as const, blocked: false,
+      execution: { mode: 'claim' as const }, version: 1, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
+      comments: [], executions: [],
+    }
+    const taskB2 = {
+      id: 't-b2', title: 'Backlog Task 2', description: '', prompt: '', workspaceId: 'ws-a',
+      urgency: 'normal' as const, status: 'backlog' as const, blocked: false,
+      execution: { mode: 'claim' as const }, version: 1, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
+      comments: [], executions: [],
+    }
+    const taskB3 = {
+      id: 't-b3', title: 'Backlog Task 3 special', description: '', prompt: '', workspaceId: 'ws-a',
+      urgency: 'normal' as const, status: 'backlog' as const, blocked: false,
+      execution: { mode: 'claim' as const }, version: 1, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
+      comments: [], executions: [],
+    }
+    const taskTodo = {
+      id: 't-todo', title: 'Todo Task', description: '', prompt: '', workspaceId: 'ws-a',
+      urgency: 'normal' as const, status: 'todo' as const, blocked: false,
+      execution: { mode: 'claim' as const }, version: 1, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
+      comments: [], executions: [],
+    }
+    const taskReview = {
+      id: 't-rev', title: 'Review Task', description: '', prompt: '', workspaceId: 'ws-a',
+      urgency: 'normal' as const, status: 'in_review' as const, blocked: false,
+      execution: { mode: 'claim' as const }, version: 1, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
+      comments: [], executions: [],
+    }
+    const taskDone = {
+      id: 't-done', title: 'Done Task', description: '', prompt: '', workspaceId: 'ws-a',
+      urgency: 'normal' as const, status: 'done' as const, blocked: false,
+      execution: { mode: 'claim' as const }, version: 1, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
+      comments: [], executions: [],
+    }
+
+    let moveCalls: Array<{ id: string; version: number; status: string }> = []
+    let moveShouldReject: Error | null = null
+
+    const initialTasks = [taskB1, taskB2, taskB3, taskTodo, taskReview, taskDone]
+    let currentTasks = [...initialTasks]
+
+    const client = {
+      state: async () => ({
+        schemaVersion: 1,
+        revision: 1,
+        tasks: currentTasks,
+        doneCount: 1,
+      }),
+      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
+      move: async (id: string, body: any) => {
+        if (moveShouldReject) {
+          throw moveShouldReject
+        }
+        moveCalls.push({ id, version: body.ifVersion, status: body.status })
+        const target = currentTasks.find(t => t.id === id)
+        const updated = target ? { ...target, status: body.status, version: body.ifVersion + 1 } : taskTodo
+        currentTasks = currentTasks.map(t => t.id === id ? updated : t)
+        return { task: updated }
+      },
+      stream: () => () => {},
+    }
+
+    const controller = new BoardController(client as never)
+    controller.start()
+    controller.openBoard()
+    await new Promise(r => setTimeout(r, 20))
+
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    root.render(React.createElement(TaskBoard, { controller }))
+    await new Promise(r => setTimeout(r, 20))
+
+    // @tc TC-FUNC-006
+    // 待规划列处于展开态时，列头渲染收起按钮 .dsh-atb-colfoldbtn，其 title 为收起「待规划」列，内嵌 svg
+    const cols = host.querySelectorAll('.dsh-atb-column')
+    expect(cols.length).toBeGreaterThan(0)
+    const backlogCol = cols[0]!
+    const colHead = backlogCol.querySelector('.dsh-atb-colhead')!
+    expect(colHead).not.toBeNull()
+    const collapseBtn = colHead.querySelector<HTMLButtonElement>('.dsh-atb-colfoldbtn')
+    expect(collapseBtn).not.toBeNull()
+    expect(collapseBtn!.getAttribute('title')).toBe('收起「待规划」列')
+    expect(collapseBtn!.querySelector('svg')).not.toBeNull()
+
+    // @tc TC-FUNC-007
+    // 点击待规划列头收起按钮，触发 controller.setBacklogCollapsed(true)
+    collapseBtn!.click()
+    await new Promise(r => setTimeout(r, 20))
+    expect(controller.getSnapshot().backlogCollapsed).toBe(true)
+
+    // @tc TC-FUNC-008
+    // 收起态紧凑条渲染为 .dsh-atb-column[data-collapsed="true"]，包含 .dsh-atb-col-collapsed-bar
+    const collapsedBacklogCol = host.querySelector('.dsh-atb-column[data-collapsed="true"]')!
+    expect(collapsedBacklogCol).not.toBeNull()
+    const bar = collapsedBacklogCol.querySelector('.dsh-atb-col-collapsed-bar')!
+    expect(bar).not.toBeNull()
+
+    // @tc TC-FUNC-009
+    // 收起态元素完整性：展开按钮、圆点、竖排文字、数量徽章
+    const expandBtn = bar.querySelector<HTMLButtonElement>('.dsh-atb-colfoldbtn')!
+    expect(expandBtn).not.toBeNull()
+    expect(expandBtn.getAttribute('title')).toBe('展开「待规划」列')
+    const dot = bar.querySelector('.dsh-atb-dot[data-status="backlog"]')!
+    expect(dot).not.toBeNull()
+    const vertText = bar.querySelector('.dsh-atb-col-collapsed-text')!
+    expect(vertText).not.toBeNull()
+    expect(vertText.textContent).toBe('待规划')
+    const countBadge = bar.querySelector('.dsh-atb-colcount')!
+    expect(countBadge).not.toBeNull()
+    expect(countBadge.textContent).toBe('3')
+
+    // @tc TC-FUNC-010
+    // 点击收起态展开按钮，恢复展开态，且 stopPropagation 避免冒泡触发外层
+    const collapseCalls: boolean[] = []
+    const origSetBacklogCollapsed = controller.setBacklogCollapsed.bind(controller)
+    controller.setBacklogCollapsed = (val: boolean) => {
+      collapseCalls.push(val)
+      origSetBacklogCollapsed(val)
+    }
+    expandBtn.click()
+    await new Promise(r => setTimeout(r, 20))
+    expect(controller.getSnapshot().backlogCollapsed).toBe(false)
+    expect(collapseCalls).toEqual([false]) // 恰好调用 1 次，验证 stopPropagation 阻止向父节点冒泡
+    controller.setBacklogCollapsed = origSetBacklogCollapsed
+
+    // @tc TC-FUNC-011
+    // 再次收起，然后测试点击收起条空白区域触发展开
+    controller.setBacklogCollapsed(true)
+    await new Promise(r => setTimeout(r, 20))
+    const bar2 = host.querySelector('.dsh-atb-col-collapsed-bar')!
+    bar2.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    await new Promise(r => setTimeout(r, 20))
+    expect(controller.getSnapshot().backlogCollapsed).toBe(false)
+
+    // 重新切为收起状态供后续拖拽与边界测试使用
+    controller.setBacklogCollapsed(true)
+    await new Promise(r => setTimeout(r, 20))
+    const colCollapsed = host.querySelector('.dsh-atb-column[data-collapsed="true"]')!
+
+    // @tc TC-FUNC-012
+    // 收起态拖拽悬浮交互：dragover 设置 dropEffect='move' 与 data-dragover="true"
+    const dragData: Record<string, string> = { 'application/x-dsh-atb-task': 't-todo' }
+    const dt = {
+      types: ['application/x-dsh-atb-task'],
+      getData: (k: string) => dragData[k] ?? '',
+      dropEffect: 'none',
+    }
+    const dragOverEvt = new Event('dragover', { bubbles: true, cancelable: true })
+    Object.defineProperty(dragOverEvt, 'dataTransfer', { value: dt })
+    colCollapsed.dispatchEvent(dragOverEvt)
+    expect(dragOverEvt.defaultPrevented).toBe(true)
+    expect(dt.dropEffect).toBe('move')
+    expect(colCollapsed.getAttribute('data-dragover')).toBe('true')
+
+    const dragLeaveEvt = new Event('dragleave', { bubbles: true, cancelable: true })
+    colCollapsed.dispatchEvent(dragLeaveEvt)
+    expect(colCollapsed.getAttribute('data-dragover')).toBeNull()
+
+    // @tc TC-FUNC-013
+    // 拖拽放置与流转：将 todo 状态的 t-todo 放置到待规划收起条，触发 controller.move
+    moveCalls = []
+    const dropEvt = new Event('drop', { bubbles: true, cancelable: true })
+    Object.defineProperty(dropEvt, 'dataTransfer', { value: dt })
+    colCollapsed.dispatchEvent(dropEvt)
+    await new Promise(r => setTimeout(r, 20))
+    expect(moveCalls).toEqual([{ id: 't-todo', version: 1, status: 'backlog' }])
+
+    // @tc TC-ERR-003
+    // 非法流转守卫（RT-002）：不能直接转为 backlog 的任务（如 in_review）拖入时，提示 forbidden 并不调用 move
+    moveCalls = []
+    const dtReview = {
+      types: ['application/x-dsh-atb-task'],
+      getData: () => 't-rev',
+      dropEffect: 'none',
+    }
+    const dropRevEvt = new Event('drop', { bubbles: true, cancelable: true })
+    Object.defineProperty(dropRevEvt, 'dataTransfer', { value: dtReview })
+    colCollapsed.dispatchEvent(dropRevEvt)
+    await new Promise(r => setTimeout(r, 20))
+    expect(moveCalls).toHaveLength(0) // 被拦截，未调用 move
+    const alertModal = host.querySelector('.dsh-atb-alert')
+    expect(alertModal).not.toBeNull()
+    const alertCloseBtn = alertModal!.querySelector<HTMLButtonElement>('.dsh-atb-btn')
+    alertCloseBtn?.click() // 关闭弹窗
+    await new Promise(r => setTimeout(r, 10))
+
+    // @tc TC-ERR-004
+    // 拖拽携带空白数据或非目标类型时安全返回，不调用 move
+    moveCalls = []
+    const dtEmpty = {
+      types: ['application/x-dsh-atb-task'],
+      getData: () => '',
+      dropEffect: 'none',
+    }
+    const dropEmptyEvt = new Event('drop', { bubbles: true, cancelable: true })
+    Object.defineProperty(dropEmptyEvt, 'dataTransfer', { value: dtEmpty })
+    colCollapsed.dispatchEvent(dropEmptyEvt)
+    await new Promise(r => setTimeout(r, 20))
+    expect(moveCalls).toHaveLength(0)
+
+    // @tc TC-ERR-005
+    // 拖拽目标卡片不存在于 ledger 中时安全退出，不调用 move
+    moveCalls = []
+    const dtGhost = {
+      types: ['application/x-dsh-atb-task'],
+      getData: () => 't-ghost',
+      dropEffect: 'none',
+    }
+    const dropGhostEvt = new Event('drop', { bubbles: true, cancelable: true })
+    Object.defineProperty(dropGhostEvt, 'dataTransfer', { value: dtGhost })
+    colCollapsed.dispatchEvent(dropGhostEvt)
+    await new Promise(r => setTimeout(r, 20))
+    expect(moveCalls).toHaveLength(0)
+
+    // @tc TC-ERR-006
+    // 拖拽同状态卡片防重：卡片原本就处于 backlog 状态时忽略，不调用 move
+    moveCalls = []
+    const dtSame = {
+      types: ['application/x-dsh-atb-task'],
+      getData: () => 't-b1',
+      dropEffect: 'none',
+    }
+    const dropSameEvt = new Event('drop', { bubbles: true, cancelable: true })
+    Object.defineProperty(dropSameEvt, 'dataTransfer', { value: dtSame })
+    colCollapsed.dispatchEvent(dropSameEvt)
+    await new Promise(r => setTimeout(r, 20))
+    expect(moveCalls).toHaveLength(0)
+
+    // @tc TC-EDGE-005
+    // 零容量集合边界：当 backlog 任务数为 0 时，徽标显示 "0" (RT-004)
+    controller.openBoard()
+    currentTasks = [taskTodo, taskDone]
+    await controller.refresh()
+    await new Promise(r => setTimeout(r, 20))
+    let curCountEl = host.querySelector('.dsh-atb-column[data-collapsed="true"] .dsh-atb-colcount')!
+    expect(curCountEl.textContent).toBe('0')
+
+    // @tc TC-EDGE-006
+    // 大数值徽标排版边界：当有 999 个 backlog 任务时，徽标显示 "999"
+    const manyTasks = Array.from({ length: 999 }, (_, i) => ({
+      ...taskB1,
+      id: `t-b-many-${i}`,
+    }))
+    currentTasks = manyTasks
+    await controller.refresh()
+    await new Promise(r => setTimeout(r, 20))
+    curCountEl = host.querySelector('.dsh-atb-column[data-collapsed="true"] .dsh-atb-colcount')!
+    expect(curCountEl.textContent).toBe('999')
+
+    // 恢复正常任务列表
+    currentTasks = [...initialTasks]
+    await controller.refresh()
+    await new Promise(r => setTimeout(r, 20))
+
+    // @tc TC-EDGE-007
+    // 双端折叠共存布局边界：backlogCollapsed 与 doneCollapsed 同时为 true
+    controller.setDoneCollapsed(true)
+    await new Promise(r => setTimeout(r, 20))
+    const collapsedCols = host.querySelectorAll('.dsh-atb-column[data-collapsed="true"]')
+    expect(collapsedCols.length).toBe(2) // 首尾两列均折叠
+    // 中间三列依然存在
+    const allColumns = host.querySelectorAll('.dsh-atb-column')
+    expect(allColumns.length).toBe(5)
+    controller.setDoneCollapsed(false)
+    await new Promise(r => setTimeout(r, 20))
+
+    // @tc TC-EDGE-008
+    // 视图过滤与搜索联动：搜索只匹配特定 backlog 任务时，徽标数量同步更新
+    controller.setSearch('special')
+    await new Promise(r => setTimeout(r, 20))
+    curCountEl = host.querySelector('.dsh-atb-column[data-collapsed="true"] .dsh-atb-colcount')!
+    expect(curCountEl.textContent).toBe('1') // 只有 taskB3 匹配
+    controller.setSearch('')
+    await new Promise(r => setTimeout(r, 20))
+    curCountEl = host.querySelector('.dsh-atb-column[data-collapsed="true"] .dsh-atb-colcount')!
+    expect(curCountEl.textContent).toBe('3')
+
+    // @tc TC-CONC-002
+    // 收起态并发接收 SSE 增量推流：增加任务时收起栏徽标实时更新为 4 且保持收起状态
+    const taskB4 = { ...taskB1, id: 't-b4', title: 'Backlog 4' }
+    currentTasks = [...initialTasks, taskB4]
+    await controller.refresh()
+    await new Promise(r => setTimeout(r, 20))
+    expect(controller.getSnapshot().backlogCollapsed).toBe(true)
+    curCountEl = host.querySelector('.dsh-atb-column[data-collapsed="true"] .dsh-atb-colcount')!
+    expect(curCountEl.textContent).toBe('4')
+
+    // @tc TC-CONC-003
+    // 拖拽移动与后端并发修改产生版本冲突（409）：视图保持收起不崩溃，控制器捕获错误
+    moveShouldReject = new Error('409 Conflict: version mismatch')
+    const dtConflict = {
+      types: ['application/x-dsh-atb-task'],
+      getData: () => 't-todo',
+      dropEffect: 'none',
+    }
+    const dropConflictEvt = new Event('drop', { bubbles: true, cancelable: true })
+    Object.defineProperty(dropConflictEvt, 'dataTransfer', { value: dtConflict })
+    const colNow = host.querySelector('.dsh-atb-column[data-collapsed="true"]')!
+    colNow.dispatchEvent(dropConflictEvt)
+    await new Promise(r => setTimeout(r, 30))
+    expect(controller.getSnapshot().backlogCollapsed).toBe(true)
+    expect(host.querySelector('.dsh-atb-column[data-collapsed="true"]')).not.toBeNull()
 
     root.unmount()
     host.remove()
