@@ -271,6 +271,11 @@ Real-deployment validation on 2026-10-16 read 4 Bugs, 4 linked Stories and 8 Tas
 
 ## Changelog
 
+### 0.9.4
+
+- **Comment wake (#51)**: in-review cards gain a "Send & let the agent handle" button — clicking merges the comment with every pending user comment into ONE user message and wakes the task's conversation (the card returns to in progress); a live session receives it immediately, otherwise the run continues the card's conversation or starts fresh with the reason recorded. Worktree-isolated tasks always resume the mirror so reviewed work survives. Delivered comments are marked with a session jump; agent/system comments never trigger delivery, and only in-review cards can be woken (enforced at both gates).
+- **Comment attribution and readability**: system comments carry their session and are excluded from the delivery backlog, so legacy system comments are no longer mislabeled as pending user feedback; agent labels jump to their session, and the executions timeline is collapsed by default.
+
 ### 0.9.3
 
 - **Ledger crash recovery (#53)**: locks orphaned by a host crash are recovered immediately via pid liveness checks; live or indeterminate owners are never reaped by age. Clean startup no longer takes the write lock, and reconciliation failures degrade to a warning instead of a fatal load failure — fixing the crash loop where a restart would fail again.
@@ -294,114 +299,5 @@ Real-deployment validation on 2026-10-16 read 4 Bugs, 4 linked Stories and 8 Tas
 
 - Add ZenTao/TAPD external sync and a shared provider contract; ZenTao is verified against a real deployment. Add settings navigation, login-assignee reuse, conflict handling, durable sync status and request throttling.
 - Fall back to a new conversation when a scheduled bound session cannot be reused (#49).
-
-### 0.8.10
-
-- **Collapsible project groups**: click a project name row to collapse or expand its task cards in the current status column. A chevron indicates the expanded state while the project name and task count stay visible. Each column/project pair folds independently, with the state saved in the current browser and restored after a page refresh. Available on the main board and in canceled, archived, and trashed columns; sticky group headers remain in place. Supports Tab focus and Enter/Space activation, with localized Chinese and English action labels. Folding only changes card visibility, leaving task records and statuses unchanged.
-
-### 0.8.9
-
-- **Sticky project group headers while a column scrolls ([PR #47](https://github.com/cloader/dsh-taskboard/pull/47))**: the project group header (workspace name row) pins to the top of the column while the card list scrolls, keeping long columns labelled while you read; the header fill is an opaque three-layer stack (board base + column inset + row tint) so cards sliding underneath never bleed through the label. Thanks to [@MoruTeaven](https://github.com/MoruTeaven) for the contribution.
-
-### 0.8.8
-
-- **Template categories**: user-defined template categories (1..30 chars); the new-task menu and the manager group templates by category ("Others" bucket last); inline category editing with an unfiltered suggestion dropdown that flips upward near the modal bottom; built-ins ship 开发 / 运维 (Development / Operations) categories per GUI language; no migration.
-- **Save as template from the task form**: the form footer persists the current form contents (checklist, permission, and session policy included) as a template; the form stays open so you can still create the task.
-- **SVN workspace scan short-circuit ([PR #46](https://github.com/cloader/dsh-taskboard/pull/46))**: a root `.svn` directory marks the workspace as non-Git and skips nested scanning, fixing `/workspaces` 10s timeouts on large SVN trees (60s+ → milliseconds). Thanks to [@jw5555555555](https://github.com/jw5555555555) for the contribution.
-- **Double-click a card to open its session + click outside to dismiss details ([PR #46](https://github.com/cloader/dsh-taskboard/pull/46))**: double-click opens the execution session (single-click selects; 250ms debounce); clicking blank board area outside the detail panel dismisses it; the card-level session button is removed, the detail-pane one remains.
-- **Done column folding and display limit ([PR #46](https://github.com/cloader/dsh-taskboard/pull/46))**: configurable done-column cap (default 50, search exempts); collapsible column header (persisted, still a drop target) with the host omitting done tasks while collapsed and reporting the total; done sorts newest-first, grouped per workspace.
-- **External session placeholder titles reconcile ([PR #46](https://github.com/cloader/dsh-taskboard/pull/46))**: "session xxxxxxxx" placeholder cards rename automatically once the real title is known (agent-created cards only); declares DSH 0.2.0-rc.2 compatibility.
-
-### 0.8.7
-
-- **Board defaults for model and Agent preset ([PR #43](https://github.com/cloader/dsh-taskboard/pull/43))**: choose the default model, reasoning effort, and Agent preset for new tasks in Settings. Explicit task or template choices take priority; defaults are written to tasks at creation, so later settings changes leave existing tasks unchanged. Settings survive restarts and JSON import/export. Thanks to [@Fnckerpoi](https://github.com/Fnckerpoi) for the contribution.
-- **Reasoning effort display fix**: when the model catalog is unavailable or lacks a saved effort, the task form still displays that value instead of showing “follow default” while submitting a different effort.
-
-### 0.8.6
-
-- **Improved periodic session reuse logic**: cron tasks can create a new session every run, or create one on the first run and continue it on later periods. This choice no longer depends on whether periodic completion rearms the current card or creates a successor. One-shot tasks retain their original single-run semantics; existing periodic tasks retain their prior automatic-reuse behavior.
-
-### 0.8.5
-
-- **Fixed default execution permission styling in Settings**: the three choices are laid out clearly again, including the selected state.
-
-### 0.8.4
-
-- **Continue an existing conversation for scheduled tasks ([#41](https://github.com/cloader/dsh-taskboard/issues/41))**: choose a session from the selected project when creating or editing a task. New session remains the default.
-- **More reliable board loading ([#42](https://github.com/cloader/dsh-taskboard/issues/42))**: if part of a refresh fails, tasks and projects already on screen stay visible, with a clearer error message.
-- **A simpler task form**: the create and edit dialog is wider, with permission and urgency side by side as dropdowns. Clicking outside no longer closes the form; Esc, Close, and Cancel still do.
-
-### 0.8.3
-
-- **Tasks are no longer wrongly marked as failed during an update ([#39](https://github.com/cloader/dsh-taskboard/issues/39))**: work that is still in progress keeps waiting for its real result when the board is refreshed or updated.
-- **The “claim stale” hint is more accurate ([#40](https://github.com/cloader/dsh-taskboard/issues/40))**: it now appears only for work that is still running and has had no progress for a long time. Finished work is not flagged just because it was claimed earlier.
-- **Opening work that is in progress is smoother ([PR #37](https://github.com/cloader/dsh-taskboard/pull/37))**: selecting a task now takes you straight to its working place. Thanks to [@Fishsb](https://github.com/Fishsb) for the contribution.
-- **Safer saving when several updates happen together ([PR #38](https://github.com/cloader/dsh-taskboard/pull/38))**: the board saves the latest information in order, reducing the chance that one update overwrites another task record. Thanks to [@Fishsb](https://github.com/Fishsb) for the contribution.
-
-### 0.8.2
-
-- **DSH 0.1.7-rc.2 execution-start compatibility ([PR #33](https://github.com/cloader/dsh-taskboard/pull/33))**: the DSH v4 session format no longer accepts the generic `source.kind: 'plugin'`. The board now records its execution framing context under its own `dsh-taskboard` message source, preventing manual and scheduled tasks from failing validation on their opening turn; later user follow-up messages are unchanged. Thanks to @weibaohui for contributing and merging this fix.
-- **Development dependency upgrade**: `@deepseek-ai/dsh-agent`, `dsh-home-paths`, `dsh-host-webserver`, `dsh-system-prompt`, `dsh-tools`, and `dsh-workspace` now use `0.1.7-rc.2`, so development and test runs use the same DSH API version as this fix.
-- **Periodic completion policies ([#35](https://github.com/cloader/dsh-taskboard/issues/35))**: periodic tasks now default to creating a new todo successor: the finished round stays in review while the host creates the next cron-bearing card. **Return to todo** remains available to reuse the same card for the next cron window. The host enforces both policies during settlement regardless of agent status moves; templates and successors preserve the selection, and existing cron tasks without an explicit setting use the new default.
-
-### 0.8.1
-
-- **Scheduled-queue safeguards and observability ([#32](https://github.com/cloader/dsh-taskboard/issues/32))**: the in-progress card shows the queued count, and users can open the queue to inspect waiting tasks or double-confirm clearing entries that have not yet been dispatched; the board also shows the oldest wait and concurrency cap. Optional queue shelf life and scheduled-session start spacing use a `1000 ms` default; set the interval explicitly to `0` to disable throttling. A single-flight scheduler tick and dispatch gate prevent overlapping ticks from releasing the queue in parallel.
-- **No enforced client-size budget**: removes the DSH STORE size budget and its dedicated test. Client minification remains an ordinary build optimization.
-
-### 0.7.6
-
-**Fixes:**
-
-- **Scheduled-task concurrency queue ([#30](https://github.com/cloader/dsh-taskboard/issues/30))**: due tasks enter a durable FIFO queue while concurrency is saturated and continue after a slot frees, rather than being silently lost after the former five-minute threshold; genuinely offline-missed periodic windows leave a system comment.
-- **Scheduling settings**: configure maximum concurrent executions (1–100) and the offline missed-window timeout (1–1440 minutes) in **🛠 Settings**. Saved values apply immediately and never expire already queued work.
-
-### 0.7.5
-
-**New features:**
-
-- Add batch delete / purge for archived and deleted cards ([#29](https://github.com/cloader/dsh-taskboard/issues/29)).
-
-### 0.7.4
-
-**New features:**
-
-- **Three execution modes**: claim, one-shot scheduled (new — fires once at a set time and is consumed; missed windows are skipped), and periodic scheduled (the former cron mode).
-- **Periodic hand-off**: each successful round moves the finished card to review for acceptance while a fresh todo successor card carries the cron into the next cycle; the scheduler only fires todo cards, so in_review cards are never re-triggered.
-
-### 0.7.3
-
-**Fixes:**
-
-- **Scheduled-task default permission and terminal-state scheduling ([#28](https://github.com/cloader/dsh-taskboard/issues/28))**: agent-created tasks now materialize the board's default permission and creation/update tools accept an explicit permission; cron no longer revives `done`, `canceled`, or `archived` tasks, while recurring tasks continue normally from `in_review`; users can reopen an accidentally completed task to `todo`.
-
-### 0.7.2
-
-**New features:**
-
-- **Scheduled session reuse ([#26](https://github.com/cloader/dsh-taskboard/issues/26))**: the first cron run creates a conversation; subsequent triggers resume that task's previous scheduled session and context, restoring persisted history after a DSH restart instead of spawning new sessions daily. Manual runs still open fresh sessions. Changed project, model, preset, permission or isolation configuration starts a compatible new conversation; busy, locked, corrupt or unrestorable sessions fall back to a new one so the scheduled run still proceeds. Each run keeps separate records and reports.
-
-**Fixes:**
-
-- **Settlement and hand-off fixes for reused sessions**: failure settlement targets the exact execution by ID; hand-off comment detection filters by time so historical comments no longer count as the current hand-off; a cancel request wins over an uncommitted idle settlement.
-
-### 0.7.1
-
-**Fixes:**
-
-- **Migration success feedback**: a successful data-directory migration now shows a green success notice (with the new path) in the storage section; old-data cleanup warnings render beneath it as warnings instead of occupying the global error banner.
-
-### 0.7.0
-
-**New features:**
-
-- **Configurable data directory**: Board Settings can validate and migrate the storage directory. `dsh-taskboard.json`, `dsh-taskboard-templates.json`, and `dsh-taskboard-assets/` always move together; migration copies and verifies everything before switching, and failures leave the original data active.
-- **Insert images in task descriptions and comments ([#25](https://github.com/cloader/dsh-taskboard/issues/25))**: choose, paste, or drag and drop PNG/JPEG/GIF/WebP; Markdown is inserted automatically and task details render thumbnails with lightbox previews. Images are deduplicated locally by content hash, while the ledger and SSE store short URLs only.
-- DSH development dependencies move to the 0.1.5-rc.2 line (`@deepseek-ai/cordis` 4.0.2, `@deepseek-ai/schemastery` 3.18.2), verified against DSH 0.1.5-rc.1.
-
-**Fixes:**
-
-- **Model prefix-cache invalidation ([#24](https://github.com/cloader/dsh-taskboard/issues/24))** — fixed, improving cache hit rates: the protocol and all ten `taskboard_*` tools register synchronously during plugin mount, and later workspace/agent startup or reload no longer changes the tool definitions. Calls return `taskboard_not_ready` while dependencies are unavailable. Tool execution waits for the shared initial ledger load and tool cleanup is separated from runtime-service lifecycles.
-
 
 > 📜 For the complete history of earlier versions, see [changelog.md](changelog.md).

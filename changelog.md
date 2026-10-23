@@ -1,5 +1,15 @@
 # 更新日志 / Changelog
 
+### 0.9.4 — 2026-10-23
+
+- **留言唤醒会话（#51）**：待验收卡的评论框新增「留言并让 agent 处理」——点击后把留言与所有未投递留言合并成一条用户消息投递给任务会话（单条保持原文，多条以分隔线相隔），卡片回到进行中，执行时间线记录「留言」触发。执行中的会话直接追加，否则优先续聊卡片关联会话（配置不匹配或不可恢复时新建会话并记录原因）；带 worktree 隔离的任务唤醒时强制续跑，不会重置上次工作。投递成功的留言标记「已投递」并可跳转会话；agent 评论与系统评论永不触发投递，仅待验收卡可唤醒（路由与执行闸门双层校验）。
+- **评论归属与可读性**：系统评论标注产生它的会话，投递判定排除系统评论，历史系统评论不再被误标为「用户 · 待投递」（界面按 agent / 用户两类作者展示）；评论气泡的 agent 标签可点击跳转对应会话；执行记录区默认折叠，点击表头展开。
+
+**English:**
+
+- **Comment wake (#51)**: in-review cards gain an explicit "Send & let the agent handle" button. Clicking merges the composer comment with every pending user comment into ONE user message (a lone comment stays verbatim; several join separated by a rule) and wakes the task's conversation — a live session receives it immediately, otherwise a comment-triggered run continues the card's conversation or starts a fresh one with the reason recorded. Worktree-isolated tasks always resume the existing mirror so the reviewed work survives. Delivered comments are marked with a session jump; agent and system comments never trigger delivery, and only in-review cards can be woken (enforced at both the route and the execution gate).
+- **Comment attribution and readability**: host system comments carry the session that produced them, and the delivery selection excludes system comments, so legacy system comments are no longer mislabeled as pending user feedback (the GUI shows agent / user authors). Agent labels on comment bubbles jump to their session, and the executions timeline is collapsed by default behind a toggle.
+
 ### 0.9.3 — 2026-10-23
 
 - **崩溃后台账锁恢复（#53）**：确认锁持有进程已退出时立即回收；使用唯一持有记录的锁目录，避免并发回收误删接替者的新锁，兼容旧锁文件。存活或无法确认的进程不会因锁龄被抢锁，旧格式锁保留五分钟恢复窗口且等待上限覆盖该窗口。干净启动不申请写锁，启动执行恢复失败记录告警并保留台账。
