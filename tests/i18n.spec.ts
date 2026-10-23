@@ -251,11 +251,19 @@ describe('host system message localization', () => {
     expect(zh).toHaveProperty('board.column.expandBacklog')
     expect(en).toHaveProperty('board.column.collapseBacklog')
     expect(en).toHaveProperty('board.column.expandBacklog')
+    expect(zh).toHaveProperty('board.column.collapseTodo')
+    expect(zh).toHaveProperty('board.column.expandTodo')
+    expect(en).toHaveProperty('board.column.collapseTodo')
+    expect(en).toHaveProperty('board.column.expandTodo')
 
     expect(zh['board.column.collapseBacklog']).toBe('收起「待规划」列')
     expect(zh['board.column.expandBacklog']).toBe('展开「待规划」列')
     expect(en['board.column.collapseBacklog']).toBe('Collapse "Backlog" column')
     expect(en['board.column.expandBacklog']).toBe('Expand "Backlog" column')
+    expect(zh['board.column.collapseTodo']).toBe('收起「待办」列')
+    expect(zh['board.column.expandTodo']).toBe('展开「待办」列')
+    expect(en['board.column.collapseTodo']).toBe('Collapse "To Do" column')
+    expect(en['board.column.expandTodo']).toBe('Expand "To Do" column')
   })
 
   // @tc TC-FUNC-015
@@ -264,11 +272,15 @@ describe('host system message localization', () => {
     disposeI18n()
     expect(translate('board.column.collapseBacklog')).toBe('收起「待规划」列')
     expect(translate('board.column.expandBacklog')).toBe('展开「待规划」列')
+    expect(translate('board.column.collapseTodo')).toBe('收起「待办」列')
+    expect(translate('board.column.expandTodo')).toBe('展开「待办」列')
 
     document.documentElement.lang = 'en-US'
     disposeI18n()
     expect(translate('board.column.collapseBacklog')).toBe('Collapse "Backlog" column')
     expect(translate('board.column.expandBacklog')).toBe('Expand "Backlog" column')
+    expect(translate('board.column.collapseTodo')).toBe('Collapse "To Do" column')
+    expect(translate('board.column.expandTodo')).toBe('Expand "To Do" column')
   })
 })
 

@@ -348,6 +348,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             {MAIN_STATUSES.map(status => {
               const rawColumnTasks = live.filter(t => t.status === status)
               const isBacklog = status === 'backlog'
+              const isTodo = status === 'todo'
               const isDone = status === 'done'
               const columnTasks = isDone && state.sortBy !== 'title'
                 ? sortDoneTasks(rawColumnTasks)
@@ -377,15 +378,19 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 void controller.move(id, task.version, status)
               }
 
-              const isCollapsed = (isBacklog && state.backlogCollapsed) || (isDone && state.doneCollapsed)
+              const isCollapsed = (isBacklog && state.backlogCollapsed)
+                || (isTodo && state.todoCollapsed)
+                || (isDone && state.doneCollapsed)
               if (isCollapsed) {
-                const isBacklogCollapse = isBacklog && state.backlogCollapsed
-                const expandTitle = isBacklogCollapse ? t('board.column.expandBacklog') : t('board.column.expandDone')
+                const expandTitle = isBacklog ? t('board.column.expandBacklog')
+                  : isTodo ? t('board.column.expandTodo')
+                  : t('board.column.expandDone')
                 const onExpand = () => {
-                  if (isBacklogCollapse) controller.setBacklogCollapsed(false)
+                  if (isBacklog) controller.setBacklogCollapsed(false)
+                  else if (isTodo) controller.setTodoCollapsed(false)
                   else controller.setDoneCollapsed(false)
                 }
-                const count = isBacklogCollapse ? columnTasks.length : (state.doneCount ?? columnTasks.length)
+                const count = isDone ? (state.doneCount ?? columnTasks.length) : columnTasks.length
 
                 return (
                   <div
@@ -469,6 +474,18 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                         className="dsh-atb-colfoldbtn"
                         title={t('board.column.collapseBacklog')}
                         onClick={() => controller.setBacklogCollapsed(true)}
+                      >
+                        <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+                          <path d="M10 3.5a.5.5 0 0 0-.854-.354l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .854-.354v-8z" />
+                        </svg>
+                      </button>
+                    )}
+                    {isTodo && (
+                      <button
+                        type="button"
+                        className="dsh-atb-colfoldbtn"
+                        title={t('board.column.collapseTodo')}
+                        onClick={() => controller.setTodoCollapsed(true)}
                       >
                         <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
                           <path d="M10 3.5a.5.5 0 0 0-.854-.354l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .854-.354v-8z" />

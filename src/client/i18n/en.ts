@@ -473,6 +473,8 @@ export const en: TaskboardDict = {
   'board.column.expandDone': 'Expand "Done" column',
   'board.column.collapseBacklog': 'Collapse "Backlog" column',
   'board.column.expandBacklog': 'Expand "Backlog" column',
+  'board.column.collapseTodo': 'Collapse "To Do" column',
+  'board.column.expandTodo': 'Expand "To Do" column',
   'board.workspace.unassigned': 'Unassigned workspace',
   'card.badge.permReadOnly': '🔒 Read-only',
   'card.badge.permReadOnlyTitle': 'Permission: read-only',

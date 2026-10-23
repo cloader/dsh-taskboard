@@ -1170,6 +1170,79 @@ describe('client half', () => {
     localStorage.clear()
   })
 
+  it('controller: todoCollapsed state lifecycle, view persistence, error isolation and concurrency', async () => {
+    localStorage.clear()
+    const { BoardController } = await import('../src/client/controller.ts')
+    let refreshCalls = 0
+    const client = {
+      state: async () => {
+        refreshCalls++
+        return { schemaVersion: 1, revision: 1, tasks: [], doneCount: 0 }
+      },
+      workspaces: async () => [],
+      stream: () => () => {},
+    }
+
+    const controller = new BoardController(client as never)
+    expect(controller.getSnapshot().todoCollapsed).toBe(false)
+
+    let notifyCount = 0
+    const unsub = controller.subscribe(() => { notifyCount++ })
+    refreshCalls = 0
+    controller.setTodoCollapsed(true)
+    expect(controller.getSnapshot().todoCollapsed).toBe(true)
+    expect(notifyCount).toBe(1)
+    expect(refreshCalls).toBe(0)
+
+    const persisted = JSON.parse(localStorage.getItem('dsh-taskboard-view-v1')!) as { todoCollapsed?: boolean }
+    expect(persisted.todoCollapsed).toBe(true)
+
+    controller.setTodoCollapsed(false)
+    expect(controller.getSnapshot().todoCollapsed).toBe(false)
+    await new Promise(r => setTimeout(r, 10))
+    expect(refreshCalls).toBe(0)
+
+    // 幂等防重
+    notifyCount = 0
+    controller.setTodoCollapsed(false)
+    expect(notifyCount).toBe(0)
+    controller.setTodoCollapsed(true)
+    expect(notifyCount).toBe(1)
+    controller.setTodoCollapsed(true)
+    expect(notifyCount).toBe(1)
+
+    // loadView 预设读取
+    localStorage.setItem('dsh-taskboard-view-v1', JSON.stringify({ todoCollapsed: true, sortBy: 'created' }))
+    const hydrated = new BoardController(client as never)
+    expect(hydrated.getSnapshot().todoCollapsed).toBe(true)
+    expect(hydrated.getSnapshot().sortBy).toBe('created')
+    hydrated.dispose()
+
+    // 脏数据防御
+    for (const dirtyVal of ['true', 1, {}, null, [true]]) {
+      localStorage.setItem('dsh-taskboard-view-v1', JSON.stringify({ todoCollapsed: dirtyVal }))
+      const dirty = new BoardController(client as never)
+      expect(dirty.getSnapshot().todoCollapsed).toBe(false)
+      dirty.dispose()
+    }
+
+    // 与 doneCollapsed、backlogCollapsed 互不干扰
+    controller.setDoneCollapsed(true)
+    controller.setBacklogCollapsed(true)
+    controller.setTodoCollapsed(true)
+    expect(controller.getSnapshot().doneCollapsed).toBe(true)
+    expect(controller.getSnapshot().backlogCollapsed).toBe(true)
+    expect(controller.getSnapshot().todoCollapsed).toBe(true)
+    const triplePersisted = JSON.parse(localStorage.getItem('dsh-taskboard-view-v1')!) as { doneCollapsed?: boolean; backlogCollapsed?: boolean; todoCollapsed?: boolean }
+    expect(triplePersisted.doneCollapsed).toBe(true)
+    expect(triplePersisted.backlogCollapsed).toBe(true)
+    expect(triplePersisted.todoCollapsed).toBe(true)
+
+    unsub()
+    controller.dispose()
+    localStorage.clear()
+  })
+
   it('checklist editor: template prefill, add/remove rows, create submits texts, edit submits items', async () => {
     localStorage.clear()
     const React = await import('react')
@@ -3225,6 +3298,56 @@ describe('client half', () => {
     await new Promise(r => setTimeout(r, 30))
     expect(controller.getSnapshot().backlogCollapsed).toBe(true)
     expect(host.querySelector('.dsh-atb-column[data-collapsed="true"]')).not.toBeNull()
+
+    // ── 待办 (todo) 列折叠交互与拖拽验证 ───────────────────────
+    // 先恢复 backlog 展开
+    controller.setBacklogCollapsed(false)
+    await new Promise(r => setTimeout(r, 20))
+    expect(controller.getSnapshot().todoCollapsed).toBe(false)
+
+    // 待办列头具备收起按钮
+    const todoCol = host.querySelectorAll('.dsh-atb-column')[1]!
+    const todoHead = todoCol.querySelector('.dsh-atb-colhead')!
+    const todoCollapseBtn = todoHead.querySelector<HTMLButtonElement>('.dsh-atb-colfoldbtn')!
+    expect(todoCollapseBtn).not.toBeNull()
+    expect(todoCollapseBtn.getAttribute('title')).toBe('收起「待办」列')
+
+    // 点击收起待办列
+    todoCollapseBtn.click()
+    await new Promise(r => setTimeout(r, 20))
+    expect(controller.getSnapshot().todoCollapsed).toBe(true)
+
+    // 收起态紧凑条验证
+    const collapsedTodoCol = host.querySelector('.dsh-atb-column[data-collapsed="true"]')!
+    expect(collapsedTodoCol).not.toBeNull()
+    const todoBar = collapsedTodoCol.querySelector('.dsh-atb-col-collapsed-bar')!
+    expect(todoBar).not.toBeNull()
+    expect(todoBar.querySelector('.dsh-atb-col-collapsed-text')!.textContent).toBe('待办')
+    expect(todoBar.querySelector('.dsh-atb-colcount')!.textContent).toBe('1')
+
+    // 点击展开按钮恢复展开
+    const todoExpandBtn = todoBar.querySelector<HTMLButtonElement>('.dsh-atb-colfoldbtn')!
+    expect(todoExpandBtn.getAttribute('title')).toBe('展开「待办」列')
+    todoExpandBtn.click()
+    await new Promise(r => setTimeout(r, 20))
+    expect(controller.getSnapshot().todoCollapsed).toBe(false)
+
+    // 再次收起并测试拖拽卡片放入待办列
+    controller.setTodoCollapsed(true)
+    await new Promise(r => setTimeout(r, 20))
+    moveCalls.length = 0
+    moveShouldReject = null
+    const dtTodo = {
+      types: ['application/x-dsh-atb-task'],
+      getData: (t: string) => (t === 'application/x-dsh-atb-task' ? 't-b1' : ''),
+      dropEffect: 'none',
+    }
+    const dropTodoEvt = new Event('drop', { bubbles: true, cancelable: true })
+    Object.defineProperty(dropTodoEvt, 'dataTransfer', { value: dtTodo })
+    const targetTodoBar = host.querySelector('.dsh-atb-column[data-collapsed="true"]')!
+    targetTodoBar.dispatchEvent(dropTodoEvt)
+    await new Promise(r => setTimeout(r, 20))
+    expect(moveCalls).toEqual([{ id: 't-b1', version: 1, status: 'todo' }])
 
     root.unmount()
     host.remove()

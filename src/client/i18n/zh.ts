@@ -475,6 +475,8 @@ export const zh = {
   'board.column.expandDone': '展开「已完成」列',
   'board.column.collapseBacklog': '收起「待规划」列',
   'board.column.expandBacklog': '展开「待规划」列',
+  'board.column.collapseTodo': '收起「待办」列',
+  'board.column.expandTodo': '展开「待办」列',
   'board.workspace.unassigned': '未分配工作区',
   'card.badge.permReadOnly': '🔒 仅查看',
   'card.badge.permReadOnlyTitle': '权限：仅可查看',
