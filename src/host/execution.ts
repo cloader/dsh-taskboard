@@ -22,6 +22,7 @@ import {
   normalizeBody,
   parseCron,
   spawnNextCycle,
+  taskSessionId,
   type ExecutionRecord,
   type ExecutionRepoEvidence,
   type IsolationMode,
@@ -160,6 +161,15 @@ export type CancelRequestResult =
   | { ok: true; executionId: string }
   | { ok: false; error: string }
 
+/**
+ * Outcome of a comment-delivery request (issue #51 Plan A): 'live' appended
+ * the comments to the still-running conversation, 'run' woke a fresh run;
+ * count = comments delivered. Failures carry a user-facing error.
+ */
+export type DeliverCommentsResult =
+  | { ok: true; delivered: 'live' | 'run'; count: number; executionId?: string; sessionId?: string }
+  | { ok: false; error: string }
+
 /** Whether a turn/end payload closed with an error reason. */
 function isErrorTurnEnd(data: unknown): { message: string } | undefined {
   if (typeof data !== 'object' || data === null) return undefined
@@ -186,6 +196,13 @@ export interface RunOptions {
    * durable queue entry in the same mutation that creates the running record.
    */
   scheduledWindow?: number
+  /**
+   * Comment wake (issue #51 Plan A): the pending user comments to deliver,
+   * each as its own ordinary user message, in ascending createdAt order.
+   * The caller reads them from the ledger; comment bodies are immutable once
+   * written (append-only ledger), so the snapshot cannot go stale.
+   */
+  comments?: Array<{ id: string; body: string }>
 }
 
 /** One live execution tracked for settlement and cancellation. */
@@ -508,6 +525,14 @@ export class ExecutionService {
         gate = 'scheduled dispatch is no longer queued'
         return undefined
       }
+      // Issue #51 Plan A: a comment wake is the acceptance-review loop — it
+      // only fires on an in_review card. Rechecked INSIDE the gate (not just
+      // at the route) so a card that moved between route check and this
+      // mutation can never be woken by a stale delivery.
+      if (trigger === 'comment' && target.status !== 'in_review') {
+        gate = `comment wake requires in_review (current ${target.status})`
+        return undefined
+      }
       // Refuse while work is IN FLIGHT: a live execution, or a session holding
       // the claim. Status alone is not the test — a card moved back to
       // in progress by the user, or left behind by a run whose host died,
@@ -561,7 +586,9 @@ export class ExecutionService {
         } else {
           const outcome = await prepareMirror(
             { git: this.deps.git, scanner: this.deps.scanner ?? createRepoScanner() },
-            { workspacePath: workspace.path, taskId: task.id, branch, reuse: options?.reuseWorktree === true },
+            // Comment wake NEVER resets the mirror: the comments review the
+            // PREVIOUS run's work, so a fresh checkout would destroy it.
+            { workspacePath: workspace.path, taskId: task.id, branch, reuse: options?.reuseWorktree === true || trigger === 'comment' },
           )
           if ('mirror' in outcome) {
             prepared = outcome.mirror
@@ -638,7 +665,16 @@ export class ExecutionService {
         model?.provider ?? null, model?.model ?? null, model?.reasoningEffort ?? null,
         task.permission ?? DEFAULT_PERMISSION, isolation,
       ])
-      const selectedSessionId = trigger === 'scheduled' ? task.execution.reuseSessionId : undefined
+      // Session continuation candidate: scheduled uses its explicit binding;
+      // a comment wake (issue #51) continues the ONE conversation the card
+      // points at (shared taskSessionId resolution — running execution is
+      // impossible here, the gate refused it). resumeScheduled's compatibility
+      // check downgrades to a fresh session when cwd/preset/model drifted.
+      const selectedSessionId = trigger === 'scheduled'
+        ? task.execution.reuseSessionId
+        : trigger === 'comment'
+          ? taskSessionId(task)
+          : undefined
       if (selectedSessionId !== undefined) {
         let reason: SessionReuseDegradeReason = 'unavailable'
         const resumed = await this.deps.agents.resumeScheduled?.(selectedSessionId, createOptions, value => { reason = value })
@@ -749,18 +785,38 @@ export class ExecutionService {
     //      (next-turn, wakes the driver). At claim time the loop drains ALL
     //      next-step messages plus the one next-turn message into a single
     //    turn — framing first, then the user bubble.
+    //    Comment wake (issue #51): the framing changes to the review variant
+    //    and EVERY pending comment is appended verbatim as its own user
+    //    message — never merged, never rewritten (user decision 2026-10).
+    const commentWake = trigger === 'comment' && (options?.comments?.length ?? 0) > 0
     handle.agent.inject({
       id: this.deps.mintMessageId?.() ?? MessageId(`msg-taskboard-${crypto.randomUUID()}`),
       role: 'user' as const,
-      content: [{ type: 'text' as const, text: this.pluginFraming(task, prepared, isolationNote) + (reuseFallbackNote !== undefined ? `\n⚠ ${reuseFallbackNote}` : '') }],
+      content: [{ type: 'text' as const, text: (commentWake ? this.commentFraming(task, prepared, isolationNote) : this.pluginFraming(task, prepared, isolationNote)) + (reuseFallbackNote !== undefined ? `\n⚠ ${reuseFallbackNote}` : '') }],
       source: { kind: 'dsh-taskboard' as const },
     })
-    handle.agent.followup({
-      id: this.deps.mintMessageId?.() ?? MessageId(`msg-taskboard-${crypto.randomUUID()}`),
-      role: 'user' as const,
-      content: [{ type: 'text' as const, text: this.userBody(task) }],
-      source: { kind: 'user' as const },
-    })
+    if (commentWake) {
+      for (const c of options!.comments!) {
+        handle.agent.followup({
+          id: this.deps.mintMessageId?.() ?? MessageId(`msg-taskboard-${crypto.randomUUID()}`),
+          role: 'user' as const,
+          content: [{ type: 'text' as const, text: c.body }],
+          source: { kind: 'user' as const },
+        })
+      }
+    } else {
+      handle.agent.followup({
+        id: this.deps.mintMessageId?.() ?? MessageId(`msg-taskboard-${crypto.randomUUID()}`),
+        role: 'user' as const,
+        content: [{ type: 'text' as const, text: this.userBody(task) }],
+        source: { kind: 'user' as const },
+      })
+    }
+    // The comments are NOW in the conversation's queue — mark them delivered
+    // (idempotent per comment) and leave the wake trace, all in one mutation.
+    if (commentWake) {
+      await this.markCommentsDelivered(taskId, options!.comments!.map(c => c.id), executionId, sessionId, true)
+    }
 
     // 6. Settlement watcher: mark succeeded, release the executing session's
     //    hold, collect the worktree evidence (commits / dirty / diff), and —
@@ -1082,6 +1138,88 @@ export class ExecutionService {
   }
 
   /**
+   * Deliver a task's pending user comments to its conversation (issue #51
+   * Plan A explicit delivery). The route validates the card and writes the
+   * composer comment; this picks the channel:
+   * - live: the previous run is STILL settling (agent self-moved the card to
+   *   in_review before going idle) and this host tracks its watcher → append
+   *   each comment as a user message, no new execution;
+   * - run: otherwise a comment-triggered run that continues the card's
+   *   conversation (taskSessionId candidate, compatibility-checked) or
+   *   degrades to a fresh one — comments appended verbatim by run().
+   * Agent comments are never delivered; already-delivered ones never repeat.
+   */
+  async deliverComments(taskId: string): Promise<DeliverCommentsResult> {
+    const task = this.deps.store.get(taskId)
+    if (task === undefined || task.trashedAt !== undefined) return { ok: false, error: `no task ${taskId}` }
+    if (task.status !== 'in_review') return { ok: false, error: `comment wake requires in_review (current ${task.status})` }
+    const pending = task.comments
+      .filter(c => c.threadId === undefined && c.deliveredAt === undefined)
+      .sort((a, b) => a.createdAt - b.createdAt)
+    if (pending.length === 0) return { ok: false, error: '没有待投递的留言' }
+    const running = task.executions.find(e => e.outcome === 'running')
+    if (running !== undefined) {
+      const liveSessionId = running.sessionId
+      const tracked = liveSessionId !== undefined
+        && [...this.runs.values()].some(entry => entry.sessionId === liveSessionId)
+      const live = tracked && liveSessionId !== undefined ? this.deps.liveAgent?.(liveSessionId) : undefined
+      if (liveSessionId === undefined || live === undefined) {
+        // A running record this host does not track (restart leftover) gets
+        // the manual-run treatment: refuse with a clear message instead of
+        // firing messages into an orphaned conversation.
+        return { ok: false, error: '执行会话状态不明（宿主可能重启过），请先停止执行再投递留言' }
+      }
+      for (const c of pending) {
+        live.followup({
+          id: this.deps.mintMessageId?.() ?? MessageId(`msg-taskboard-${crypto.randomUUID()}`),
+          role: 'user' as const,
+          content: [{ type: 'text' as const, text: c.body }],
+          source: { kind: 'user' as const },
+        })
+      }
+      await this.markCommentsDelivered(taskId, pending.map(c => c.id), running.id, liveSessionId, false)
+      return { ok: true, delivered: 'live', count: pending.length, executionId: running.id, sessionId: liveSessionId }
+    }
+    const result = await this.run(taskId, 'comment', { comments: pending.map(c => ({ id: c.id, body: c.body })) })
+    if (!result.ok) return { ok: false, error: result.error }
+    return { ok: true, delivered: 'run', count: pending.length, executionId: result.executionId, sessionId: result.sessionId }
+  }
+
+  /**
+   * Mark comments delivered (idempotent per comment) and — for the run
+   * channel — leave the wake trace as a system comment, in ONE mutation.
+   * A failed run never marks: pending comments stay pending for a retry.
+   */
+  private async markCommentsDelivered(taskId: string, commentIds: string[], executionId: string, sessionId: string, announce: boolean): Promise<void> {
+    await this.deps.store.mutate('comment-added', (ledger) => {
+      const target = ledger.tasks.find(t => t.id === taskId)
+      if (target === undefined) return undefined
+      const now = this.deps.now()
+      let touched = false
+      for (const c of target.comments) {
+        if (commentIds.includes(c.id) && c.deliveredAt === undefined) {
+          c.deliveredAt = now
+          c.deliveredExecutionId = executionId
+          touched = true
+        }
+      }
+      if (!touched && !announce) return undefined
+      if (announce) {
+        target.comments.push({
+          id: newCommentId(),
+          body: normalizeBody(`[系统] 用户留言已投递，唤醒会话 ${sessionId} 处理。`),
+          systemKey: 'sys.commentWoke',
+          systemParams: { id: sessionId },
+          version: 1,
+          createdAt: now,
+        })
+        target.updatedAt = now
+      }
+      return [target]
+    })
+  }
+
+  /**
    * The plugin framing line (rendered as a plugin context row): task head,
    * already-claimed state, and the handoff protocol — everything the session
    * must know about the board. The task id appears exactly once (here); the
@@ -1109,29 +1247,58 @@ export class ExecutionService {
           ? '4. 本任务设为“完成后新建待办”：完成报告和评论后无需改变状态，宿主会保留本卡待验收并新建下一轮待办卡。\n'
           : '4. taskboard_move 将本任务移至待验收 in_review（带 ifVersion）\n'}`
       + `若无法完成：留评论说明原因，将任务移回待办 todo。`
-    if (task.checklist !== undefined && task.checklist.length > 0) {
-      const items = task.checklist
-        .map((item, index) => `${item.checked ? '☑' : '☐'} ${index + 1}. ${item.text}${item.note !== undefined ? `（证据: ${item.note}）` : ''}`)
-        .join('\n')
-      const done = task.checklist.filter(i => i.checked).length
-      text += `\n本任务有验收清单（DoD，${done}/${task.checklist.length} 已完成）——按清单干活：\n${items}\n完成一项就用 taskboard_checklist（action=check，附 note 证据）勾选；未完成项会在验收时高亮，全部完成再移待验收。需要补充验收项也可用 action=add 追加。`
-    }
+    text += this.checklistFraming(task)
+    text += this.isolationFraming(prepared, degradeNote)
+    return text
+  }
+
+  /**
+   * The comment-wake framing line (issue #51 Plan A): the review-loop variant
+   * of {@link pluginFraming} — same handoff protocol, shared DoD and isolation
+   * sections — but the opening tells the agent the conversation was woken by
+   * user comments, which arrive verbatim as the following user messages.
+   */
+  private commentFraming(task: TaskRecord, prepared?: PreparedMirror, degradeNote?: string): string {
+    let text = `【任务看板】${task.title}（ID: ${task.id}）\n`
+      + `本会话由任务看板的「用户留言」触发：用户在本卡待验收时留言，留言已按原样作为下方的用户消息逐条投递——请逐条处理，不要遗漏。\n`
+      + `处理完成后仍按序交接：\n`
+      + `1. taskboard_get 读取本任务，取得最新 version\n`
+      + `2. taskboard_execution_report 提交结构化执行报告（做了什么/改了哪些文件/如何验证/剩余风险）\n`
+      + `3. taskboard_comment_add 留评论说明本轮留言的处理结果\n`
+      + `4. taskboard_move 将本任务移至待验收 in_review（带 ifVersion）\n`
+      + `若某条留言无法处理：留评论说明原因，任务保持待验收，交回用户决定。`
+    text += this.checklistFraming(task)
+    text += this.isolationFraming(prepared, degradeNote)
+    return text
+  }
+
+  /** The shared DoD section of a framing line (extracted for the comment wake variant, issue #51). */
+  private checklistFraming(task: TaskRecord): string {
+    if (task.checklist === undefined || task.checklist.length === 0) return ''
+    const items = task.checklist
+      .map((item, index) => `${item.checked ? '☑' : '☐'} ${index + 1}. ${item.text}${item.note !== undefined ? `（证据: ${item.note}）` : ''}`)
+      .join('\n')
+    const done = task.checklist.filter(i => i.checked).length
+    return `\n本任务有验收清单（DoD，${done}/${task.checklist.length} 已完成）——按清单干活：\n${items}\n完成一项就用 taskboard_checklist（action=check，附 note 证据）勾选；未完成项会在验收时高亮，全部完成再移待验收。需要补充验收项也可用 action=add 追加。`
+  }
+
+  /** The shared isolation/degrade section of a framing line (issue #51 extraction). */
+  private isolationFraming(prepared: PreparedMirror | undefined, degradeNote?: string): string {
     if (prepared !== undefined) {
       if (isLegacySingle(prepared)) {
         // Byte-identical legacy single-repo steering (0.3.0–0.6.2 wording).
         const only = prepared.repos[0]!
         if (only.reused === true) {
-          text += `\n本任务启用了 Git Worktree 隔离，且本次为续跑：任务工作目录是独立分支 ${only.branch} 的 worktree——\n${only.worktreePath}\n上一次执行的改动与提交都保留在原处——请先查看已有改动（git status / git log）再继续，避免重复劳动，并把新完成的工作提交到该分支。`
-        } else {
-          text += `\n本任务启用了 Git Worktree 隔离：任务工作目录是独立分支 ${only.branch} 的全新 worktree——\n${only.worktreePath}\n（全新检出，不含 node_modules/构建产物，构建或测试前可能需要先安装依赖）。\n⚠ 边界纪律：你的会话根目录是整个项目，但本任务的全部改动必须只发生在上述 worktree 目录内——命令用 workdir 指向它、文件读写用它的绝对路径；不要改动主工作区的任何其它文件；把完成的工作提交（git commit）到该分支，验收将基于该分支的提交记录合并。`
+          return `\n本任务启用了 Git Worktree 隔离，且本次为续跑：任务工作目录是独立分支 ${only.branch} 的 worktree——\n${only.worktreePath}\n上一次执行的改动与提交都保留在原处——请先查看已有改动（git status / git log）再继续，避免重复劳动，并把新完成的工作提交到该分支。`
         }
-      } else {
-        text += this.mirrorFraming(prepared)
+        return `\n本任务启用了 Git Worktree 隔离：任务工作目录是独立分支 ${only.branch} 的全新 worktree——\n${only.worktreePath}\n（全新检出，不含 node_modules/构建产物，构建或测试前可能需要先安装依赖）。\n⚠ 边界纪律：你的会话根目录是整个项目，但本任务的全部改动必须只发生在上述 worktree 目录内——命令用 workdir 指向它、文件读写用它的绝对路径；不要改动主工作区的任何其它文件；把完成的工作提交（git commit）到该分支，验收将基于该分支的提交记录合并。`
       }
-    } else if (degradeNote !== undefined) {
-      text += `\n⚠ 本次执行未能建立隔离，正在主项目目录中工作（原因：${degradeNote}）。该目录可能有他人未提交的改动：动手前先 git status 检查现状，改动尽量集中，结束时在评论中说明动了哪些文件；避免把未经验证的改动直接提交到主分支。`
+      return this.mirrorFraming(prepared)
     }
-    return text
+    if (degradeNote !== undefined) {
+      return `\n⚠ 本次执行未能建立隔离，正在主项目目录中工作（原因：${degradeNote}）。该目录可能有他人未提交的改动：动手前先 git status 检查现状，改动尽量集中，结束时在评论中说明动了哪些文件；避免把未经验证的改动直接提交到主分支。`
+    }
+    return ''
   }
 
   /**

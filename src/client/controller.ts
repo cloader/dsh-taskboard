@@ -634,6 +634,23 @@ export class BoardController {
     }
   }
 
+  /**
+   * Issue #51 Plan A: post the composer comment (optional) and deliver every
+   * pending user comment to the task's conversation. Returns whether it
+   * landed — the composer keeps its text on failure (same T13 semantics as
+   * a plain comment).
+   */
+  async commentRun(id: string, body: string): Promise<boolean> {
+    try {
+      await this.client.commentRun(id, body)
+      await this.refresh()
+      return true
+    } catch (error) {
+      this.setState({ error: error instanceof Error ? error.message : String(error) })
+      return false
+    }
+  }
+
   /** Upload an image without putting its bytes in the ledger or agent context. */
   async uploadImage(file: Blob): Promise<AttachmentUpload | undefined> {
     try {

@@ -34,7 +34,7 @@ let dir: string
 let storeSeq = 0
 let store: InstanceType<typeof TaskStore>
 let scheduler: SchedulerService
-let runs: Array<{ id: string; trigger: 'manual' | 'scheduled' }>
+let runs: Array<{ id: string; trigger: 'manual' | 'scheduled' | 'comment' }>
 
 /** Real-event-loop delay — immune to vi.useFakeTimers (builtin module ref). */
 function realDelay(ms: number): Promise<void> {

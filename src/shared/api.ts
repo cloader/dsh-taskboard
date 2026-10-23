@@ -52,6 +52,13 @@ export type StateResponse = TaskLedger & { capabilities?: { archiveSessions: boo
 export type QueueClearResponse = { cleared: number }
 
 /**
+ * Result of a comment wake (issue #51 Plan A): how many pending user comments
+ * were delivered and through which channel — 'live' appended to the still-
+ * running conversation, 'run' woke a comment-triggered execution.
+ */
+export type CommentRunResponse = { delivered: 'live' | 'run'; count: number; executionId?: string; sessionId?: string }
+
+/**
  * Workspace listing for the UI pickers. `repoCount` (0.6.3): how many repos a
  * task mirror of this workspace would cover (root repo + nested) — the form's
  * worktree option shows the mirror badge when it exceeds 1.

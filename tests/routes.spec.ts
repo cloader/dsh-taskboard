@@ -36,6 +36,9 @@ let cancelCalls: string[]
 /** Mutable queue-clear hook target (tests reassign the behavior). */
 let clearQueueImpl: () => Promise<number> = async () => 0
 let runCalls: Array<{ id: string; runOptions?: { reuseWorktree?: boolean } }>
+/** Mutable comment-wake hook target + call log (issue #51 Plan A tests). */
+let commentRunCalls: string[]
+let commentRunImpl: (id: string) => Promise<{ ok: true; delivered: 'live' | 'run'; count: number; executionId?: string; sessionId?: string } | { ok: false; error: string }> = async () => ({ ok: false, error: '没有待投递的留言' })
 let dir: string
 /** Per-test store file counter (unique names keep a fresh store from ever
  *  reading a previous test's ledger file). */
@@ -175,6 +178,7 @@ beforeAll(async () => {
   )
   cancelCalls = []
   runCalls = []
+  commentRunCalls = []
   server = createServer()
   const routes: Array<{ kind: string; path: string; handler: (req: never, res: never) => void }> = []
   const ctxFace = {
@@ -190,6 +194,7 @@ beforeAll(async () => {
     workspaces,
     now: () => 5_000,
     run: async (id, runOptions) => { runCalls.push({ id, runOptions }); return { ok: true, executionId: 'e-x', sessionId: 's-x' } },
+    commentRun: async id => { commentRunCalls.push(id); return commentRunImpl(id) },
     cancel: async id => { cancelCalls.push(id); return { ok: true, executionId: 'e-x' } },
     clearQueue: () => clearQueueImpl(),
     modelProviders: () => ['prov-a'],
@@ -229,6 +234,8 @@ beforeEach(async () => {
   )
   cancelCalls.length = 0
   runCalls.length = 0
+  commentRunCalls.length = 0
+  commentRunImpl = async () => ({ ok: false, error: '没有待投递的留言' })
   archivedSessionsHistory.length = 0
   Object.assign(gitBehavior, freshGitBehavior())
   wsList.length = 0
@@ -949,6 +956,67 @@ describe('taskboard routes', () => {
     const reuse = await post(`/dsh-taskboard/tasks/${id}/run`, { reuse: true })
     expect(reuse.status).toBe(202)
     expect(runCalls.at(-1)).toEqual({ id, runOptions: { reuseWorktree: true } })
+  })
+
+  it('comment-run: writes the composer comment and wakes the conversation (issue #51)', async () => {
+    const created = await post('/dsh-taskboard/tasks', { title: 'Wake me', workspaceId: 'ws-a', urgency: 'normal' })
+    const id = created.json.value.id as string
+    // The card finished a handoff: in_review with an agent comment in the ledger.
+    await store.mutate('task-moved', ledger => {
+      const t = ledger.tasks.find(x => x.id === id)!
+      t.status = 'in_review'
+      t.comments.push({ id: 'c-seed', body: '上一次交接评论', version: 1, createdAt: 1, threadId: 'session-old' })
+      return [t]
+    })
+    commentRunImpl = async () => ({ ok: true, delivered: 'run', count: 1, executionId: 'e-1', sessionId: 's-1' })
+
+    const res = await post(`/dsh-taskboard/tasks/${id}/comment-run`, { body: '请补一下测试' })
+    expect(res.status).toBe(202)
+    expect(res.json).toEqual({ ok: true, value: { delivered: 'run', count: 1, executionId: 'e-1', sessionId: 's-1' } })
+    expect(commentRunCalls).toEqual([id])
+    const t = store.get(id)!
+    expect(t.comments.some(c => c.body === '请补一下测试')).toBe(true)
+  })
+
+  it('comment-run: only in_review cards can be woken; blank composer with no backlog fails', async () => {
+    const created = await post('/dsh-taskboard/tasks', { title: 'Not review', workspaceId: 'ws-a', urgency: 'normal' })
+    const id = created.json.value.id as string
+
+    const wrong = await post(`/dsh-taskboard/tasks/${id}/comment-run`, { body: 'hi' })
+    expect(wrong.status).toBe(400)
+    expect(wrong.json.error.code).toBe('invalid_transition')
+    expect(commentRunCalls).toHaveLength(0)
+
+    await store.mutate('task-moved', ledger => {
+      const t = ledger.tasks.find(x => x.id === id)!
+      t.status = 'in_review'
+      return [t]
+    })
+    const empty = await post(`/dsh-taskboard/tasks/${id}/comment-run`, { body: '' })
+    expect(empty.status).toBe(400)
+    expect(empty.json.error.message).toContain('没有待投递的留言')
+    // The wake hook owns the pending-backlog decision — it was consulted (and
+    // refused); the in_review gate above is what blocked request 1.
+    expect(commentRunCalls).toEqual([id])
+  })
+
+  it('comment-run: a failed wake keeps the comment unmarked and surfaces the error', async () => {
+    const created = await post('/dsh-taskboard/tasks', { title: 'Fail wake', workspaceId: 'ws-a', urgency: 'normal' })
+    const id = created.json.value.id as string
+    await store.mutate('task-moved', ledger => {
+      const t = ledger.tasks.find(x => x.id === id)!
+      t.status = 'in_review'
+      return [t]
+    })
+    commentRunImpl = async () => ({ ok: false, error: 'execution concurrency limit reached (3/3 running)' })
+
+    const res = await post(`/dsh-taskboard/tasks/${id}/comment-run`, { body: '留言一条' })
+    expect(res.status).toBe(400)
+    expect(res.json.error.message).toContain('concurrency')
+    // The comment stays in the ledger as a plain comment — retryable later.
+    const c = store.get(id)!.comments.find(x => x.body === '留言一条')!
+    expect(c).toBeDefined()
+    expect(c.deliveredAt).toBeUndefined()
   })
 
   it('merge: a branch with no new commits is a no-op (no merge, no comment)', async () => {

@@ -606,6 +606,71 @@ describe('client half', () => {
     localStorage.clear()
   })
 
+  it('detail: comment-wake deliver button (issue #51) renders on in_review only and reaches the controller', async () => {
+    localStorage.clear()
+    const React = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { TaskDetail } = await import('../src/client/board/TaskDetail.tsx')
+
+    const mkTask = (status: string) => ({
+      id: 't-wake', title: 'W', description: '', prompt: '', workspaceId: 'ws-a',
+      urgency: 'normal' as const, status, blocked: false,
+      execution: { mode: 'claim' as const }, version: 1, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
+      comments: [
+        { id: 'c1', body: '验收留言', version: 1, createdAt: 100 },
+        { id: 'c2', body: '投过的留言', version: 1, createdAt: 110, deliveredAt: 120, deliveredExecutionId: 'e-1' },
+        { id: 'c3', body: 'agent 汇报', version: 1, createdAt: 130, threadId: 'session-a' },
+      ],
+      executions: [{ id: 'e-1', trigger: 'manual' as const, startedAt: 0, endedAt: 1, outcome: 'succeeded' as const, sessionId: 'session-a' }],
+    })
+
+    const commentRunCalls: Array<[string, string]> = []
+    const client = {
+      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [mkTask('in_review')] }),
+      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
+      stream: () => () => {},
+      comment: async () => ({ id: 'c-x', body: '', version: 1, createdAt: 1 }),
+      commentRun: async (id: string, body: string) => { commentRunCalls.push([id, body]); return { delivered: 'run', count: 1 } },
+    }
+    const controller = new BoardController(client as never)
+    controller.start()
+    await new Promise(r => setTimeout(r, 10))
+
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    // in_review: the deliver button renders with the pending-backlog badge.
+    root.render(React.createElement(TaskDetail, { task: mkTask('in_review') as never, controller, now: 1_000 }))
+    await new Promise(r => setTimeout(r, 10))
+    const deliver = () => host.querySelector<HTMLButtonElement>('.dsh-atb-composer-deliver')
+    expect(deliver()).not.toBeNull()
+    expect(deliver()!.textContent).toContain('(1)')
+    // Bubble markers: pending on the undelivered user comment, delivered on
+    // the marked one (jump button), none on the agent comment.
+    const bubbles = Array.from(host.querySelectorAll<HTMLElement>('.dsh-atb-bubble'))
+    expect(bubbles[0]!.textContent).toContain('待投递')
+    expect(bubbles[1]!.textContent).toContain('已投递')
+    expect(bubbles[2]!.textContent).not.toContain('待投递')
+    // Click with an empty composer still flushes the backlog through the controller.
+    deliver()!.click()
+    await new Promise(r => setTimeout(r, 10))
+    expect(commentRunCalls).toEqual([['t-wake', '']])
+    root.unmount()
+
+    // todo: the deliver button does not exist outside the review loop.
+    const root2 = createRoot(host)
+    root2.render(React.createElement(TaskDetail, { task: mkTask('todo') as never, controller, now: 1_000 }))
+    await new Promise(r => setTimeout(r, 10))
+    expect(host.querySelector('.dsh-atb-composer-deliver')).toBeNull()
+    root2.unmount()
+
+    host.remove()
+    controller.dispose()
+    localStorage.clear()
+  })
+
   it('detail renders the isolation block; merge/remove call the controller', async () => {
     localStorage.clear()
     const React = await import('react')

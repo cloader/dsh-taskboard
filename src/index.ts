@@ -287,6 +287,7 @@ export function apply(ctx: Context): void {
           maxConcurrent,
           clearQueue: () => scheduler.clearQueue(),
           run: (taskId: string, runOptions?: { reuseWorktree?: boolean }) => execution.run(taskId, 'manual', runOptions),
+          commentRun: (taskId: string) => execution.deliverComments(taskId),
           cancel: (taskId: string) => execution.cancel(taskId),
           modelProviders,
           git,

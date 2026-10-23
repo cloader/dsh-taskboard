@@ -87,6 +87,8 @@ export interface TaskboardRoutesOptions {
   clearQueue?: () => Promise<number>
   /** Manual-run hook (the execution service); absent → 501. Options carry `reuseWorktree` (续跑). */
   run?: (taskId: string, options?: { reuseWorktree?: boolean }) => Promise<{ ok: true; executionId: string; sessionId: string } | { ok: false; error: string }>
+  /** Comment-delivery hook (issue #51 Plan A); absent → 501. The comment write happens route-side; this wakes the conversation. */
+  commentRun?: (taskId: string) => Promise<{ ok: true; delivered: 'live' | 'run'; count: number; executionId?: string; sessionId?: string } | { ok: false; error: string }>
   /** Cancel hook (the execution service); absent → 501. */
   cancel?: (taskId: string) => Promise<{ ok: true; executionId: string } | { ok: false; error: string }>
   /**
@@ -965,6 +967,45 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
               return [next]
             })
             json(res, { ok: true, value: comment }, 201)
+            return
+          }
+          if (action === 'comment-run') {
+            // Issue #51 Plan A: explicit comment delivery — the composer
+            // comment (optional; blank flushes the pending backlog only) is
+            // written first, then the conversation is woken with ALL pending
+            // user comments. A failed wake leaves the comment in the ledger
+            // unmarked: a plain comment, retryable by clicking again.
+            if (options.commentRun === undefined) {
+              const f = fail('invalid_input', 'execution service unavailable')
+              json(res, f.res, 501)
+              return
+            }
+            if (task.trashedAt !== undefined) throw new Error('Error: invalid_transition: trashed tasks cannot be woken')
+            if (task.status !== 'in_review') throw new Error(`Error: invalid_transition: comment wake requires in_review (current ${task.status})`)
+            const bodyText = str(body, 'body') ?? ''
+            if (bodyText.trim().length > 0) {
+              const comment = { id: newCommentId(), body: normalizeBody(bodyText), version: 1, createdAt: options.now() }
+              await store.mutate('comment-added', ledger => {
+                const { index, task } = liveTaskAt(ledger, id)
+                if (task.status === 'archived') throw new Error('Error: invalid_transition: archived tasks are immutable')
+                const next = structuredClone(task)
+                next.comments.push(comment)
+                next.version = task.version + 1
+                next.updatedAt = options.now()
+                ledger.tasks[index] = next
+                return [next]
+              })
+            }
+            const result = await options.commentRun(id)
+            if (result.ok) {
+              json(res, {
+                ok: true,
+                value: { delivered: result.delivered, count: result.count, executionId: result.executionId, sessionId: result.sessionId },
+              }, 202)
+            } else {
+              const f = fail('invalid_input', result.error)
+              json(res, f.res, f.status)
+            }
             return
           }
           if (action === 'delete') {

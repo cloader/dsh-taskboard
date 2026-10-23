@@ -330,11 +330,19 @@ export const zh = {
   'detail.comments.user': '用户',
   'detail.composer.placeholder': '以用户身份留言（agent 开工前会读）…',
   'detail.composer.send': '发表',
+  // Issue #51 Plan A: explicit comment delivery (in_review only)
+  'detail.composer.deliver': '留言并让 agent 处理',
+  'detail.composer.deliverTitle': '把留言投递给任务会话：agent 将逐条收到这些用户消息并处理',
+  'detail.composer.deliverPending': '把 {n} 条待投递留言交给 agent 处理',
+  'detail.comment.pending': '待投递',
+  'detail.comment.delivered': '已投递',
+  'detail.comment.deliveredTitle': '已作为用户消息投递给会话，点击打开',
   'detail.exec.title': '执行记录',
   'detail.exec.prunedTitle': '更早的 {n} 条执行记录已按保留上限清理',
   'detail.exec.pruned': '+{n} 已清理',
   'detail.exec.trigger.manual': '手动',
   'detail.exec.trigger.scheduled': '定时',
+  'detail.exec.trigger.comment': '留言',
   'detail.exec.openTitle': '点击打开该执行会话：{id}',
   'detail.danger.delete': '🗑 删除（标记待清除）',
   'detail.danger.purgeConfirm': '物理清除不可恢复',
@@ -632,6 +640,7 @@ export const zh = {
 
   // ── host-generated system comments (0.6.4; localized at render) ────
   'sys.execFailed': '[系统] 执行失败：{error}；任务已退回待办。',
+  'sys.commentWoke': '[系统] 用户留言已投递，唤醒会话 {id} 处理。',
   'sys.endedWithComment': '[系统] 执行会话已结束并留有评论，但未移至待验收；系统自动移入待验收。',
   'sys.endedNoHandoff': '[系统] 执行会话已结束，但未按协议交接（无评论、未移至待验收）；系统自动移入待验收，请审查后退回或验收。',
   'sys.sessionError': '[系统] 会话执行异常：{error}；任务已退回待办。',

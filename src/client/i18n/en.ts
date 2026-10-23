@@ -328,11 +328,19 @@ export const en: TaskboardDict = {
   'detail.comments.user': 'User',
   'detail.composer.placeholder': 'Leave a comment as the user (the agent reads it before starting)…',
   'detail.composer.send': 'Post',
+  // Issue #51 Plan A: explicit comment delivery (in_review only)
+  'detail.composer.deliver': 'Send & let agent handle',
+  'detail.composer.deliverTitle': 'Deliver these comments to the task conversation — the agent receives each one as a user message',
+  'detail.composer.deliverPending': 'Deliver {n} pending comment(s) to the agent',
+  'detail.comment.pending': 'Pending',
+  'detail.comment.delivered': 'Delivered',
+  'detail.comment.deliveredTitle': 'Delivered to the conversation as a user message — click to open it',
   'detail.exec.title': 'Executions',
   'detail.exec.prunedTitle': '{n} older execution records were pruned at the retention cap',
   'detail.exec.pruned': '+{n} pruned',
   'detail.exec.trigger.manual': 'Manual',
   'detail.exec.trigger.scheduled': 'Scheduled',
+  'detail.exec.trigger.comment': 'Comment',
   'detail.exec.openTitle': 'Click to open the execution session: {id}',
   'detail.danger.delete': '🗑 Delete (mark for purge)',
   'detail.danger.purgeConfirm': 'Physical purge is irreversible',
@@ -630,6 +638,7 @@ export const en: TaskboardDict = {
 
   // ── host-generated system comments (0.6.4; localized at render) ────
   'sys.execFailed': '[System] Execution failed: {error}; the task was returned to todo.',
+  'sys.commentWoke': '[System] User comments delivered — woke session {id} to handle them.',
   'sys.endedWithComment': '[System] The execution session ended with comments but was not moved to in review; the system moved it to in review automatically.',
   'sys.endedNoHandoff': '[System] The execution session ended without a protocol handoff (no comments, not moved to in review); the system moved it to in review automatically — review it, then send back or accept.',
   'sys.sessionError': '[System] Session execution error: {error}; the task was returned to todo.',

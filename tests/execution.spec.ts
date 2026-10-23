@@ -1501,3 +1501,253 @@ describe('ExecutionService multi-repo mirror (0.6.3)', () => {
     expect(text).toContain('多仓库镜像模式')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Comment wake (issue #51 Plan A): deliver pending user comments to the
+// task's conversation — run channel (cold start / resume / degrade) and live
+// channel (still-settling session). Gate: in_review only.
+// ---------------------------------------------------------------------------
+describe('comment wake (issue #51 Plan A)', () => {
+  /** An in_review card: two pending user comments, one agent comment, one already-delivered comment. */
+  function reviewTask(overrides: Partial<TaskRecord> = {}): TaskRecord {
+    return task({
+      id: 't-review',
+      title: 'Review me',
+      prompt: 'DO THE THING',
+      status: 'in_review',
+      comments: [
+        { id: 'c1', body: '第一条留言', version: 1, createdAt: 100 },
+        { id: 'c2', body: 'agent 回复', version: 1, createdAt: 110, threadId: 'session-abc' },
+        { id: 'c3', body: '第二条留言', version: 1, createdAt: 120 },
+        { id: 'c4', body: '已投递过的留言', version: 1, createdAt: 130, deliveredAt: 140, deliveredExecutionId: 'e-old' },
+      ],
+      ...overrides,
+    })
+  }
+
+  /** fakeAgents plus an optional resumeScheduled stub recording its calls. */
+  function fakeAgentsWithResume(opts: { degrade?: 'incompatible' | 'unresumable' } = {}): AgentsFace & {
+    created: Array<{ sessionId: string }>
+    followups: unknown[]
+    injects: unknown[]
+    idle: (sessionId?: string) => void
+    disposedSessions: string[]
+    resumeCalls: string[]
+  } {
+    const agents = fakeAgents()
+    const resumeCalls: string[] = []
+    // Double cast: the base fake has no resume surface; we graft one on.
+    const face = agents as unknown as AgentsFace & {
+      created: Array<{ sessionId: string }>
+      followups: unknown[]
+      injects: unknown[]
+      idle: (sessionId?: string) => void
+      disposedSessions: string[]
+      resumeCalls: string[]
+      resumeScheduled: unknown
+    }
+    face.resumeCalls = resumeCalls
+    face.resumeScheduled = async (
+      sessionId: string,
+      _options: unknown,
+      onDegrade?: (reason: 'incompatible' | 'unresumable') => void,
+    ) => {
+      if (opts.degrade !== undefined) {
+        onDegrade?.(opts.degrade)
+        return undefined
+      }
+      resumeCalls.push(sessionId)
+      // A resumed conversation is NOT a fresh create — reuse the recording
+      // sinks but with a never-resolving idle (settlement not under test).
+      return {
+        agent: {
+          id: sessionId,
+          followup: (message: unknown) => { agents.followups.push(message) },
+          inject: (message: unknown) => { agents.injects.push(message) },
+          whenIdle: () => new Promise<void>(() => { /* parked */ }),
+        },
+        dispose: async () => { agents.disposedSessions.push(sessionId) },
+      }
+    }
+    return face
+  }
+
+  it('wakes a fresh run and appends every pending user comment verbatim', async () => {
+    const store = await storeWith(reviewTask())
+    const agents = fakeAgents()
+    const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: () => 1_000 })
+    try {
+      const result = await svc.deliverComments('t-review')
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.delivered).toBe('run')
+      expect(result.count).toBe(2)
+      // Fresh session (no history), review framing, ONE user message per comment.
+      expect(agents.created).toHaveLength(1)
+      expect(JSON.stringify(agents.injects)).toContain('用户留言')
+      expect(agents.followups).toHaveLength(2)
+      expect(JSON.stringify(agents.followups[0])).toContain('第一条留言')
+      expect(JSON.stringify(agents.followups[1])).toContain('第二条留言')
+      // Agent comments and already-delivered ones never re-deliver.
+      expect(JSON.stringify(agents.followups)).not.toContain('agent 回复')
+      expect(JSON.stringify(agents.followups)).not.toContain('已投递过的留言')
+      // Ledger: comments marked, wake trace left, card re-claimed, trigger recorded.
+      const t = store.get('t-review')!
+      expect(t.status).toBe('in_progress')
+      expect(t.claimedBy).toBe(result.sessionId)
+      expect(t.executions[0]!.trigger).toBe('comment')
+      expect(t.comments.find(c => c.id === 'c1')!.deliveredExecutionId).toBe(t.executions[0]!.id)
+      expect(t.comments.find(c => c.id === 'c3')!.deliveredAt).toBeDefined()
+      expect(t.comments.find(c => c.id === 'c2')!.deliveredAt).toBeUndefined()
+      expect(t.comments.find(c => c.id === 'c4')!.deliveredExecutionId).toBe('e-old')
+      expect(t.comments.some(c => c.systemKey === 'sys.commentWoke')).toBe(true)
+    } finally { svc.dispose() }
+  })
+
+  it('continues the card conversation when the latest session can be resumed', async () => {
+    const store = await storeWith(reviewTask({
+      executions: [{ id: 'e1', trigger: 'manual', startedAt: 10, endedAt: 20, outcome: 'succeeded', sessionId: 'session-prev-1' }],
+    }))
+    const fake = fakeAgentsWithResume()
+    const svc = new ExecutionService({ store, agents: fake, workspaces, events: fakeEvents(), now: () => 1_000 })
+    try {
+      const result = await svc.deliverComments('t-review')
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(fake.resumeCalls).toEqual(['session-prev-1'])
+      expect(fake.created).toHaveLength(0)
+      expect(fake.followups).toHaveLength(2)
+      const t = store.get('t-review')!
+      expect(t.claimedBy).toBe('session-prev-1')
+      const wake = t.executions[t.executions.length - 1]!
+      expect(wake.trigger).toBe('comment')
+      expect(wake.sessionId).toBe('session-prev-1')
+    } finally { svc.dispose() }
+  })
+
+  it('degrades to a fresh session with a note when the latest session cannot be resumed', async () => {
+    const store = await storeWith(reviewTask({
+      executions: [{ id: 'e1', trigger: 'manual', startedAt: 10, endedAt: 20, outcome: 'succeeded', sessionId: 'session-dead' }],
+    }))
+    const fake = fakeAgentsWithResume({ degrade: 'incompatible' })
+    const svc = new ExecutionService({ store, agents: fake, workspaces, events: fakeEvents(), now: () => 1_000 })
+    try {
+      const result = await svc.deliverComments('t-review')
+      expect(result.ok).toBe(true)
+      expect(fake.resumeCalls).toHaveLength(0)
+      expect(fake.created).toHaveLength(1)
+      const t = store.get('t-review')!
+      const wake = t.executions[t.executions.length - 1]!
+      expect(wake.trigger).toBe('comment')
+      expect(wake.reuseFallbackNote).toContain('incompatible')
+      expect(fake.followups).toHaveLength(2)
+    } finally { svc.dispose() }
+  })
+
+  it('refuses to wake a card that is not in review', async () => {
+    for (const status of ['todo', 'in_progress', 'done', 'backlog'] as const) {
+      const id = `t-${status}`
+      const store = await storeWith(reviewTask({ id, status }))
+      const agents = fakeAgents()
+      const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: () => 1_000 })
+      try {
+        const result = await svc.deliverComments(id)
+        expect(result.ok).toBe(false)
+        if (!result.ok) expect(result.error).toContain('in_review')
+        expect(agents.created).toHaveLength(0)
+        expect(store.get(id)!.comments.every(c => c.deliveredAt === undefined || c.id === 'c4')).toBe(true)
+      } finally { svc.dispose() }
+    }
+  })
+
+  it('refuses a backlog of zero pending comments', async () => {
+    const store = await storeWith(reviewTask({ comments: [
+      { id: 'c2', body: 'agent 回复', version: 1, createdAt: 110, threadId: 'session-abc' },
+    ] }))
+    const agents = fakeAgents()
+    const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: () => 1_000 })
+    try {
+      const result = await svc.deliverComments('t-review')
+      expect(result).toEqual({ ok: false, error: '没有待投递的留言' })
+      expect(agents.created).toHaveLength(0)
+    } finally { svc.dispose() }
+  })
+
+  it('refuses live delivery when the running session is not tracked by this host', async () => {
+    const store = await storeWith(reviewTask({
+      executions: [{ id: 'e-run', trigger: 'manual', startedAt: 10, outcome: 'running', sessionId: 'session-orphan' }],
+    }))
+    const agents = fakeAgents()
+    const svc = new ExecutionService({
+      store, agents, workspaces, events: fakeEvents(), now: () => 1_000,
+      liveAgent: () => ({ followup: () => {}, inject: () => {}, whenIdle: async () => {}, cancel: () => {} }) as never,
+    })
+    try {
+      const result = await svc.deliverComments('t-review')
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error).toContain('请先停止执行')
+      expect(agents.created).toHaveLength(0)
+    } finally { svc.dispose() }
+  })
+
+  it('appends comments to the still-settling conversation without a new execution', async () => {
+    const live = task({ id: 't-live-review', title: 'Live review', prompt: 'WORK', status: 'todo' })
+    const store = await storeWith(live)
+    const agents = fakeAgents()
+    const liveFollowups: unknown[] = []
+    let liveSessionId: string | undefined
+    const svc = new ExecutionService({
+      store, agents, workspaces, events: fakeEvents(), now: () => 1_000,
+      liveAgent: id => (id === liveSessionId
+        ? { followup: (m: unknown) => { liveFollowups.push(m) }, inject: () => {}, whenIdle: async () => {}, cancel: () => {} } as never
+        : undefined),
+    })
+    try {
+      const run = await svc.run('t-live-review', 'manual')
+      expect(run.ok).toBe(true)
+      if (!run.ok) return
+      liveSessionId = run.sessionId
+      // The agent self-moved the card to in_review mid-run (protocol handoff).
+      await store.mutate('task-moved', ledger => {
+        const t = ledger.tasks[0]!
+        t.status = 'in_review'
+        t.comments.push(
+          { id: 'c1', body: '验收意见一', version: 1, createdAt: 500 },
+          { id: 'c2', body: '验收意见二', version: 1, createdAt: 510 },
+        )
+        return [t]
+      })
+      const result = await svc.deliverComments('t-live-review')
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.delivered).toBe('live')
+      expect(result.count).toBe(2)
+      expect(result.executionId).toBe(run.executionId)
+      expect(liveFollowups).toHaveLength(2)
+      expect(JSON.stringify(liveFollowups[0])).toContain('验收意见一')
+      // No second execution; the card stays in review; comments are marked.
+      const t = store.get('t-live-review')!
+      expect(t.executions).toHaveLength(1)
+      expect(t.status).toBe('in_review')
+      expect(t.comments.find(c => c.id === 'c1')!.deliveredExecutionId).toBe(run.executionId)
+      expect(t.comments.some(c => c.systemKey === 'sys.commentWoke')).toBe(false)
+    } finally { svc.dispose() }
+  })
+
+  it('forces worktree reuse semantics on the wake run (the comments review previous work)', async () => {
+    const isolated = reviewTask({
+      isolation: 'worktree' as const,
+      branch: 'task/review-me',
+    })
+    const store = await storeWith(isolated)
+    const agents = fakeAgents()
+    const git = fakeGit({ detect: true, prepare: { path: '/proj/a/.dsh-worktrees/review', branch: 'task/review-me', baseCommit: 'b1' } })
+    const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: () => 1_000, git })
+    try {
+      const result = await svc.deliverComments('t-review')
+      expect(result.ok).toBe(true)
+      expect(git.prepareCalls).toHaveLength(1)
+      expect(git.prepareCalls[0]!.mode).toBe('reuse')
+    } finally { svc.dispose() }
+  })
+})

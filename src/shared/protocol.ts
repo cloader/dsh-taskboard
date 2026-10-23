@@ -524,6 +524,14 @@ export type CommentRecord = {
   systemParams?: Record<string, string>
   /** Structured per-repo rows for the multi-repo merge summary (0.6.4). */
   systemRows?: SystemCommentRow[]
+  /**
+   * When this comment was delivered to the task's conversation as a user
+   * message (issue #51 Plan A explicit delivery); absent = still pending.
+   * Only user comments (no threadId) are ever delivered.
+   */
+  deliveredAt?: number
+  /** The execution that carried the delivery (live followup or the wake run). */
+  deliveredExecutionId?: string
 }
 
 /** One commit produced by an isolated execution (hash + subject). */
@@ -625,8 +633,8 @@ export type ExecutionRecord = {
   sessionReuseKey?: string
   /** Why a bound scheduled session was replaced with a fresh conversation. */
   reuseFallbackNote?: string
-  /** Trigger: manual button or the host scheduler. */
-  trigger: 'manual' | 'scheduled'
+  /** Trigger: manual button, the host scheduler, or a user comment wake (issue #51). */
+  trigger: 'manual' | 'scheduled' | 'comment'
   startedAt?: number
   /** Most recent observed session activity, throttled by the host. */
   lastActivityAt?: number
@@ -1447,6 +1455,11 @@ export function validateImportedTask(raw: unknown, now: number): { ok: true; tas
           version: numOr(ce, 'version', 1),
           createdAt: numOr(ce, 'createdAt', now),
           ...(typeof ce.threadId === 'string' ? { threadId: ce.threadId } : {}),
+          // Delivery markers survive export/import (issue #51): a delivered
+          // comment must never re-deliver after a ledger round-trip.
+          ...(typeof ce.deliveredAt === 'number' && Number.isFinite(ce.deliveredAt)
+            ? { deliveredAt: ce.deliveredAt, ...(typeof ce.deliveredExecutionId === 'string' ? { deliveredExecutionId: ce.deliveredExecutionId } : {}) }
+            : {}),
           ...(typeof ce.systemKey === 'string' && /^sys\.[A-Za-z0-9]+$/.test(ce.systemKey) && ce.systemKey.length <= 100
             ? {
                 systemKey: ce.systemKey,
@@ -1470,7 +1483,7 @@ export function validateImportedTask(raw: unknown, now: number): { ok: true; tas
       for (const x of e.executions) {
         if (typeof x !== 'object' || x === null) return fail('invalid execution entry')
         const xe = x as Record<string, unknown>
-        const trigger = xe.trigger === 'scheduled' ? 'scheduled' : 'manual'
+        const trigger = xe.trigger === 'scheduled' ? 'scheduled' : xe.trigger === 'comment' ? 'comment' : 'manual'
         const outcomeRaw = xe.outcome
         if (outcomeRaw !== 'running' && outcomeRaw !== 'succeeded' && outcomeRaw !== 'failed' && outcomeRaw !== 'cancelled') {
           return fail('invalid execution outcome')

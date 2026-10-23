@@ -439,6 +439,33 @@ describe('ledger import validation', () => {
     expect(task.claimedBy).toBe('sess-x')
     expect(task.createdBy).toEqual({ kind: 'user' })
   })
+
+  it('comment trigger and delivery markers survive import (issue #51)', () => {
+    const plan = validateLedgerImport({ schemaVersion: 1, tasks: [{
+      id: 't-wake',
+      title: '留言任务',
+      workspaceId: 'ws-a',
+      urgency: 'normal',
+      status: 'in_review',
+      comments: [
+        { body: '请处理', deliveredAt: 123, deliveredExecutionId: 'e-9' },
+        { body: '未投递' },
+        { body: 'agent 汇报', threadId: 'sess-a' },
+      ],
+      executions: [{ trigger: 'comment', outcome: 'succeeded', sessionId: 'sess-a' }],
+    }] }, new Set(), NOW)
+    expect(plan.create).toHaveLength(1)
+    const task = plan.create[0]!
+    // The comment wake trigger is a first-class citizen after a round-trip.
+    expect(task.executions[0]!.trigger).toBe('comment')
+    // Delivered markers survive (a delivered comment must never re-deliver);
+    // undelivered and agent comments pass through untouched.
+    expect(task.comments[0]).toMatchObject({ body: '请处理', deliveredAt: 123, deliveredExecutionId: 'e-9' })
+    expect(task.comments[1]!.deliveredAt).toBeUndefined()
+    expect(task.comments[1]!.deliveredExecutionId).toBeUndefined()
+    expect(task.comments[2]!.threadId).toBe('sess-a')
+    expect(task.comments[2]!.deliveredAt).toBeUndefined()
+  })
 })
 
 // ---------------------------------------------------------------------------

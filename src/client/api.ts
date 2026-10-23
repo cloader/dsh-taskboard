@@ -9,6 +9,7 @@ import type {
   ApiResult,
   AttachmentUpload,
   ChangeEvent,
+  CommentRunResponse,
   CreateTaskBody,
   DeleteTaskBody,
   DiagnosticsResponse,
@@ -124,6 +125,8 @@ export interface TaskboardClient {
   /** Quick-reject (card ✗): back to todo + optional comment, one mutation. */
   reject(id: string, body: RejectTaskBody): Promise<TaskSummary>
   comment(id: string, bodyText: string): Promise<CommentRecord>
+  /** Issue #51: deliver pending user comments to the task's conversation (optionally posting one first). */
+  commentRun(id: string, bodyText: string): Promise<CommentRunResponse>
   /** Persist an image and return the short Markdown-safe URL. */
   uploadImage(file: Blob): Promise<AttachmentUpload>
   remove(id: string, body: DeleteTaskBody): Promise<{ trashed?: boolean; purged?: boolean }>
@@ -186,6 +189,7 @@ export function createClient(): TaskboardClient {
     archiveSessions: id => post(`/dsh-taskboard/tasks/${encodeURIComponent(id)}/archive-sessions`, {}),
     reject: (id, body) => post(`/dsh-taskboard/tasks/${encodeURIComponent(id)}/reject`, body),
     comment: (id, bodyText) => post(`/dsh-taskboard/tasks/${encodeURIComponent(id)}/comment`, { body: bodyText }),
+    commentRun: (id, bodyText) => post(`/dsh-taskboard/tasks/${encodeURIComponent(id)}/comment-run`, { body: bodyText }),
     uploadImage,
     remove: (id, body) => post(`/dsh-taskboard/tasks/${encodeURIComponent(id)}/delete`, body),
     run: (id, body) => post(`/dsh-taskboard/tasks/${encodeURIComponent(id)}/run`, body ?? {}),

@@ -553,6 +553,24 @@ button.dsh-atb-chip2.dsh-atb-chip-btn:hover {
   border: 1px solid transparent; background: var(--dsw-alias-button-primary-fill, var(--dsw-alias-brand-primary, #1f2328)); color: var(--dsw-alias-label-primary-foreground, #fff);
 }
 .dsh-atb-composer-send:disabled { opacity: .4; cursor: default; }
+/* Issue #51: the comment-wake deliver button (secondary accent) and the bubble delivery markers. */
+.dsh-atb-composer-deliver {
+  background: var(--dsw-bg-elevated, rgba(128,128,128,.08));
+  color: var(--dsw-alias-brand-primary, #1f2328);
+  border-color: var(--dsw-alias-brand-primary, #1f2328);
+  white-space: nowrap;
+}
+.dsh-atb-composer-deliver:hover:not(:disabled) { opacity: .85; }
+.dsh-atb-comment-pending {
+  font-size: 11px; padding: 0 6px; border-radius: 999px; opacity: .75;
+  border: 1px dashed var(--dsw-border, rgba(128,128,128,.4)); color: inherit;
+}
+.dsh-atb-comment-delivered {
+  font: inherit; font-size: 11px; padding: 0 6px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--dsw-alias-brand-primary, #1f2328);
+  background: var(--dsw-alias-brand-primary, #1f2328); color: var(--dsw-alias-label-primary-foreground, #fff);
+}
+span.dsh-atb-comment-delivered { cursor: default; }
 .dsh-atb-image-actions { display: flex; align-items: center; gap: 8px; padding: 5px 1px 0; }
 .dsh-atb-image-add {
   flex: none; font: inherit; font-size: 11.5px; line-height: 1.4; padding: 4px 8px; border-radius: 7px; cursor: pointer;

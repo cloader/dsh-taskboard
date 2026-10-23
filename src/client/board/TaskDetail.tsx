@@ -657,6 +657,11 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
   const archiveResult = archiveState.sessionArchive?.taskId === task.id ? archiveState.sessionArchive.result : undefined
   const isReviewOrDone = task.status === 'in_review' || task.status === 'done'
   const hasReport = task.executions.some(e => e.report !== undefined)
+  // Issue #51 Plan A: pending = user comments not yet delivered to the
+  // conversation. The deliver action exists ONLY on in_review cards (the
+  // acceptance-review loop); the host gate enforces the same invariant.
+  const pendingCommentCount = task.comments.filter(c => c.threadId === undefined && c.deliveredAt === undefined).length
+  const canDeliver = task.status === 'in_review' && (comment.trim().length > 0 || pendingCommentCount > 0)
 
   /** Fire one top action under the shared busy guard; re-enable on settle. */
   const runAction = (action: () => Promise<unknown>): void => {
@@ -668,6 +673,12 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
   const postComment = (): void => {
     if (commentUploading || comment.trim().length === 0) return
     void controller.comment(task.id, comment).then(ok => { if (ok) setComment('') })
+  }
+
+  /** Issue #51: post the composer comment (optional) and wake the conversation with every pending user comment. */
+  const deliverComments = (): void => {
+    if (commentUploading || !canDeliver) return
+    void controller.commentRun(task.id, comment).then(ok => { if (ok) setComment('') })
   }
 
   const uploadCommentImages = async (rawFiles: Iterable<File>): Promise<void> => {
@@ -1018,6 +1029,24 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
                       <div className="dsh-atb-bubble-meta">
                         <b>{c.threadId !== undefined ? `agent ${shortId(c.threadId)}` : t('detail.comments.user')}</b>
                         <span>{fmtTime(c.createdAt)}</span>
+                        {c.threadId === undefined && c.deliveredAt === undefined && task.status === 'in_review' && (
+                          <span className="dsh-atb-comment-pending">{t('detail.comment.pending')}</span>
+                        )}
+                        {c.deliveredExecutionId !== undefined && (() => {
+                          const session = task.executions.find(e => e.id === c.deliveredExecutionId)?.sessionId
+                          return session !== undefined
+                            ? (
+                                <button
+                                  type="button"
+                                  className="dsh-atb-comment-delivered"
+                                  title={t('detail.comment.deliveredTitle')}
+                                  onClick={() => jumpToSession(session)}
+                                >
+                                  {t('detail.comment.delivered')} ↗
+                                </button>
+                              )
+                            : <span className="dsh-atb-comment-delivered">{t('detail.comment.delivered')}</span>
+                        })()}
                       </div>
                       <div className="dsh-atb-bubble-body"><MarkdownContent text={commentBody(t, c)} /></div>
                     </div>
@@ -1071,6 +1100,19 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
           >
             {t('detail.composer.send')}
           </button>
+          {task.status === 'in_review' && (
+            <button
+              type="button"
+              className="dsh-atb-composer-send dsh-atb-composer-deliver"
+              disabled={!canDeliver || commentUploading}
+              title={pendingCommentCount > 0
+                ? t('detail.composer.deliverPending', { n: pendingCommentCount })
+                : t('detail.composer.deliverTitle')}
+              onClick={deliverComments}
+            >
+              ▸ {t('detail.composer.deliver')}{pendingCommentCount > 0 ? ` (${pendingCommentCount})` : ''}
+            </button>
+          )}
         </div>
       </div>
 
@@ -1085,7 +1127,7 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
             {[...task.executions].reverse().map(e => (
               <div key={e.id} className="dsh-atb-exec-row">
                 <span className="dsh-atb-exec-dot" data-outcome={e.outcome} />
-                <span className="dsh-atb-exec-trigger">{e.trigger === 'manual' ? t('detail.exec.trigger.manual') : t('detail.exec.trigger.scheduled')}</span>
+                <span className="dsh-atb-exec-trigger">{e.trigger === 'manual' ? t('detail.exec.trigger.manual') : e.trigger === 'comment' ? t('detail.exec.trigger.comment') : t('detail.exec.trigger.scheduled')}</span>
                 <span className="dsh-atb-exec-outcome" data-outcome={e.outcome}>{t(OUTCOME_KEYS[e.outcome] ?? e.outcome)}</span>
                 <span className="dsh-atb-exec-time">{fmtTime(e.startedAt)}{e.endedAt !== undefined && ` · ${duration(e.startedAt, e.endedAt)}`}</span>
                 {e.sessionId !== undefined && (
