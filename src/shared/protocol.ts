@@ -198,6 +198,8 @@ export type BoardSettings = {
   defaultModel?: TaskModel
   /** Agent preset materialized onto NEW tasks; absent = deployment default. */
   defaultPresetId?: string
+  /** Workspace the NEW-task form starts from when the board has no project filter (0.9.3, #56); absent = first registered workspace. */
+  defaultWorkspaceId?: string
   /** Global cap for simultaneously running taskboard executions. */
   maxConcurrent?: number
   /** Only never-queued windows older than this are classified as offline misses. */
@@ -239,6 +241,11 @@ export function asBoardSettings(raw: unknown): BoardSettings {
     if (typeof e.defaultPresetId !== 'string') throw new Error('defaultPresetId must be a string')
     const id = e.defaultPresetId.trim()
     if (id.length > 0) out.defaultPresetId = id
+  }
+  if (e.defaultWorkspaceId !== undefined) {
+    if (typeof e.defaultWorkspaceId !== 'string') throw new Error('defaultWorkspaceId must be a string')
+    const id = e.defaultWorkspaceId.trim()
+    if (id.length > 0) out.defaultWorkspaceId = id
   }
   if (e.maxConcurrent !== undefined) {
     if (typeof e.maxConcurrent !== 'number' || !Number.isSafeInteger(e.maxConcurrent)

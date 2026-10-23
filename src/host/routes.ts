@@ -1443,6 +1443,11 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
       if (pathname === `${ROUTE_PREFIX}/settings/update`) {
         try {
           const next = asBoardSettings(body)
+          // #56: a default project must point at a workspace that still exists;
+          // dangling references are also tolerated on read (skipped by the form).
+          if (next.defaultWorkspaceId !== undefined && workspaces.get(next.defaultWorkspaceId) === undefined) {
+            throw new Error('Error: invalid_input: settings.defaultWorkspaceId is not a registered workspace')
+          }
           await store.mutate('settings-updated', ledger => {
             ledger.settings = next
             return []

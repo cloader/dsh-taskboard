@@ -13,7 +13,7 @@ import type { BoardController } from '../controller.ts'
 import type { TaskTemplateSpec } from '../../shared/api.ts'
 import type { ChecklistItem, IsolationMode, PermissionMode, PeriodicCompletion, TaskRecord, Urgency } from '../../shared/protocol.ts'
 import { MAX_CHECKLIST_ITEMS, asPermission, defaultIsolationOf, defaultPermissionOf, nextCronTime, parseCron } from '../../shared/protocol.ts'
-import { fmtTime } from './format.ts'
+import { fmtTime, initialWorkspaceId } from './format.ts'
 import { useT, type Translate } from '../i18n/runtime.ts'
 import { SlashPromptInput } from './SlashPromptInput.tsx'
 import { useAlert } from './AlertModal.tsx'
@@ -178,7 +178,10 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
   const [title, setTitle] = useState(task?.title ?? prefill?.title ?? '')
   const [description, setDescription] = useState(task?.description ?? prefill?.description ?? '')
   const [prompt, setPrompt] = useState(task?.prompt ?? prefill?.prompt ?? '')
-  const [workspaceId, setWorkspaceId] = useState(task?.workspaceId ?? state.filters.workspaceId ?? state.workspaces[0]?.id ?? '')
+  // Project default (#56): board filter → configured default project → first registered.
+  const [workspaceId, setWorkspaceId] = useState(
+    initialWorkspaceId({ editing: task?.workspaceId, filter: state.filters.workspaceId, settings: state.ledger.settings, workspaces: state.workspaces }),
+  )
   const [urgency, setUrgency] = useState<Urgency>(task?.urgency ?? (prefill?.urgency === 'urgent' || prefill?.urgency === 'relaxed' ? prefill.urgency : 'normal'))
   const initExec = task?.execution ?? prefill?.execution
   const [mode, setMode] = useState<'claim' | 'once' | 'periodic'>(
