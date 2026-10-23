@@ -271,6 +271,18 @@ Real-deployment validation on 2026-10-16 read 4 Bugs, 4 linked Stories and 8 Tas
 
 ## Changelog
 
+### 0.9.3
+
+- **Ledger crash recovery (#53)**: locks orphaned by a host crash are recovered immediately via pid liveness checks; live or indeterminate owners are never reaped by age. Clean startup no longer takes the write lock, and reconciliation failures degrade to a warning instead of a fatal load failure — fixing the crash loop where a restart would fail again.
+- **Human action waiting (based on #54, thanks [@monkey-sking](https://github.com/monkey-sking))**: explicit waits, explicit clears and automatic recognition are fully persisted through the shared protocol and independent of generic blocking. Amber badges and a "waiting for me" filter highlight cards waiting on humans; heuristic reasons are localized and never stored as credentials.
+- **Delivery review (based on #54)**: the latest execution report and checklist are foregrounded on cards and in task details, with labeled report history, neutral verification markers and one-click path copying.
+- **Default project (#56)**: board settings gain a default project; new tasks start from it when no board filter is set, and dangling references are skipped on read.
+- **Quality**: CI adds independent typechecking and regression coverage for lock recovery, waiting state, filters, report history and the default project; builds run automatically before publish.
+
+### 0.9.2
+
+- **List filter validation (#52, thanks [@Ausli](https://github.com/Ausli))**: `taskboard_list` filter errors now surface as `not_found` / `invalid_input` instead of silently matching nothing.
+
 ### 0.9.1
 
 - Map ZenTao projects or executions/iterations, independently select Bugs/Stories/Tasks, and associate local projects row by row.
