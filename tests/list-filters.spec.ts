@@ -47,7 +47,7 @@ async function setup() {
   await tool('taskboard_create').execute({ title: 'A1', workspaceId: 'ws-a', urgency: 'urgent' }, exec)
   await tool('taskboard_create').execute({ title: 'A2', workspaceId: 'ws-a', urgency: 'normal' }, exec)
   await tool('taskboard_create').execute({ title: 'B1', workspaceId: 'ws-b', urgency: 'normal' }, exec)
-  return { store, list: tool('taskboard_list'), exec }
+  return { store, list: tool('taskboard_list'), create: tool('taskboard_create'), exec }
 }
 
 const rowCount = (result: unknown) => (result as { tasks: unknown[] }).tasks.length
@@ -107,5 +107,40 @@ describe('taskboard_list filter validation', () => {
     await expect(list.execute({ status: 'bogus_status' }, exec)).rejects.toBeDefined()
     await expect(list.execute({ urgency: 'bogus_urgency' }, exec)).rejects.toBeDefined()
     expect(store.snapshot().revision).toBe(before)
+  })
+})
+
+/**
+ * A loud failure alone still strands the caller: the registry keys projects by
+ * uuid and no tool answers "which project am I in", so a bare
+ * `unknown workspaceId <x>` leaves nothing to act on. These cases pin the
+ * correction signal carried by the failure detail (message-only change: the
+ * rejection itself is unchanged).
+ */
+describe('unknown workspaceId detail', () => {
+  const detailOf = async (promise: Promise<unknown>) => await promise.catch((e: unknown) => e) as { code: string; message: string }
+
+  it('R8: names the caller\'s own project so one round trip is enough', async () => {
+    const { list, exec } = await setup()
+    const error = await detailOf(list.execute({ workspaceId: 'G:\\workarea\\proj' }, exec))
+    expect(error.code).toBe('not_found')
+    expect(error.message).toMatch(/expected a project id, not a filesystem path/)
+    expect(error.message).toContain('this session\'s project is ws-a (A · /proj/a)')
+  })
+
+  it('R9: an unaffiliated caller still gets the registered projects', async () => {
+    const { list } = await setup()
+    const error = await detailOf(list.execute({ workspaceId: 'nope' }, {}))
+    expect(error.code).toBe('not_found')
+    expect(error.message).not.toContain('this session\'s project')
+    expect(error.message).toContain('known projects: ws-a (A), ws-b (B), ws-c (C)')
+  })
+
+  it('R10: create carries the same detail', async () => {
+    const { create, exec } = await setup()
+    const error = await detailOf(create.execute({ title: 'X', workspaceId: '/proj/nope', urgency: 'normal' }, exec))
+    expect(error.code).toBe('not_found')
+    expect(error.message).toContain('expected a project id, not a filesystem path')
+    expect(error.message).toContain('this session\'s project is ws-a')
   })
 })

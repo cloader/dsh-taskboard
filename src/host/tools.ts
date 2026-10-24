@@ -247,6 +247,37 @@ async function callerWorkspace(deps: ToolDeps, exec: ToolRunContext): Promise<st
   return ws?.id
 }
 
+/** How many registered projects a not_found detail may enumerate. */
+const KNOWN_PROJECTS_SHOWN = 8
+
+/**
+ * Detail for an unresolvable workspaceId. A bare `unknown workspaceId <x>` is a
+ * dead end: the caller knows its session cwd, but the registry keys projects by
+ * uuid and no tool answers "which project am I in", so it cannot discover a
+ * valid id and can only guess again. Name the expected shape, then hand back the
+ * calling session's own project and the registry — enough to correct in one
+ * round trip. Read-only.
+ */
+async function unknownWorkspaceDetail(
+  deps: ToolDeps,
+  exec: ToolRunContext | undefined,
+  raw: string,
+): Promise<string> {
+  const parts = [`unknown workspaceId "${raw}" (expected a project id, not a filesystem path)`]
+  const ownId = exec === undefined
+    ? undefined
+    : await callerWorkspace(deps, exec).catch(() => undefined)
+  const own = ownId === undefined ? undefined : deps.workspaces.get(ownId)
+  if (own !== undefined) parts.push(`this session's project is ${own.id} (${own.title} · ${own.path})`)
+  const known = deps.workspaces.list()
+  if (known.length > 0) {
+    const shown = known.slice(0, KNOWN_PROJECTS_SHOWN).map(ws => `${ws.id} (${ws.title})`)
+    const more = known.length - shown.length
+    parts.push(`known projects: ${shown.join(', ')}${more > 0 ? `, +${more} more` : ''}`)
+  }
+  return parts.join('; ')
+}
+
 /** Guard: version match. */
 function versionGuard(task: TaskRecord, ifVersion: number | undefined): void {
   if (ifVersion === undefined) {
@@ -349,10 +380,12 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
         return [{ type: 'text', text: [head, ...tasks.map(t => taskLine(t as never))].join('\n') }]
       },
     },
-    async execute(args) {
+    async execute(args, exec) {
       try {
         const a = args as { workspaceId?: string; status?: string; urgency?: string; includeTrashed?: boolean }
-        if (a.workspaceId !== undefined && workspaces.get(a.workspaceId) === undefined) throw new ToolError(ERR.notFound, `unknown workspaceId ${a.workspaceId}`)
+        if (a.workspaceId !== undefined && workspaces.get(a.workspaceId) === undefined) {
+          throw new ToolError(ERR.notFound, await unknownWorkspaceDetail(deps, exec as ToolRunContext, a.workspaceId))
+        }
         if (a.status !== undefined) asStatus(a.status)
         if (a.urgency !== undefined) asUrgency(a.urgency)
         const tasks = store.snapshot().tasks.filter(t =>
@@ -470,7 +503,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
         const { actor } = caller(exec as ToolRunContext)
         const title = normalizeTitle(args.title)
         if (workspaces.get(args.workspaceId) === undefined) {
-          throw new ToolError(ERR.notFound, `unknown workspaceId ${args.workspaceId}`)
+          throw new ToolError(ERR.notFound, await unknownWorkspaceDetail(deps, exec as ToolRunContext, args.workspaceId))
         }
         const urgency = asUrgency(args.urgency)
         const status = args.status === undefined ? 'todo' as const : asStatus(args.status)
