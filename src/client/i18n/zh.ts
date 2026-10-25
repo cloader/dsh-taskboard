@@ -508,7 +508,7 @@ export const zh = {
   'set.workspace.hint': '仅用于新建任务：看板筛选中的项目优先；修改设置不会改写已有任务。',
   'set.workspace.follow': '无默认（跟随看板筛选，否则列表第一项）',
   'set.multiroots.heading': '从关联工作区根目录认领',
-  'set.multiroots.hint': '当会话在此项目中运行、但同时挂载了额外目录（多根工作区）时，允许它从那些目录认领本项目任务。默认关闭：仅允许自身工作区就是本项目的会话认领。',
+  'set.multiroots.hint': '开启后，会话可以认领其已挂载关联工作区中的任务。此设置对整个看板生效，默认关闭；需要多根工作区插件，服务不可用时仍仅允许认领会话主工作区的任务。',
   'set.multiroots.on.name': '允许',
   'set.multiroots.on.hint': '以本项目为关联根目录的会话可以认领任务',
   'set.multiroots.off.name': '禁止（默认）',

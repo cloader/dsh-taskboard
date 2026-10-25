@@ -506,7 +506,7 @@ export const en: TaskboardDict = {
   'set.workspace.hint': 'New tasks only: a board project filter takes priority; changing this never rewrites existing tasks.',
   'set.workspace.follow': 'No default (follow the board filter, else the first project)',
   'set.multiroots.heading': 'Claim from linked workspace roots',
-  'set.multiroots.hint': 'When a session runs in this project with extra folders attached (multi-root workspace), allow it to claim tasks of this project from those folders as well. Off by default: claiming stays limited to sessions whose own workspace is this project.',
+  'set.multiroots.hint': 'When enabled, a session may claim tasks in its attached workspace roots. This board-wide setting is off by default and requires the multi-root workspace plugin. If the service is unavailable, only tasks in the session’s primary workspace may be claimed.',
   'set.multiroots.on.name': 'Allowed',
   'set.multiroots.on.hint': 'A session that has this project as a linked root may claim its tasks',
   'set.multiroots.off.name': 'Blocked (default)',

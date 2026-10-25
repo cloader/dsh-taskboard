@@ -135,6 +135,23 @@ describe('claim across linked workspace roots', () => {
     await expectStillTodo(store, id)
   })
 
+  it('mentions linked roots in rejection details only while enabled', async () => {
+    const { tool, exec, createTask, enableLinkedClaims } = await setup()
+    const id = await createTask()
+    const move = () => tool('taskboard_move').execute({ id, status: 'in_progress', ifVersion: 1 }, exec)
+    await expect(move()).rejects.toMatchObject({ message: expect.not.stringContaining('linked workspace roots') })
+    await enableLinkedClaims(true)
+    await expect(move()).rejects.toMatchObject({ message: expect.stringContaining('linked workspace roots') })
+  })
+
+  it('allows creation in another registered project by id or directory without enabling linked claims', async () => {
+    const { tool, exec, store } = await setup()
+    for (const workspaceId of ['ws-target', '/proj/target']) {
+      const created = await tool('taskboard_create').execute({ title: 'Cross-project creation', workspaceId, urgency: 'normal' }, exec) as { task: { id: string } }
+      expect(store.get(created.task.id)).toMatchObject({ workspaceId: 'ws-target', status: 'todo' })
+    }
+  })
+
   it('normalizes the setting and defaults it to false', () => {
     expect(asBoardSettings({ allowClaimFromLinkedRoots: true }).allowClaimFromLinkedRoots).toBe(true)
     expect(asBoardSettings({}).allowClaimFromLinkedRoots).toBeUndefined()
