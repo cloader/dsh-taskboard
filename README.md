@@ -126,6 +126,8 @@ agent：
 | `taskboard_checklist` | 验收清单 add / check（附证据）/ uncheck |
 | `taskboard_execution_report` | 提交结构化执行报告，自动挂到当前执行 |
 
+**项目参数（0.9.5）**：`taskboard_list` 与 `taskboard_create` 的 `workspaceId` 可传项目 ID，或已注册项目根目录的绝对路径（例如 `D:\work\my-project`）。相对路径与未注册的子目录不能代替项目根目录；创建任务始终保存项目 ID。未知项目返回 `not_found` 并附带纠错提示；已注册但无任务的项目仍返回零条，省略列表的项目参数仍查询全部项目。
+
 ## 功能特性
 
 **看板协作**
@@ -276,6 +278,10 @@ node tests/manual-git-e2e.mjs   # 真 git 端到端手测（worktree 全链路 +
 接口依据：[项目需求](https://www.zentao.net/book/api/692.html)、[执行需求](https://www.zentao.net/book/api/693.html)、[项目下执行清单](https://www.zentao.net/book/api/710.html)、[执行任务](https://www.zentao.net/book/api/715.html)。
 
 ## 升级日志
+
+### 0.9.5
+
+- **项目路径与纠错提示（#58 / #59）**：`taskboard_list` 和 `taskboard_create` 的 `workspaceId` 支持已注册项目根目录的绝对路径，创建任务时仍保存项目 ID。未知项目继续返回 `not_found`；错误详情提供本会话所属项目的可重试 ID，无法识别所属项目时最多列出 8 个项目 ID。感谢 [@Ausli](https://github.com/Ausli) 的贡献。
 
 ### 0.9.4
 

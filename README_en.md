@@ -124,6 +124,8 @@ Available in any session. Project boundary: only sessions belonging to the task'
 | `taskboard_checklist` | Acceptance checklist add / check (with evidence) / uncheck |
 | `taskboard_execution_report` | Submit the structured execution report, attached to the current execution |
 
+**Project argument (0.9.5)**: `workspaceId` in `taskboard_list` and `taskboard_create` accepts a project ID or the absolute path of a registered project root (for example, `D:\work\my-project`). Relative paths and unregistered subdirectories do not identify the project root. Created tasks always store the project ID. Unknown projects fail with `not_found` and correction hints; registered projects without tasks still return zero rows, and omitting the list project filter still lists all projects.
+
 ## Features
 
 **Board collaboration**
@@ -270,6 +272,10 @@ Credentials remain in the host-only plaintext `dsh-taskboard-external.json` unde
 Real-deployment validation on 2026-10-16 read 4 Bugs, 4 linked Stories and 8 Tasks in project mode, with corresponding execution results. Each mode imported 2 Bugs and 2 Tasks for admin; repeat scans created or updated nothing. No Stories were assigned to that account, so assigned Story imports remain covered by mock tests. Only temporary local ledgers were written; tracker business data was not changed.
 
 ## Changelog
+
+### 0.9.5
+
+- **Project paths and correction hints (#58 / #59)**: `taskboard_list` and `taskboard_create` accept the absolute path of a registered project root as `workspaceId`, while created tasks still store the project ID. Unknown projects continue to fail with `not_found`; error details provide a reusable ID for the calling session project, or list up to 8 project IDs when the session cannot be associated. Thanks to [@Ausli](https://github.com/Ausli).
 
 ### 0.9.4
 

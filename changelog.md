@@ -1,5 +1,15 @@
 # 更新日志 / Changelog
 
+### 0.9.5 — 2026-10-25
+
+- **项目路径与纠错提示（#58 / #59）**：`taskboard_list` 和 `taskboard_create` 的 `workspaceId` 支持已注册项目根目录的绝对路径，创建任务时仍保存项目 ID。未知项目继续返回 `not_found`；错误详情提供本会话所属项目的可重试 ID，无法识别所属项目时最多列出 8 个项目 ID。感谢 [@Ausli](https://github.com/Ausli) 的贡献。
+- **兼容性与回归覆盖**：保留 ID 优先、合法跨项目过滤、空参全量查询及失败只读行为；增加路径别名、解析失败、标题截断和纠错 ID 回填验证。
+
+**English:**
+
+- **Project paths and correction hints (#58 / #59)**: `taskboard_list` and `taskboard_create` accept the absolute path of a registered project root as `workspaceId`, while created tasks still store the project ID. Unknown projects continue to fail with `not_found`; error details provide a reusable ID for the calling session project, or list up to 8 project IDs when the session cannot be associated. Thanks to [@Ausli](https://github.com/Ausli).
+- **Compatibility and regression coverage**: preserve ID precedence, valid cross-project filtering, unfiltered listing and read-only failures. Add coverage for path aliases, resolver failures, title clipping and reusing the correction ID.
+
 ### 0.9.4 — 2026-10-23
 
 - **留言唤醒会话（#51）**：待验收卡的评论框新增「留言并让 agent 处理」——点击后把留言与所有未投递留言合并成一条用户消息投递给任务会话（单条保持原文，多条以分隔线相隔），卡片回到进行中，执行时间线记录「留言」触发。执行中的会话直接追加，否则优先续聊卡片关联会话（配置不匹配或不可恢复时新建会话并记录原因）；带 worktree 隔离的任务唤醒时强制续跑，不会重置上次工作。投递成功的留言标记「已投递」并可跳转会话；agent 评论与系统评论永不触发投递，仅待验收卡可唤醒（路由与执行闸门双层校验）。
