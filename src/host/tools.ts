@@ -247,6 +247,83 @@ async function callerWorkspace(deps: ToolDeps, exec: ToolRunContext): Promise<st
   return ws?.id
 }
 
+/** How many registered projects a not_found detail may enumerate. */
+const KNOWN_PROJECTS_SHOWN = 8
+
+/** Longest project title a tool error may inline (kept single-line). */
+const TITLE_IN_ERROR_MAX = 60
+
+/** Flatten and clip a user-editable project title so it cannot inject lines. */
+function clipTitle(title: string): string {
+  const flat = title.replace(/\s+/g, ' ').trim()
+  return flat.length <= TITLE_IN_ERROR_MAX ? flat : `${flat.slice(0, TITLE_IN_ERROR_MAX - 1)}…`
+}
+
+/**
+ * Resolve a `workspaceId` argument to a registered project id, also accepting
+ * the project's directory path.
+ *
+ * A model knows its session cwd but the registry keys projects by uuid, and no
+ * tool answers "which project am I in" — so passing a path is a rational guess,
+ * not a typo. `resolveByPath` is the resolver the claim boundary already uses.
+ * Returns undefined when the value is neither a registered id nor a project
+ * directory.
+ */
+async function resolveWorkspaceArg(deps: ToolDeps, raw: string): Promise<string | undefined> {
+  if (deps.workspaces.get(raw) !== undefined) return raw
+  try {
+    return (await deps.workspaces.resolveByPath(raw))?.id
+  } catch {
+    // resolveByPath realpaths its input, so a non-existent path rejects: that
+    // means "not a project", not a tool failure.
+    return undefined
+  }
+}
+
+/**
+ * Detail for an unresolvable workspaceId. Failing loudly without a correction
+ * signal still strands the caller (it has no way to discover a valid id), so
+ * name the expected shape, then hand back the calling session's own project —
+ * enough to fix it in one round trip. The registry is only enumerated when the
+ * caller is unaffiliated: with the caller's own project already named, a full
+ * project list is noise. Read-only.
+ *
+ * The id is rendered as an assignment (`workspaceId=<id>`), never inside a
+ * parenthesis: a detail whose only usable value reads `id (title)` is a spelling
+ * no resolver accepts, so the caller that copies it verbatim fails again. The
+ * title stays as an isolated quoted note — it keeps the detail readable for a
+ * human (ids are uuids) without touching the value's recoverability.
+ *
+ * `own.path` is deliberately omitted. It is the caller's own cwd echoed back
+ * (this branch only exists when `callerWorkspace()` resolved that cwd), it is
+ * unbounded user-editable text that would undo the clipping above, and it would
+ * recommend a value that starts failing the moment the directory is unreachable
+ * — list filtering is ledger-only, so the id keeps working then and a path does
+ * not.
+ */
+async function unknownWorkspaceDetail(
+  deps: ToolDeps,
+  exec: ToolRunContext | undefined,
+  raw: string,
+): Promise<string> {
+  const parts = [`unknown workspaceId "${raw}" (expected a project id or its directory path)`]
+  const ownId = exec === undefined
+    ? undefined
+    : await callerWorkspace(deps, exec).catch(() => undefined)
+  const own = ownId === undefined ? undefined : deps.workspaces.get(ownId)
+  if (own !== undefined) {
+    const title = clipTitle(own.title)
+    if (title.length > 0) parts.push(`this session's project is "${title}"`)
+    parts.push(`retry with workspaceId=${own.id}`)
+  } else {
+    const known = deps.workspaces.list()
+    const shown = known.slice(0, KNOWN_PROJECTS_SHOWN).map(ws => ws.id)
+    const more = known.length - shown.length
+    if (shown.length > 0) parts.push(`known projects: ${shown.join(', ')}${more > 0 ? `, +${more} more` : ''}`)
+  }
+  return parts.join('; ')
+}
+
 /** Guard: version match. */
 function versionGuard(task: TaskRecord, ifVersion: number | undefined): void {
   if (ifVersion === undefined) {
@@ -334,7 +411,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       + 'Returns compact summaries (id, title, status, urgency, version, claim owner). '
       + 'Check this before starting work to find claimable todo tasks in your project.',
     parameters: {
-      workspaceId: { type: 'string', description: 'Filter by project (DSH workspace id).' },
+      workspaceId: { type: 'string', description: 'Filter by project: DSH workspace id, or that project\'s directory path.' },
       status: { type: 'string', description: 'Filter by exact status (backlog/todo/in_progress/in_review/done/canceled/archived).' },
       urgency: { type: 'string', description: 'Filter by urgency (urgent/normal/relaxed).' },
       includeTrashed: { type: 'boolean', description: 'Include soft-deleted tasks (default false).' },
@@ -349,14 +426,17 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
         return [{ type: 'text', text: [head, ...tasks.map(t => taskLine(t as never))].join('\n') }]
       },
     },
-    async execute(args) {
+    async execute(args, exec) {
       try {
         const a = args as { workspaceId?: string; status?: string; urgency?: string; includeTrashed?: boolean }
-        if (a.workspaceId !== undefined && workspaces.get(a.workspaceId) === undefined) throw new ToolError(ERR.notFound, `unknown workspaceId ${a.workspaceId}`)
+        const workspaceId = a.workspaceId === undefined ? undefined : await resolveWorkspaceArg(deps, a.workspaceId)
+        if (a.workspaceId !== undefined && workspaceId === undefined) {
+          throw new ToolError(ERR.notFound, await unknownWorkspaceDetail(deps, exec as ToolRunContext, a.workspaceId))
+        }
         if (a.status !== undefined) asStatus(a.status)
         if (a.urgency !== undefined) asUrgency(a.urgency)
         const tasks = store.snapshot().tasks.filter(t =>
-          (a.workspaceId === undefined || t.workspaceId === a.workspaceId)
+          (workspaceId === undefined || t.workspaceId === workspaceId)
           && (a.status === undefined || t.status === a.status)
           && (a.urgency === undefined || t.urgency === a.urgency)
           && (a.includeTrashed === true || t.trashedAt === undefined))
@@ -401,7 +481,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       + 'Do not track trivial requests as tasks.',
     parameters: {
       title: { type: 'string', required: true, description: 'Short imperative line (1..200 chars).' },
-      workspaceId: { type: 'string', required: true, description: 'Project (DSH workspace id) this task belongs to.' },
+      workspaceId: { type: 'string', required: true, description: 'Project this task belongs to: DSH workspace id, or that project\'s directory path.' },
       urgency: { type: 'string', required: true, description: 'urgent (red) | normal (purple) | relaxed (blue).' },
       description: { type: 'string', description: 'What the task involves (plain text).' },
       prompt: { type: 'string', description: 'Extra execution instructions; the session receives title+description+this prompt.' },
@@ -469,8 +549,9 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       try {
         const { actor } = caller(exec as ToolRunContext)
         const title = normalizeTitle(args.title)
-        if (workspaces.get(args.workspaceId) === undefined) {
-          throw new ToolError(ERR.notFound, `unknown workspaceId ${args.workspaceId}`)
+        const workspaceId = await resolveWorkspaceArg(deps, args.workspaceId)
+        if (workspaceId === undefined) {
+          throw new ToolError(ERR.notFound, await unknownWorkspaceDetail(deps, exec as ToolRunContext, args.workspaceId))
         }
         const urgency = asUrgency(args.urgency)
         const status = args.status === undefined ? 'todo' as const : asStatus(args.status)
@@ -498,7 +579,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           title,
           description: (args.description ?? '').trim(),
           prompt: normalizePrompt(args.prompt),
-          workspaceId: args.workspaceId,
+          workspaceId,
           urgency,
           status,
           blocked: false,
