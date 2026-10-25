@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react'
 import { ExternalSyncPanel } from './ExternalSyncPanel.tsx'
 import type { BoardController } from '../controller.ts'
 import type { CatalogModelItem, CatalogPresetItem } from '../../shared/api.ts'
-import { DEFAULT_COMPLETED_DISPLAY_LIMIT, DEFAULT_DISPATCH_INTERVAL_MS, DEFAULT_ISOLATION, DEFAULT_MAX_CONCURRENT, DEFAULT_QUEUE_MAX_AGE_MINUTES, DEFAULT_SCHEDULE_MISSED_AFTER_MINUTES, MIN_COMPLETED_DISPLAY_LIMIT, MAX_COMPLETED_DISPLAY_LIMIT, completedDisplayLimitOf, defaultPermissionOf, defaultSyncExternalSessionsOf, dispatchIntervalMsOf, maxConcurrentOf, queueMaxAgeMinutesOf, scheduleMissedAfterMinutesOf, type IsolationMode, type PermissionMode } from '../../shared/protocol.ts'
+import { DEFAULT_COMPLETED_DISPLAY_LIMIT, DEFAULT_DISPATCH_INTERVAL_MS, DEFAULT_ISOLATION, DEFAULT_MAX_CONCURRENT, DEFAULT_QUEUE_MAX_AGE_MINUTES, DEFAULT_SCHEDULE_MISSED_AFTER_MINUTES, MIN_COMPLETED_DISPLAY_LIMIT, MAX_COMPLETED_DISPLAY_LIMIT, allowClaimFromLinkedRootsOf, completedDisplayLimitOf, defaultPermissionOf, defaultSyncExternalSessionsOf, dispatchIntervalMsOf, maxConcurrentOf, queueMaxAgeMinutesOf, scheduleMissedAfterMinutesOf, type IsolationMode, type PermissionMode } from '../../shared/protocol.ts'
 import { useT, type Translate } from '../i18n/runtime.ts'
 
 /** The isolation options with one-line hints (mirrors the task form; translated per render). */
@@ -31,6 +31,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
   const currentIso = state.ledger.settings?.defaultIsolation ?? DEFAULT_ISOLATION
   const currentSync = defaultSyncExternalSessionsOf(state.ledger.settings)
   const currentPerm = defaultPermissionOf(state.ledger.settings)
+  const currentMulti = allowClaimFromLinkedRootsOf(state.ledger.settings)
   const currentMaxConcurrent = maxConcurrentOf(state.ledger.settings)
   const currentMissedAfterMinutes = scheduleMissedAfterMinutesOf(state.ledger.settings)
   const currentQueueMaxAgeMinutes = queueMaxAgeMinutesOf(state.ledger.settings)
@@ -54,6 +55,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
   const [draftIso, setDraftIso] = useState<IsolationMode>(currentIso)
   const [draftSync, setDraftSync] = useState<boolean>(currentSync)
   const [draftPerm, setDraftPerm] = useState<PermissionMode>(currentPerm)
+  const [draftMulti, setDraftMulti] = useState<boolean>(currentMulti)
   const [draftMaxConcurrent, setDraftMaxConcurrent] = useState(String(currentMaxConcurrent))
   const [draftMissedAfterMinutes, setDraftMissedAfterMinutes] = useState(String(currentMissedAfterMinutes))
   const [draftQueueMaxAgeMinutes, setDraftQueueMaxAgeMinutes] = useState(String(currentQueueMaxAgeMinutes))
@@ -74,7 +76,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
   const completedLimitValid = Number.isSafeInteger(completedLimit) && completedLimit >= MIN_COMPLETED_DISPLAY_LIMIT && completedLimit <= MAX_COMPLETED_DISPLAY_LIMIT
   const dirty = draftModel !== currentModelKey || draftEffort !== currentEffort || draftPreset !== currentPreset
     || draftDefaultWorkspace !== currentDefaultWorkspace
-    || draftIso !== currentIso || draftSync !== currentSync || draftPerm !== currentPerm
+    || draftIso !== currentIso || draftSync !== currentSync || draftPerm !== currentPerm || draftMulti !== currentMulti
     || draftMaxConcurrent !== String(currentMaxConcurrent) || draftMissedAfterMinutes !== String(currentMissedAfterMinutes)
     || draftQueueMaxAgeMinutes !== String(currentQueueMaxAgeMinutes) || draftDispatchIntervalMs !== String(currentDispatchIntervalMs)
     || draftCompletedLimit !== String(currentCompletedLimit)
@@ -99,6 +101,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
       defaultIsolation: draftIso,
       syncExternalSessions: draftSync,
       defaultPermission: draftPerm,
+      allowClaimFromLinkedRoots: draftMulti,
       ...(parsedModel !== undefined ? { defaultModel: { ...parsedModel, ...(draftEffort !== '' ? { reasoningEffort: draftEffort } : {}) } } : {}),
       ...(draftPreset !== '' ? { defaultPresetId: draftPreset } : {}),
       ...(draftDefaultWorkspace !== '' ? { defaultWorkspaceId: draftDefaultWorkspace } : {}),
@@ -205,6 +208,36 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
                 {(state.workspaces ?? []).map(ws => <option key={ws.id} value={ws.id}>{ws.title || ws.path}</option>)}
               </select>
             </label>
+          </section>
+
+          <section className="dsh-atb-diag-sec">
+            <h4>{t('set.multiroots.heading')}</h4>
+            <p className="dsh-atb-isolation-note">{t('set.multiroots.hint')}</p>
+            <div className="dsh-atb-mode-picker">
+              <button
+                type="button"
+                className="dsh-atb-mode-opt"
+                data-on={!draftMulti}
+                title={t('set.multiroots.off.hint')}
+                onClick={() => setDraftMulti(false)}
+              >
+                <span className="dsh-atb-mode-name">{t('set.multiroots.off.name')}</span>
+                <span className="dsh-atb-mode-hint">{t('set.multiroots.off.hint')}</span>
+              </button>
+              <button
+                type="button"
+                className="dsh-atb-mode-opt"
+                data-on={draftMulti}
+                title={t('set.multiroots.on.hint')}
+                onClick={() => setDraftMulti(true)}
+              >
+                <span className="dsh-atb-mode-name">{t('set.multiroots.on.name')}</span>
+                <span className="dsh-atb-mode-hint">{t('set.multiroots.on.hint')}</span>
+              </button>
+            </div>
+            <span className="dsh-atb-isolation-note">
+              {currentMulti ? t('set.multiroots.stateOn') : t('set.multiroots.stateOff')}
+            </span>
           </section>
 
           <section className="dsh-atb-diag-sec">

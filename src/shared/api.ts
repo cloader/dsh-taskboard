@@ -246,6 +246,8 @@ export type UpdateSettingsBody = {
   defaultIsolation?: string
   /** Automatically capture external workspace sessions into the taskboard. */
   syncExternalSessions?: boolean
+  /** Allow claiming a task through a linked multi-root workspace root. */
+  allowClaimFromLinkedRoots?: boolean
   /** Default permission preset for NEW tasks ('workspace-write' | 'read-only' | 'danger-full-access'). */
   defaultPermission?: string
   /** Default model and optional reasoning effort for NEW tasks; omitted = deployment default. */
