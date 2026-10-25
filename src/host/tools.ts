@@ -250,6 +250,15 @@ async function callerWorkspace(deps: ToolDeps, exec: ToolRunContext): Promise<st
 /** How many registered projects a not_found detail may enumerate. */
 const KNOWN_PROJECTS_SHOWN = 8
 
+/** Longest project title a tool error may inline (kept single-line). */
+const TITLE_IN_ERROR_MAX = 60
+
+/** Flatten and clip a user-editable project title so it cannot inject lines. */
+function clipTitle(title: string): string {
+  const flat = title.replace(/\s+/g, ' ').trim()
+  return flat.length <= TITLE_IN_ERROR_MAX ? flat : `${flat.slice(0, TITLE_IN_ERROR_MAX - 1)}…`
+}
+
 /**
  * Resolve a `workspaceId` argument to a registered project id, also accepting
  * the project's directory path.
@@ -274,8 +283,23 @@ async function resolveWorkspaceArg(deps: ToolDeps, raw: string): Promise<string 
 /**
  * Detail for an unresolvable workspaceId. Failing loudly without a correction
  * signal still strands the caller (it has no way to discover a valid id), so
- * name the expected shape, then hand back the calling session's own project and
- * the registry — enough to fix it in one round trip. Read-only.
+ * name the expected shape, then hand back the calling session's own project —
+ * enough to fix it in one round trip. The registry is only enumerated when the
+ * caller is unaffiliated: with the caller's own project already named, a full
+ * project list is noise. Read-only.
+ *
+ * The id is rendered as an assignment (`workspaceId=<id>`), never inside a
+ * parenthesis: a detail whose only usable value reads `id (title)` is a spelling
+ * no resolver accepts, so the caller that copies it verbatim fails again. The
+ * title stays as an isolated quoted note — it keeps the detail readable for a
+ * human (ids are uuids) without touching the value's recoverability.
+ *
+ * `own.path` is deliberately omitted. It is the caller's own cwd echoed back
+ * (this branch only exists when `callerWorkspace()` resolved that cwd), it is
+ * unbounded user-editable text that would undo the clipping above, and it would
+ * recommend a value that starts failing the moment the directory is unreachable
+ * — list filtering is ledger-only, so the id keeps working then and a path does
+ * not.
  */
 async function unknownWorkspaceDetail(
   deps: ToolDeps,
@@ -287,12 +311,15 @@ async function unknownWorkspaceDetail(
     ? undefined
     : await callerWorkspace(deps, exec).catch(() => undefined)
   const own = ownId === undefined ? undefined : deps.workspaces.get(ownId)
-  if (own !== undefined) parts.push(`this session's project is ${own.id} (${own.title} · ${own.path})`)
-  const known = deps.workspaces.list()
-  if (known.length > 0) {
-    const shown = known.slice(0, KNOWN_PROJECTS_SHOWN).map(ws => `${ws.id} (${ws.title})`)
+  if (own !== undefined) {
+    const title = clipTitle(own.title)
+    if (title.length > 0) parts.push(`this session's project is "${title}"`)
+    parts.push(`retry with workspaceId=${own.id}`)
+  } else {
+    const known = deps.workspaces.list()
+    const shown = known.slice(0, KNOWN_PROJECTS_SHOWN).map(ws => ws.id)
     const more = known.length - shown.length
-    parts.push(`known projects: ${shown.join(', ')}${more > 0 ? `, +${more} more` : ''}`)
+    if (shown.length > 0) parts.push(`known projects: ${shown.join(', ')}${more > 0 ? `, +${more} more` : ''}`)
   }
   return parts.join('; ')
 }

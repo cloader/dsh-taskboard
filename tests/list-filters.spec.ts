@@ -135,12 +135,43 @@ describe('taskboard_list filter validation', () => {
 describe('unknown workspaceId detail', () => {
   const detailOf = async (promise: Promise<unknown>) => await promise.catch((e: unknown) => e) as { code: string; message: string }
 
-  it('R8: names the caller\'s own project so one round trip is enough', async () => {
+  it('R8: hands back the caller\'s own id as a usable value', async () => {
     const { list, exec } = await setup()
     const error = await detailOf(list.execute({ workspaceId: 'G:\\workarea\\proj' }, exec))
     expect(error.code).toBe('not_found')
     expect(error.message).toMatch(/expected a project id or its directory path/)
-    expect(error.message).toContain('this session\'s project is ws-a (A · /proj/a)')
+    expect(error.message).toContain('this session\'s project is "A"')
+    expect(error.message).toContain('retry with workspaceId=ws-a')
+    // The registered project list is a fallback for unaffiliated callers only.
+    expect(error.message).not.toContain('known projects')
+    // own.path is not echoed: it is the caller's own cwd, and the id is the one
+    // value the caller could not derive by itself.
+    expect(error.message).not.toContain('/proj/a')
+  })
+
+  it('R8b: a user-editable title stays single-line and clipped in the detail', async () => {
+    const noisy = 'A'.repeat(80) + '\nsecond line'
+    const face: WorkspaceFace = {
+      ...workspaces,
+      get: id => (id === 'ws-a' ? { id: 'ws-a', path: '/proj/a', title: noisy } : projects.find(p => p.id === id)),
+    }
+    const { list, exec } = await setup(face)
+    const error = await detailOf(list.execute({ workspaceId: 'nope' }, exec))
+    expect(error.code).toBe('not_found')
+    expect(error.message).not.toContain('\n')
+    expect(error.message).toMatch(/A{59}…/)
+    // Clipping the title must not disturb the value next to it.
+    expect(error.message).toContain('retry with workspaceId=ws-a')
+  })
+
+  it('R8c: the id carried by the detail is itself accepted as workspaceId', async () => {
+    const { list, exec } = await setup()
+    const error = await detailOf(list.execute({ workspaceId: 'ws-a (A)' }, exec))
+    expect(error.code).toBe('not_found')
+    const reusable = /workspaceId=(\S+)/.exec(error.message)?.[1] as string
+    expect(reusable).toBe('ws-a')
+    // A detail is only a correction signal if the round trip actually works.
+    expect(rowCount(await list.execute({ workspaceId: reusable }, exec))).toBe(2)
   })
 
   it('R9: an unaffiliated caller still gets the registered projects', async () => {
@@ -148,7 +179,7 @@ describe('unknown workspaceId detail', () => {
     const error = await detailOf(list.execute({ workspaceId: 'nope' }, {}))
     expect(error.code).toBe('not_found')
     expect(error.message).not.toContain('this session\'s project')
-    expect(error.message).toContain('known projects: ws-a (A), ws-b (B), ws-c (C)')
+    expect(error.message).toContain('known projects: ws-a, ws-b, ws-c')
   })
 
   it('R10: create carries the same detail', async () => {
@@ -156,7 +187,7 @@ describe('unknown workspaceId detail', () => {
     const error = await detailOf(create.execute({ title: 'X', workspaceId: '/proj/nope', urgency: 'normal' }, exec))
     expect(error.code).toBe('not_found')
     expect(error.message).toContain('expected a project id or its directory path')
-    expect(error.message).toContain('this session\'s project is ws-a')
+    expect(error.message).toContain('retry with workspaceId=ws-a')
   })
 
   it('R11: create resolves a project path and stores the id', async () => {
