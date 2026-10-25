@@ -1,5 +1,17 @@
 # 更新日志 / Changelog
 
+### 0.9.6 — 2026-10-25
+
+- **关联工作区认领（[#62](https://github.com/cloader/dsh-taskboard/pull/62)，感谢 [@reysonk](https://github.com/reysonk)）**：新增看板全局设置 `allowClaimFromLinkedRoots`，默认关闭；开启后，会话可以认领其已挂载关联工作区中的任务，任务归属保持不变。需要多根工作区插件，服务缺失或调用抛错时退回主根认领规则。
+- **协议与边界说明**：同步 Agent 协议和中英文设置提示；跨主根认领后须使用任务所属项目目录，并遵守原有文件权限。创建规则不变，仍支持通过已注册项目 ID 或可解析的项目目录创建任务。
+- **回归覆盖**：覆盖关联根认领、默认拒绝、服务不可用、错误提示、跨项目创建和协议约束；44 个测试文件、583 个测试通过。
+
+**English:**
+
+- **Claim from linked workspace roots ([#62](https://github.com/cloader/dsh-taskboard/pull/62), thanks [@reysonk](https://github.com/reysonk))**: add the board-wide `allowClaimFromLinkedRoots` setting, off by default. When enabled, sessions may claim tasks in attached workspace roots without changing task ownership. Requires the multi-root workspace plugin; missing or throwing services fall back to primary-root claiming.
+- **Protocol and scope guidance**: align the agent protocol and bilingual settings hints. Cross-root work must use the task project directory and respect existing file permissions. Creation rules remain unchanged: registered project IDs and resolvable project directories are accepted.
+- **Regression coverage**: cover linked-root claims, default rejection, unavailable services, error hints, cross-project creation and protocol constraints; all 583 tests across 44 files pass.
+
 ### 0.9.5 — 2026-10-25
 
 - **项目路径与纠错提示（#58 / #59）**：`taskboard_list` 和 `taskboard_create` 的 `workspaceId` 支持已注册项目根目录的绝对路径，创建任务时仍保存项目 ID。未知项目继续返回 `not_found`；错误详情提供本会话所属项目的可重试 ID，无法识别所属项目时最多列出 8 个项目 ID。感谢 [@Ausli](https://github.com/Ausli) 的贡献。

@@ -275,6 +275,12 @@ Real-deployment validation on 2026-10-16 read 4 Bugs, 4 linked Stories and 8 Tas
 
 ## Changelog
 
+### 0.9.6
+
+- **Claim from linked workspace roots ([#62](https://github.com/cloader/dsh-taskboard/pull/62), thanks [@reysonk](https://github.com/reysonk))**: add the board-wide `allowClaimFromLinkedRoots` setting, off by default. When enabled, sessions may claim tasks in attached workspace roots without changing task ownership. Requires the multi-root workspace plugin; missing or throwing services fall back to primary-root claiming.
+- **Protocol and scope guidance**: align the agent protocol and bilingual settings hints. Cross-root work must use the task project directory and respect existing file permissions. Creation rules remain unchanged: registered project IDs and resolvable project directories are accepted.
+- **Regression coverage**: cover linked-root claims, default rejection, unavailable services, error hints, cross-project creation and protocol constraints; all 583 tests across 44 files pass.
+
 ### 0.9.5
 
 - **Project paths and correction hints (#58 / #59)**: `taskboard_list` and `taskboard_create` accept the absolute path of a registered project root as `workspaceId`, while created tasks still store the project ID. Unknown projects continue to fail with `not_found`; error details provide a reusable ID for the calling session project, or list up to 8 project IDs when the session cannot be associated. Thanks to [@Ausli](https://github.com/Ausli).
