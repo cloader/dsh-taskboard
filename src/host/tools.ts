@@ -27,6 +27,7 @@ import type { WorkspaceRegistry } from '@deepseek-ai/dsh-workspace'
 import { defineTool } from './sdk.ts'
 import {
   MAX_CHECKLIST_ITEMS,
+  allowClaimFromLinkedRootsOf,
   asIsolation,
   asPermission,
   asStatus,
@@ -220,6 +221,12 @@ export interface ToolDeps {
    * in which case only the structural check applies.
    */
   modelProviders?: () => string[] | undefined
+  /**
+   * The session cwd's linked multi-root workspace roots (canonical paths), from
+   * the optional `multiRootScope` service; undefined = the DSH build has no
+   * multi-root support, so only the primary root can ever claim.
+   */
+  linkedRoots?: (cwd: string) => Promise<readonly string[] | undefined> | readonly string[] | undefined
 }
 
 /** Validate a pinned model: structural check always, provider route when known. */
@@ -245,6 +252,41 @@ async function callerWorkspace(deps: ToolDeps, exec: ToolRunContext): Promise<st
   if (typeof cwd !== 'string' || cwd.length === 0) return undefined
   const ws = await deps.workspaces.resolveByPath(cwd)
   return ws?.id
+}
+
+/** The projects a claiming session may reach: its own plus every linked root's. */
+type ClaimScope = {
+  /** Project of the session's own workspace root, when affiliated. */
+  wsId?: string
+  /** Projects reached through the session's additional (multi-root) roots. */
+  linkedWsIds: ReadonlySet<string>
+}
+
+/**
+ * Resolve what the claiming session may reach. The linked part is only
+ * computed when the host exposes `multiRootScope`; every failure degrades to
+ * "no linked roots" so the historical primary-root rule still applies.
+ */
+async function callerClaimScope(deps: ToolDeps, exec: ToolRunContext): Promise<ClaimScope> {
+  const wsId = await callerWorkspace(deps, exec)
+  const linkedWsIds = new Set<string>()
+  const cwd = exec.agent?.session.header.cwd
+  if (deps.linkedRoots === undefined || typeof cwd !== 'string' || cwd.length === 0) return { wsId, linkedWsIds }
+  let roots: readonly string[] | undefined
+  try {
+    roots = await deps.linkedRoots(cwd)
+  } catch {
+    return { wsId, linkedWsIds }
+  }
+  if (roots === undefined) return { wsId, linkedWsIds }
+  for (const root of roots) {
+    if (typeof root !== 'string' || root.length === 0) continue
+    try {
+      const ws = await deps.workspaces.resolveByPath(root)
+      if (ws !== undefined) linkedWsIds.add(ws.id)
+    } catch { /* an unresolvable root grants nothing */ }
+  }
+  return { wsId, linkedWsIds }
 }
 
 /** How many registered projects a not_found detail may enumerate. */
@@ -702,8 +744,8 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
         // Claim boundary (policy gate): resolving the caller's workspace is
         // async, so it happens BEFORE the mutation — the comparison runs INSIDE
         // against the FRESH task (stronger than the old stale-clone compare).
-        const callerWsId = to === 'in_progress'
-          ? await callerWorkspace(deps, exec as ToolRunContext)
+        const claimScope = to === 'in_progress'
+          ? await callerClaimScope(deps, exec as ToolRunContext)
           : undefined
         // R1: every state guard + the write itself run inside the mutation.
         let next: TaskRecord | undefined
@@ -726,9 +768,22 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           if (task.status === 'in_progress' && task.claimedBy !== undefined && task.claimedBy !== actor.sessionId) {
             throw new ToolError(ERR.forbidden, `task is held by session ${task.claimedBy}; never take over another session's claim`)
           }
-          // Claim boundary: the calling session must belong to the task's project.
-          if (isClaim(task.status, to) && callerWsId !== task.workspaceId) {
-            throw new ToolError(ERR.workspaceMismatch, 'only a session inside this task\'s project may claim it')
+          // Claim boundary: the calling session must belong to the task's
+          // project — either through its own workspace root (historical rule)
+          // or, when the board enables it, through one of its linked multi-root
+          // workspace roots.
+          if (isClaim(task.status, to)) {
+            const linkedClaim = allowClaimFromLinkedRootsOf(ledger.settings) && claimScope !== undefined
+            const reached = claimScope?.wsId === task.workspaceId
+              || (linkedClaim && claimScope!.linkedWsIds.has(task.workspaceId))
+            if (!reached) {
+              throw new ToolError(
+                ERR.workspaceMismatch,
+                allowClaimFromLinkedRootsOf(ledger.settings)
+                  ? 'only a session inside this task\'s project (or one of its linked workspace roots) may claim it'
+                  : 'only a session inside this task\'s project may claim it',
+              )
+            }
           }
           next = structuredClone(task)
           next.status = to

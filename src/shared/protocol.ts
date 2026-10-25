@@ -192,6 +192,12 @@ export type BoardSettings = {
   defaultIsolation?: IsolationMode
   /** Automatically capture external workspace sessions into the taskboard (default: false). */
   syncExternalSessions?: boolean
+  /**
+   * Allow an agent session to CLAIM a task of a project it reaches only through
+   * a linked (multi-root) workspace root instead of its own workspace root
+   * (default: false — the primary-root-only rule).
+   */
+  allowClaimFromLinkedRoots?: boolean
   /** Default permission preset applied when a NEW task is created without an explicit choice (0.5.5, default: 'workspace-write'). */
   defaultPermission?: PermissionMode
   /** Model and optional reasoning effort materialized onto NEW tasks; absent = deployment default. */
@@ -230,6 +236,12 @@ export function asBoardSettings(raw: unknown): BoardSettings {
       throw new Error('syncExternalSessions must be a boolean')
     }
     out.syncExternalSessions = e.syncExternalSessions
+  }
+  if (e.allowClaimFromLinkedRoots !== undefined) {
+    if (typeof e.allowClaimFromLinkedRoots !== 'boolean') {
+      throw new Error('allowClaimFromLinkedRoots must be a boolean')
+    }
+    out.allowClaimFromLinkedRoots = e.allowClaimFromLinkedRoots
   }
   if (e.defaultPermission !== undefined) {
     out.defaultPermission = asPermission(e.defaultPermission)
@@ -293,6 +305,11 @@ export function defaultIsolationOf(settings?: BoardSettings): IsolationMode {
 /** The effective external session sync switch (board setting → factory default false). */
 export function defaultSyncExternalSessionsOf(settings?: BoardSettings): boolean {
   return settings?.syncExternalSessions ?? false
+}
+
+/** The effective linked-root claim switch (board setting → factory default false). */
+export function allowClaimFromLinkedRootsOf(settings?: BoardSettings): boolean {
+  return settings?.allowClaimFromLinkedRoots ?? false
 }
 
 /** The effective default permission preset for NEW tasks (board setting → factory default 'workspace-write'). */
