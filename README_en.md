@@ -5,6 +5,8 @@ English | [简体中文](./README.md)
 
 # dsh-taskboard
 
+> **Contributing and pull requests**: branch from `dev` for features, fixes and documentation, and set your PR base to **`dev`**. `main` is the protected stable release branch; maintainers integrate releases through a `dev → main` PR. CI must pass before merging into `main`.
+
 A **task board plugin for DeepSeek Harness**: humans create cards, agents claim and execute them, humans review and accept. Tasks live on projects (= workspaces), support per-task model & preset selection, and can run manually or on a cron schedule — full two-way collaboration from card to sign-off.
 
 - **Closed loop**: human creates a card → agent claims & executes → structured hand-off report → human accepts (✓ done / ✗ send back with a reason)
