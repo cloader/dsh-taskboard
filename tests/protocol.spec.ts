@@ -172,6 +172,14 @@ describe('protocol text', () => {
     expect(TASKBOARD_PROTOCOL).toMatch(/项目边界/)
   })
 
+  it('explains the opt-in linked-root exception and task directory discipline', () => {
+    expect(TASKBOARD_PROTOCOL).toContain('默认只有属于任务所在项目的会话')
+    expect(TASKBOARD_PROTOCOL).toContain('仅当看板开启 allowClaimFromLinkedRoots')
+    expect(TASKBOARD_PROTOCOL).toContain('任务项目是本会话已挂载的关联工作区')
+    expect(TASKBOARD_PROTOCOL).toContain('必须使用任务所属项目的目录')
+    expect(TASKBOARD_PROTOCOL).toContain('关联根可见性不代表写入权限')
+  })
+
   it('locks the 0.4.0 report/checklist handoff discipline', () => {
     expect(TASKBOARD_PROTOCOL).toMatch(/taskboard_execution_report 提交结构化报告/)
     expect(TASKBOARD_PROTOCOL).toMatch(/taskboard_checklist 逐项勾选/)

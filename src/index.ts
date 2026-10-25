@@ -123,11 +123,23 @@ export function apply(ctx: Context): void {
         : llm.listProviders().map(p => p.id)
     } catch { return undefined }
   }
+  // Optional multi-root support (`dsh-plugin-multi-root-workspace`): the linked
+  // roots of a session cwd come from its `multiRootScope` service. Every
+  // failure or a build without the service degrades to `undefined` — the
+  // primary-root-only claim rule that has always applied.
+  const linkedRoots = (cwd: string): readonly string[] | undefined => {
+    try {
+      const scope = (activeWorkspaceContext ?? ctx).get('multiRootScope') as
+        { scopeOf?: (primaryRoot: string) => readonly string[] } | undefined
+      return typeof scope?.scopeOf === 'function' ? scope.scopeOf(cwd) : undefined
+    } catch { return undefined }
+  }
   const disposeTools = registerTaskboardTools(ctx, {
     store,
     workspaces,
     now,
     modelProviders,
+    linkedRoots,
     ready: async () => {
       if (activeWorkspaces === undefined) {
         throw new ToolError(ERR.notReady, 'workspace service is not ready; retry after host startup completes')

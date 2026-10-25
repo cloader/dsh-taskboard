@@ -584,6 +584,7 @@ describe('client half', () => {
       queueMaxAgeMinutes: 0,
       dispatchIntervalMs: 1_000,
       completedDisplayLimit: 50,
+      allowClaimFromLinkedRoots: false,
     }])
 
     const storageInput = host.querySelector<HTMLInputElement>('.dsh-atb-storage-path')!

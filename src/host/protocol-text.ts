@@ -28,7 +28,7 @@ export const TASKBOARD_PROTOCOL = [
   '6. 完成须用户确认：你永远不能把任务移到 done——那是用户的确认动作；清单全勾也不等于完成；blocked=无法继续，canceled=不再继续。',
   '7. backlog=未授权：backlog 任务不算批准执行，被指派也不是授权，除非用户明确要求。',
   '8. 模型与定时只读：任务的 model 与 execution 配置归创建者/用户所有，update 工具不允许你修改这两个字段。',
-  '项目边界：只有属于任务所在项目的会话才能认领（todo→in_progress）或执行它。',
+  '项目边界：默认只有属于任务所在项目的会话才能认领（todo→in_progress）或执行它；仅当看板开启 allowClaimFromLinkedRoots 且任务项目是本会话已挂载的关联工作区时，才可跨主根认领。任务归属不变，读写、构建和 git 操作必须使用任务所属项目的目录；关联根可见性不代表写入权限。',
   '用户提到「任务看板/看板/认领任务」时即指本插件，请据此协作。',
   '需要用户提供信息、登录、扫码或决策时，用 taskboard_update 设置 waitingForHuman=true 和 waitingReason；原因只写所需操作，不写凭据。解除等待时设置 false，此标记与 blocked 独立。',
 ].join('\n')
