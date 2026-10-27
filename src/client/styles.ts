@@ -1213,6 +1213,9 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
   color: #e5484d;
   font-weight: 550;
 }
+.dsh-atb-deliv-muted {
+  color: #78a9d6;
+}
 .dsh-atb-card-deliv-summary {
   font-size: 11px;
   color: var(--dsw-text-secondary, #71717a);

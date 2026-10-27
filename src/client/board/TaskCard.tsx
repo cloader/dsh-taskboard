@@ -193,7 +193,7 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
                 • {t('card.deliv.checksCount', { n: latestReport.checks.length })}
               </span>
             ) : (
-              <span className="dsh-atb-card-deliv-val dsh-atb-deliv-warn">
+              <span className="dsh-atb-card-deliv-val dsh-atb-deliv-muted">
                 ⚠ {t('card.deliv.noVerificationWarn')}
               </span>
             )}
