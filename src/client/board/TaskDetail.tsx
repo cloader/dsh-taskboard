@@ -638,6 +638,22 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
   // share one in-flight guard: a double click used to fire duplicate runs or
   // copies while the first round-trip was still pending (review P0).
   const [actionBusy, setActionBusy] = useState(false)
+  // The task id is the only stable handle to quote when talking about a card
+  // from the outside (agents, logs, issue reports) and the detail panel never
+  // showed it. Click copies it, the label acknowledges the copy.
+  const [idCopyState, setIdCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const idCopyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(idCopyTimer.current), [])
+  const copyTaskId = (): void => {
+    void Promise.resolve().then(() => navigator.clipboard.writeText(task.id)).then(() => {
+      setIdCopyState('copied')
+    }).catch(() => {
+      setIdCopyState('failed')
+    }).finally(() => {
+      clearTimeout(idCopyTimer.current)
+      idCopyTimer.current = setTimeout(() => setIdCopyState('idle'), 1500)
+    })
+  }
   // 执行记录默认折叠：细节按需展开，避免长卡（用户要求 0.9.x）。
   const [execOpen, setExecOpen] = useState(false)
   const { alert: showAlert, el: alertEl } = useAlert()
@@ -778,6 +794,17 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
           </div>
           <div className="dsh-atb-detail-sub">
             {t('detail.sub.line', { time: fmtTime(task.updatedAt), who: task.updatedBy.kind === 'agent' ? `🤖 ${shortId(task.updatedBy.sessionId)}` : task.updatedBy.kind === 'system' ? t('detail.updatedBy.system') : t('detail.updatedBy.user') })}
+            <button
+              type="button"
+              className="dsh-atb-detail-id"
+              data-state={idCopyState}
+              title={t('detail.sub.idTitle')}
+              onClick={copyTaskId}
+            >
+              {idCopyState === 'copied'
+                ? t('detail.sub.idCopied')
+                : idCopyState === 'failed' ? t('detail.sub.idCopyFailed') : task.id}
+            </button>
           </div>
         </div>
         <div className="dsh-atb-detail-topbtns">

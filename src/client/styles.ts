@@ -448,6 +448,15 @@ button.dsh-atb-chip2.dsh-atb-chip-btn:hover {
 .dsh-atb-chip2[data-tone="relaxed"] { background: rgba(62,99,221,.13); color: #6d92e8; }
 .dsh-atb-detail-sub { font-size: 11.5px; color: var(--dsw-text-secondary, gray); }
 
+.dsh-atb-detail-id {
+  margin-left: 8px; padding: 1px 6px; border: 1px solid rgba(128,128,128,.25); border-radius: 5px;
+  background: transparent; color: inherit; font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px; line-height: 1.5; cursor: copy;
+}
+.dsh-atb-detail-id:hover { border-color: rgba(128,128,128,.55); color: var(--dsw-text, inherit); }
+.dsh-atb-detail-id[data-state="copied"] { border-color: rgba(63,166,106,.55); color: #3fa66a; }
+.dsh-atb-detail-id[data-state="failed"] { border-color: rgba(220,80,80,.55); color: #d05050; }
+
 .dsh-atb-fieldcard {
   border: 1px solid var(--dsw-border, rgba(128,128,128,.22)); border-radius: 10px;
   padding: 9px 11px; display: flex; flex-direction: column; gap: 5px;
