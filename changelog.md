@@ -1,5 +1,15 @@
 # 更新日志 / Changelog
 
+### 未发布 / Unreleased
+
+- **俄语界面（ru）**：新增 `src/client/i18n/ru.ts`（654 个键，与 zh/en 完全对齐），`LocaleId` 扩展为 `'zh' | 'en' | 'ru'`，字典与 `<html lang>`/`navigator` 回退检测支持 `ru`。内置模板正文仍复用英文内容（本 PR 不翻译模板）。
+- **回归覆盖**：三语键集一致性、`ru` 值非空、枚举映射、`ru` 语言探测与占位符替换、模板回退，以及客户端 `t('…')` 字面量必须存在于全部字典；44 个测试文件、585 个测试通过。
+
+**English:**
+
+- **Russian UI (ru)**: add `src/client/i18n/ru.ts` (654 keys, identical key set to zh/en); widen `LocaleId` to `'zh' | 'en' | 'ru'`, and accept `ru` in the dictionary plus the `<html lang>` / `navigator` fallback detection. Built-in template bodies keep using the English content (not translated by this PR).
+- **Regression coverage**: trilingual key parity, non-empty `ru` values, enum maps, `ru` locale detection and placeholder substitution, template fallback, and a source scan asserting every client `t('…')` literal exists in all dictionaries; all 585 tests across 44 files pass.
+
 ### 0.9.6 — 2026-10-25
 
 - **关联工作区认领（[#62](https://github.com/cloader/dsh-taskboard/pull/62)，感谢 [@reysonk](https://github.com/reysonk)）**：新增看板全局设置 `allowClaimFromLinkedRoots`，默认关闭；开启后，会话可以认领其已挂载关联工作区中的任务，任务归属保持不变。需要多根工作区插件，服务缺失或调用抛错时退回主根认领规则。

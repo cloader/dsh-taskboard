@@ -10,22 +10,30 @@
  */
 import type { TaskTemplate, TaskTemplateSpec } from '../../shared/api.ts'
 import { builtinTemplateContent } from '../../shared/builtin-templates.ts'
-import { localeStore } from './runtime.ts'
+import { localeStore, type LocaleId } from './runtime.ts'
+
+/**
+ * Built-in template content ships in zh/en only: ru reuses the English
+ * content (template bodies and categories are not translated by this fork).
+ */
+function templateLocale(locale: LocaleId): 'zh' | 'en' {
+  return locale === 'zh' ? 'zh' : 'en'
+}
 
 /** The localized display name for a template (stored name for custom ones). */
 export function localizeBuiltinName(tpl: Pick<TaskTemplate, 'id' | 'name' | 'builtin'>): string {
   if (tpl.builtin !== true) return tpl.name
-  return builtinTemplateContent(tpl.id, localeStore.getSnapshot().active)?.name ?? tpl.name
+  return builtinTemplateContent(tpl.id, templateLocale(localeStore.getSnapshot().active))?.name ?? tpl.name
 }
 
 /** The localized task spec for a template (stored spec for custom ones). */
 export function localizeBuiltinTask(tpl: Pick<TaskTemplate, 'id' | 'task' | 'builtin'>): TaskTemplateSpec {
   if (tpl.builtin !== true) return tpl.task
-  return builtinTemplateContent(tpl.id, localeStore.getSnapshot().active)?.task ?? tpl.task
+  return builtinTemplateContent(tpl.id, templateLocale(localeStore.getSnapshot().active))?.task ?? tpl.task
 }
 
 /** The localized library category for a template (stored category for custom ones). */
 export function localizeBuiltinCategory(tpl: Pick<TaskTemplate, 'id' | 'category' | 'builtin'>): string | undefined {
   if (tpl.builtin !== true) return tpl.category
-  return builtinTemplateContent(tpl.id, localeStore.getSnapshot().active)?.category ?? tpl.category
+  return builtinTemplateContent(tpl.id, templateLocale(localeStore.getSnapshot().active))?.category ?? tpl.category
 }

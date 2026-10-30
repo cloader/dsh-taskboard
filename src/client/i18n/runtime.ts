@@ -1,5 +1,5 @@
 /**
- * Taskboard i18n runtime: the zh/en dictionary lookup plus the locale
+ * Taskboard i18n runtime: the zh/en/ru dictionary lookup plus the locale
  * SOURCE adapter.
  *
  * Locale source, in priority order:
@@ -23,9 +23,14 @@
 import { useSyncExternalStore } from 'react'
 import { zh, type TaskboardDict } from './zh.ts'
 import { en } from './en.ts'
+import { ru } from './ru.ts'
 
-/** Shipped locales (mirrors the DSH locale plugin's LOCALE_IDS). */
-export type LocaleId = 'zh' | 'en'
+/**
+ * Shipped locales: the DSH locale plugin's built-ins (zh, en) plus ru,
+ * which the DSH locale service accepts as an open language-pack id
+ * (`LocaleId = string` host-side) once a Russian language pack is active.
+ */
+export type LocaleId = 'zh' | 'en' | 'ru'
 
 /** Immutable locale state published on every change. */
 export interface TaskboardLocaleSnapshot {
@@ -37,7 +42,7 @@ export interface TaskboardLocaleSnapshot {
 /** Translate function: flat key lookup + {name} substitution. */
 export type Translate = (key: string, params?: Record<string, string | number>) => string
 
-const DICTS: Record<LocaleId, TaskboardDict> = { zh, en }
+const DICTS: Record<LocaleId, TaskboardDict> = { zh, en, ru }
 
 /**
  * Narrow structural face of the DSH LocaleRuntime this module consumes.
@@ -74,10 +79,10 @@ function clearLateAttach(): void {
 }
 
 function isLocaleId(value: string): value is LocaleId {
-  return value === 'zh' || value === 'en'
+  return value === 'zh' || value === 'en' || value === 'ru'
 }
 
-/** Derive the fallback locale without the DSH service (zh only when asked). */
+/** Derive the fallback locale without the DSH service (zh/ru only when asked). */
 function detectFallbackLocale(): LocaleId {
   try {
     if (typeof document !== 'undefined') {
@@ -85,14 +90,17 @@ function detectFallbackLocale(): LocaleId {
       if (typeof lang === 'string' && lang.length > 0) {
         const lower = lang.toLowerCase()
         if (lower.startsWith('zh')) return 'zh'
+        if (lower.startsWith('ru')) return 'ru'
         if (lower.startsWith('en')) return 'en'
       }
     }
   } catch { /* no DOM — fall through */ }
   try {
     if (typeof navigator !== 'undefined') {
-      const lang = navigator.language ?? 'en'
-      return lang.toLowerCase().startsWith('zh') ? 'zh' : 'en'
+      const lang = (navigator.language ?? 'en').toLowerCase()
+      if (lang.startsWith('zh')) return 'zh'
+      if (lang.startsWith('ru')) return 'ru'
+      return 'en'
     }
   } catch { /* no navigator — fall through */ }
   return 'en'
