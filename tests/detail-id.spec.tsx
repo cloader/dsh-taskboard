@@ -68,12 +68,24 @@ describe('task id in the detail header', () => {
     expect(chip.textContent).toBe('t-copy-denied')
   })
 
-  it('shows the id in every locale', async () => {
-    document.documentElement.lang = 'zh-CN'
+  it.each([
+    ['zh-CN', '点击复制任务 ID', '已复制', '复制失败'],
+    ['ru-RU', 'Нажмите, чтобы скопировать ID задачи', 'Скопировано', 'Не удалось скопировать'],
+  ])('localizes the id title and copy feedback in %s', async (locale, title, copied, failed) => {
+    document.documentElement.lang = locale
     disposeI18n()
+    const writeText = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('denied'))
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
     const host = await mount(task({ id: 't-locale' }))
     const chip = host.querySelector<HTMLButtonElement>('.dsh-atb-detail-id')!
     expect(chip.textContent).toBe('t-locale')
-    expect(chip.title).toBe('点击复制任务 ID')
+    expect(chip.title).toBe(title)
+    chip.click()
+    await waitFor(() => chip.getAttribute('data-state') === 'copied')
+    expect(chip.textContent).toBe(copied)
+    expect(writeText).toHaveBeenCalledWith('t-locale')
+    chip.click()
+    await waitFor(() => chip.getAttribute('data-state') === 'failed')
+    expect(chip.textContent).toBe(failed)
   })
 })

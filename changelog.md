@@ -2,13 +2,15 @@
 
 ### 未发布 / Unreleased
 
+- **俄语界面（ru）**：新增 `src/client/i18n/ru.ts`（657 个键，与 zh/en 完全对齐），`LocaleId` 扩展为 `'zh' | 'en' | 'ru'`，字典与 `<html lang>`/`navigator` 回退检测支持 `ru`。内置模板正文仍复用英文内容（本 PR 不翻译模板）。
 - **任务详情显示 ID**：详情头部在「更新 … · 最近操作 …」之后显示任务 ID，等宽字体、点击即复制并短暂提示「已复制」/「复制失败」。此前 ID 只用于搜索匹配和会话内部，界面从未展示，无法在对话、日志或问题报告里指认具体卡片。
-- **回归覆盖**：新增 `tests/detail-id.spec.tsx`，覆盖渲染、复制成功、复制被拒与多语言（en / zh）下的标题与文案。
+- **回归覆盖**：三语键集一致性、值非空、枚举映射、语言探测与占位符替换、模板回退及客户端翻译键扫描；任务 ID 渲染、复制成功与失败，以及中英俄文案。
 
 **English:**
 
+- **Russian UI (ru)**: add `src/client/i18n/ru.ts` (657 keys, identical key set to zh/en); widen `LocaleId` to `'zh' | 'en' | 'ru'`, and accept `ru` in the dictionary plus the `<html lang>` / `navigator` fallback detection. Built-in template bodies keep using the English content (not translated by this PR).
 - **Task ID in the detail header**: the detail panel now shows the task ID after the "Updated … · last change by …" line, in a monospace chip that copies on click and briefly acknowledges with "Copied" or "Copy failed". The UI never rendered the ID before, so a card could not be pointed at from a conversation, a log or a bug report.
-- **Regression coverage**: add `tests/detail-id.spec.tsx` covering rendering, a successful copy, a denied copy and the en / zh labels.
+- **Regression coverage**: trilingual key parity, non-empty values, enum maps, locale detection and placeholder substitution, template fallback and client translation-key scanning; task ID rendering, successful and denied copies, and en / zh / ru labels.
 
 ### 0.9.6 — 2026-10-25
 

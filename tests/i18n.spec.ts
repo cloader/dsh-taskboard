@@ -1,15 +1,16 @@
 // @vitest-environment jsdom
 /**
- * i18n suite: bilingual key parity, translate() lookup + placeholder
- * substitution, fallback-locale detection, the DSH locale service
- * soft-attach (live switch), and a source scan asserting every t('...')
- * literal in the client actually exists in both dictionaries.
+ * i18n suite: trilingual key parity (zh/en/ru), translate() lookup +
+ * placeholder substitution, fallback-locale detection, the DSH locale
+ * service soft-attach (live switch), and a source scan asserting every
+ * t('...') literal in the client actually exists in all dictionaries.
  */
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { en } from '../src/client/i18n/en.ts'
+import { ru } from '../src/client/i18n/ru.ts'
 import { zh } from '../src/client/i18n/zh.ts'
 import { localizeBuiltinCategory, localizeBuiltinName, localizeBuiltinTask } from '../src/client/i18n/templates.ts'
 import { BUILTIN_TEMPLATE_IDS, builtinTemplateContent } from '../src/shared/builtin-templates.ts'
@@ -17,12 +18,13 @@ import { COLUMN_KEYS, MOVE_KEYS, OUTCOME_KEYS, STATUS_KEYS, URGENCY_KEYS } from 
 import { disposeI18n, initI18n, localeStore, translate } from '../src/client/i18n/runtime.ts'
 
 describe('dictionaries', () => {
-  it('zh and en carry identical key sets', () => {
+  it('zh, en and ru carry identical key sets', () => {
     expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())
+    expect(Object.keys(ru).sort()).toEqual(Object.keys(en).sort())
   })
 
   it('no value is empty (glue fragments may carry intentional edge spaces)', () => {
-    for (const [dict, name] of [[zh, 'zh'], [en, 'en']] as const) {
+    for (const [dict, name] of [[zh, 'zh'], [en, 'en'], [ru, 'ru']] as const) {
       for (const [key, value] of Object.entries(dict)) {
         expect(value.length, name + ':' + key).toBeGreaterThan(0)
         expect(value.trim().length, name + ':' + key).toBeGreaterThan(0)
@@ -35,6 +37,7 @@ describe('dictionaries', () => {
       for (const key of Object.values(map)) {
         expect(zh, key).toHaveProperty(key)
         expect(en, key).toHaveProperty(key)
+        expect(ru, key).toHaveProperty(key)
       }
     }
   })
@@ -46,6 +49,15 @@ describe('translate()', () => {
     disposeI18n()
     expect(localeStore.getSnapshot().active).toBe('zh')
     expect(translate('board.title')).toBe(zh['board.title'])
+  })
+
+  it('resolves ru via <html lang> and substitutes its placeholders', () => {
+    document.documentElement.lang = 'ru-RU'
+    disposeI18n()
+    expect(localeStore.getSnapshot().active).toBe('ru')
+    expect(translate('board.title')).toBe(ru['board.title'])
+    expect(translate('board.count.tasks', { n: 3, rev: 7 })).toBe(ru['board.count.tasks'].replace('{n}', '3').replace('{rev}', '7'))
+    expect(translate('form.prompt.placeholder')).toContain('{{lastExecution}}')
   })
 
   it('resolves en and falls back to the key itself (fail loud, never blank)', () => {
@@ -206,6 +218,14 @@ describe('built-in template localization', () => {
     expect(localizeBuiltinCategory(builtin)).toBe('开发')
   })
 
+  it('ru reuses the English built-in template content', () => {
+    document.documentElement.lang = 'ru-RU'
+    disposeI18n()
+    expect(localeStore.getSnapshot().active).toBe('ru')
+    expect(localizeBuiltinName(builtin)).toBe('New feature')
+    expect(localizeBuiltinCategory(builtin)).toBe('Development')
+  })
+
   it('custom templates and unknown built-in ids pass through untouched', () => {
     document.documentElement.lang = 'en-US'
     disposeI18n()
@@ -272,7 +292,7 @@ describe('source scan', () => {
     return out
   }
 
-  it('every t(quoted-literal) in the client exists in BOTH dictionaries', () => {
+  it('every t(quoted-literal) in the client exists in ALL dictionaries', () => {
     const missing: string[] = []
     for (const file of walk(clientDir)) {
       const text = readFileSync(file, 'utf8')
@@ -280,6 +300,7 @@ describe('source scan', () => {
         const key = m[1] ?? ''
         if (!(key in zh)) missing.push('zh missing: ' + key)
         if (!(key in en)) missing.push('en missing: ' + key)
+        if (!(key in ru)) missing.push('ru missing: ' + key)
       }
     }
     expect(missing).toEqual([])
