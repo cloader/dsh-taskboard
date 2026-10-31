@@ -3,17 +3,18 @@
  * SOURCE adapter.
  *
  * Locale source, in priority order:
- * 1. The DSH locale service (ctx.get('locale'), the same plugin that backs
+ * 1. An explicit taskboard language preference saved in this browser.
+ * 2. The DSH locale service (ctx.get('locale'), the same plugin that backs
  *    设置 → 通用设置 → 语言). Consumed through a NARROW structural face and
  *    attached SOFTLY — the plugin must keep working on compositions where
  *    the service is absent, so 'locale' is deliberately NOT in the client
  *    inject list (a hard inject would wait forever there).
- * 2. A local fallback: <html lang> when the DSH locale plugin maintains it
+ * 3. A local fallback: <html lang> when the DSH locale plugin maintains it
  *    (it points <html lang> at the active locale), else navigator.language,
  *    else 'en' (matches DSH: zh only when something asked for Chinese).
  *
- * Preference WRITES are never made here: switching languages is the DSH
- * settings page's job; this module only reads.
+ * The default preference follows DSH. Overrides only affect this board;
+ * the host language and document language are never changed here.
  *
  * React re-render: useT() subscribes via useSyncExternalStore; the snapshot
  * object is replaced only on locale change, so renders are stable.
@@ -26,15 +27,25 @@ import { en } from './en.ts'
 import { ru } from './ru.ts'
 
 /**
- * Shipped locales: the DSH locale plugin's built-ins (zh, en) plus ru,
- * which the DSH locale service accepts as an open language-pack id
- * (`LocaleId = string` host-side) once a Russian language pack is active.
+ * Shipped locales: zh, en and ru. The local selector can use all three;
+ * selecting ru from DSH itself requires a registered Russian language pack.
  */
 export type LocaleId = 'zh' | 'en' | 'ru'
+export type LocalePreference = 'follow' | LocaleId
+
+const PREFERENCE_KEY = 'dsh-taskboard-locale-v1'
+
+function loadPreference(): LocalePreference {
+  try {
+    const value = localStorage.getItem(PREFERENCE_KEY)
+    return value !== null && isLocaleId(value) ? value : 'follow'
+  } catch { return 'follow' }
+}
 
 /** Immutable locale state published on every change. */
 export interface TaskboardLocaleSnapshot {
   active: LocaleId
+  preference: LocalePreference
   /** Monotonic change counter (source snapshot revision or local bumps). */
   revision: number
 }
@@ -57,7 +68,12 @@ interface LocaleServiceFace {
 
 let service: LocaleServiceFace | undefined
 let unsubscribeService: (() => void) | undefined
-let snapshot: TaskboardLocaleSnapshot = { active: detectFallbackLocale(), revision: 0 }
+let preference = loadPreference()
+let snapshot: TaskboardLocaleSnapshot = {
+  active: preference === 'follow' ? detectFallbackLocale() : preference,
+  preference,
+  revision: 0,
+}
 const listeners = new Set<() => void>()
 
 // Late attach (issue #16): the taskboard client injects NOTHING, so it can
@@ -145,10 +161,30 @@ function startLateAttach(retryGetLocale: (() => unknown) | undefined): void {
   }, 250)
 }
 
-function publish(next: TaskboardLocaleSnapshot): void {
-  if (next.active === snapshot.active && next.revision === snapshot.revision) return
-  snapshot = next
+function publish(next: { active: LocaleId; revision: number }): void {
+  const active = preference === 'follow' ? next.active : preference
+  if (active === snapshot.active && next.revision === snapshot.revision && preference === snapshot.preference) return
+  snapshot = { ...next, active, preference }
   for (const fn of listeners) fn()
+}
+
+function sourceLocale(): LocaleId {
+  try {
+    const active = service?.getSnapshot().active
+    if (active !== undefined && isLocaleId(active)) return active
+  } catch { /* unavailable source: use the document/browser fallback */ }
+  return detectFallbackLocale()
+}
+
+/** Apply immediately and persist locally; never write to the DSH service. */
+export function setLocalePreference(next: LocalePreference): void {
+  if (next !== 'follow' && !isLocaleId(next)) return
+  preference = next
+  try {
+    if (next === 'follow') localStorage.removeItem(PREFERENCE_KEY)
+    else localStorage.setItem(PREFERENCE_KEY, next)
+  } catch { /* storage unavailable: retain the choice for this session */ }
+  publish({ active: sourceLocale(), revision: snapshot.revision + 1 })
 }
 
 /**
@@ -164,7 +200,10 @@ function publish(next: TaskboardLocaleSnapshot): void {
  *   `() => ctx.get?.('locale')`); polled only while no service is attached.
  */
 export function initI18n(localeService: unknown, retryGetLocale?: () => unknown): void {
+  try { unsubscribeService?.() } catch { /* source already gone */ }
+  unsubscribeService = undefined
   const face = asLocaleService(localeService)
+  service = face
   if (face === undefined) {
     // No usable service: resolve the fallback NOW so a caller that inits
     // after the DOM is up gets the current detection, never a stale
@@ -192,6 +231,7 @@ export function disposeI18n(): void {
   try { unsubscribeService?.() } catch { /* source already gone */ }
   unsubscribeService = undefined
   service = undefined
+  preference = loadPreference()
   publish({ active: detectFallbackLocale(), revision: 0 })
 }
 

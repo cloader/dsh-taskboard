@@ -497,6 +497,9 @@ export const en: TaskboardDict = {
 
   // ── board settings modal (SettingsModal) ──────────────────────────
   'set.aria': 'Board settings',
+  'set.language.label': 'Interface language',
+  'set.language.follow': 'Follow DSH (default)',
+  'set.language.hint': 'Applies only to the board in this browser. Changes take effect immediately and are saved automatically.',
   'set.title': 'Board settings',
   'set.subtitle': 'New-task defaults, scheduling, session sync, and local data storage',
   'set.agent.heading': 'Default model and Agent preset',

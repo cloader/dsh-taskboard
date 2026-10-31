@@ -8,7 +8,7 @@ import { TaskFormModal, saveLastModel } from '../src/client/board/TaskFormModal.
 import type { BoardSettings, TaskRecord } from '../src/shared/protocol.ts'
 import type { CreateTaskBody, UpdateSettingsBody, UpdateTaskBody } from '../src/shared/api.ts'
 import { waitFor } from './wait-for.ts'
-import { disposeI18n } from '../src/client/i18n/runtime.ts'
+import { disposeI18n, initI18n, localeStore } from '../src/client/i18n/runtime.ts'
 
 const boardModel = { provider: 'p', model: 'reasoner', reasoningEffort: 'high' }
 const modelKey = (model: { provider: string; model: string }) => JSON.stringify({ provider: model.provider, model: model.model })
@@ -57,6 +57,33 @@ async function setup(initial: BoardSettings = {}) {
 }
 
 describe('board model, effort and preset defaults', () => {
+  it('switches language immediately, preserves drafts, and restores the local preference', async () => {
+    const view = await setup()
+    initI18n({ getSnapshot: () => ({ active: 'zh', revision: 1 }), subscribe: () => () => {} })
+    view.root.render(React.createElement(SettingsModal, { controller: view.controller }))
+    await waitFor(() => view.field('默认模型').options.length === 3)
+    expect(view.field('界面语言').value).toBe('follow')
+    expect(Array.from(view.field('界面语言').options).map(option => option.value)).toEqual(['follow', 'zh', 'en', 'ru'])
+    view.change(view.field('默认模型'), modelKey(boardModel))
+    view.change(view.field('界面语言'), 'en')
+    await waitFor(() => view.host.querySelector('h3')?.textContent === 'Board settings')
+    expect(view.field('Interface language').value).toBe('en')
+    expect(view.field('Default model').value).toBe(modelKey(boardModel))
+    expect(view.saved).toEqual([])
+    expect(document.documentElement.lang).toBe('zh-CN')
+    view.root.render(null)
+    await waitFor(() => view.host.childElementCount === 0)
+    disposeI18n()
+    expect(localeStore.getSnapshot().preference).toBe('en')
+    view.root.render(React.createElement(SettingsModal, { controller: view.controller }))
+    await waitFor(() => view.field('Interface language').value === 'en')
+    view.change(view.field('Interface language'), 'ru')
+    await waitFor(() => view.field('Язык интерфейса').value === 'ru')
+    view.change(view.field('Язык интерфейса'), 'follow')
+    await waitFor(() => view.field('界面语言').value === 'follow')
+    expect(localeStore.getSnapshot().active).toBe('zh')
+  })
+
   it.each(['unavailable', 'missing-effort'] as const)('shows and submits the saved effort when the catalog is %s', async catalogState => {
     const model = { ...boardModel, reasoningEffort: 'xhigh' }
     const view = await setup({ defaultModel: model, defaultPresetId: 'custom' })

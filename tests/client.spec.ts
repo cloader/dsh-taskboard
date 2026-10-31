@@ -550,14 +550,18 @@ describe('client half', () => {
     root.render(React.createElement(SettingsModal, { controller }))
     await new Promise(r => setTimeout(r, 10))
 
-    const isoOpts = () => Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-diag-sec:nth-child(1) .dsh-atb-mode-opt'))
+    const sectionOptions = (heading: string) => {
+      const section = Array.from(host.querySelectorAll('.dsh-atb-diag-sec')).find(el => el.querySelector('h4')?.textContent === heading)
+      return Array.from(section!.querySelectorAll<HTMLButtonElement>('.dsh-atb-mode-opt'))
+    }
+    const isoOpts = () => sectionOptions('默认执行隔离')
     expect(isoOpts().length).toBe(2)
     expect(isoOpts()[0]!.textContent).toContain('原目录执行')
     // Current setting worktree is the selected draft.
     expect(isoOpts()[0]!.dataset.on).toBe('false')
     expect(isoOpts()[1]!.dataset.on).toBe('true')
 
-    const syncOpts = () => Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-diag-sec:nth-child(2) .dsh-atb-mode-opt'))
+    const syncOpts = () => sectionOptions('自动同步工作区会话')
     expect(syncOpts().length).toBe(2)
     expect(syncOpts()[0]!.textContent).toContain('关闭同步')
     expect(syncOpts()[1]!.textContent).toContain('自动纳入会话')

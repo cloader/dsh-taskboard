@@ -8,14 +8,14 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { en } from '../src/client/i18n/en.ts'
 import { ru } from '../src/client/i18n/ru.ts'
 import { zh } from '../src/client/i18n/zh.ts'
 import { localizeBuiltinCategory, localizeBuiltinName, localizeBuiltinTask } from '../src/client/i18n/templates.ts'
 import { BUILTIN_TEMPLATE_IDS, builtinTemplateContent } from '../src/shared/builtin-templates.ts'
 import { COLUMN_KEYS, MOVE_KEYS, OUTCOME_KEYS, STATUS_KEYS, URGENCY_KEYS } from '../src/client/board/labels.ts'
-import { disposeI18n, initI18n, localeStore, translate } from '../src/client/i18n/runtime.ts'
+import { disposeI18n, initI18n, localeStore, setLocalePreference, translate } from '../src/client/i18n/runtime.ts'
 
 describe('dictionaries', () => {
   it('zh, en and ru carry identical key sets', () => {
@@ -86,6 +86,8 @@ describe('translate()', () => {
 })
 
 describe('DSH locale service soft-attach', () => {
+  beforeEach(() => { localStorage.clear(); disposeI18n() })
+  afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); disposeI18n() })
   /** Minimal LocaleRuntime double: snapshot + subscribe only. */
   function fakeService(initial: string): { face: unknown; set(active: string): void } {
     let snap = { active: initial, revision: 1 }
@@ -108,6 +110,67 @@ describe('DSH locale service soft-attach', () => {
     expect(localeStore.getSnapshot().active).toBe('en')
     expect(translate('board.title')).toBe(en['board.title'])
     disposeI18n()
+  })
+
+  it('keeps a manual preference across host switches and follows the latest host locale on reset', () => {
+    const svc = fakeService('zh')
+    initI18n(svc.face)
+    expect(localeStore.getSnapshot().preference).toBe('follow')
+    setLocalePreference('ru')
+    expect(translate('board.title')).toBe(ru['board.title'])
+    svc.set('en')
+    expect(localeStore.getSnapshot()).toMatchObject({ preference: 'ru', active: 'ru' })
+    setLocalePreference('follow')
+    expect(localeStore.getSnapshot()).toMatchObject({ preference: 'follow', active: 'en' })
+    expect(localStorage.getItem('dsh-taskboard-locale-v1')).toBeNull()
+    svc.set('zh')
+    expect(localeStore.getSnapshot().active).toBe('zh')
+  })
+
+  it('restores a saved preference before and after the DSH service attaches', () => {
+    setLocalePreference('ru')
+    disposeI18n()
+    document.documentElement.lang = 'en'
+    initI18n(undefined)
+    expect(localeStore.getSnapshot()).toMatchObject({ preference: 'ru', active: 'ru' })
+    initI18n(fakeService('zh').face)
+    expect(localeStore.getSnapshot().active).toBe('ru')
+    setLocalePreference('follow')
+    expect(localeStore.getSnapshot().active).toBe('zh')
+  })
+
+  it('defaults to following DSH when the saved preference is invalid', () => {
+    localStorage.setItem('dsh-taskboard-locale-v1', 'invalid')
+    disposeI18n()
+    initI18n(fakeService('zh').face)
+    expect(localeStore.getSnapshot()).toMatchObject({ preference: 'follow', active: 'zh' })
+  })
+
+  it('still switches locally when storage is unavailable', () => {
+    initI18n(fakeService('zh').face)
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Quota exceeded', 'QuotaExceededError')
+    })
+    expect(() => setLocalePreference('ru')).not.toThrow()
+    expect(write).toHaveBeenCalledOnce()
+    expect(localeStore.getSnapshot()).toMatchObject({ preference: 'ru', active: 'ru' })
+    const remove = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('Access denied', 'SecurityError')
+    })
+    expect(() => setLocalePreference('follow')).not.toThrow()
+    expect(remove).toHaveBeenCalledOnce()
+    expect(localeStore.getSnapshot().active).toBe('zh')
+  })
+
+  it('notifies the settings selector when the preference changes without changing the active language', () => {
+    initI18n(fakeService('zh').face)
+    const listener = vi.fn()
+    const unsubscribe = localeStore.subscribe(listener)
+    try {
+      setLocalePreference('zh')
+      expect(listener).toHaveBeenCalledOnce()
+      expect(localeStore.getSnapshot()).toMatchObject({ preference: 'zh', active: 'zh' })
+    } finally { unsubscribe() }
   })
 
   it('ignores absent and malformed services (fallback takes over)', () => {

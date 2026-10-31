@@ -499,6 +499,9 @@ export const zh = {
 
   // ── board settings modal (SettingsModal) ──────────────────────────
   'set.aria': '看板设置',
+  'set.language.label': '界面语言',
+  'set.language.follow': '跟随 DSH（默认）',
+  'set.language.hint': '仅影响当前浏览器中的看板，选择后立即生效并自动保存。',
   'set.title': '看板设置',
   'set.subtitle': '新建任务、调度、会话同步与本地数据存储',
   'set.agent.heading': '默认模型与 Agent preset',

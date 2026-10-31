@@ -1068,6 +1068,16 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
 .dsh-atb-settings-content { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .dsh-atb-settings-content > [hidden] { display: none !important; }
 .dsh-atb-settings-content > .dsh-atb-modal-body { flex: 1; min-height: 0; max-height: none; }
+.dsh-atb-set .dsh-atb-field-inline {
+  display: grid;
+  grid-template-columns: min(128px, 35%) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.dsh-atb-settings-content > .dsh-atb-modal-body > .dsh-atb-diag-sec {
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2, var(--dsw-border, rgba(128,128,128,.22)));
+}
 @media (max-width: 600px) { .dsh-atb-settings-nav { flex-basis: 94px; padding: 12px 6px; } .dsh-atb-settings-nav button { padding: 10px 6px; font-size: 12px; } .dsh-atb-settings-content .dsh-atb-modal-foot { flex-wrap: wrap; gap: 8px; } }
 .dsh-atb-set .dsh-atb-mode-picker { margin-top: 8px; }
 .dsh-atb-set .dsh-atb-isolation-note { margin-top: 10px; }
