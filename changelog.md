@@ -1,15 +1,17 @@
 # 更新日志 / Changelog
 
-### 未发布 / Unreleased
+### 0.9.7 — 2026-10-31
 
 - **俄语界面（ru）**：新增 `src/client/i18n/ru.ts`（657 个键，与 zh/en 完全对齐），`LocaleId` 扩展为 `'zh' | 'en' | 'ru'`，字典与 `<html lang>`/`navigator` 回退检测支持 `ru`。内置模板正文仍复用英文内容（本 PR 不翻译模板）。
 - **任务详情显示 ID**：详情头部在「更新 … · 最近操作 …」之后显示任务 ID，等宽字体、点击即复制并短暂提示「已复制」/「复制失败」。此前 ID 只用于搜索匹配和会话内部，界面从未展示，无法在对话、日志或问题报告里指认具体卡片。
+- **弱化待验收提示（[#66](https://github.com/cloader/dsh-taskboard/issues/66)，[3054eba](https://github.com/cloader/dsh-taskboard/commit/3054eba6741a635966a0f5d593da8138bffc19ac)）**：将待验收卡片中的「缺少自验/验收记录」提示由红色调整为浅蓝色 `#78a9d6`，保留提示文字，减少视觉干扰。
 - **回归覆盖**：三语键集一致性、值非空、枚举映射、语言探测与占位符替换、模板回退及客户端翻译键扫描；任务 ID 渲染、复制成功与失败，以及中英俄文案。
 
 **English:**
 
 - **Russian UI (ru)**: add `src/client/i18n/ru.ts` (657 keys, identical key set to zh/en); widen `LocaleId` to `'zh' | 'en' | 'ru'`, and accept `ru` in the dictionary plus the `<html lang>` / `navigator` fallback detection. Built-in template bodies keep using the English content (not translated by this PR).
 - **Task ID in the detail header**: the detail panel now shows the task ID after the "Updated … · last change by …" line, in a monospace chip that copies on click and briefly acknowledges with "Copied" or "Copy failed". The UI never rendered the ID before, so a card could not be pointed at from a conversation, a log or a bug report.
+- **Softer review notice ([#66](https://github.com/cloader/dsh-taskboard/issues/66), [3054eba](https://github.com/cloader/dsh-taskboard/commit/3054eba6741a635966a0f5d593da8138bffc19ac))**: change the missing verification/acceptance-record notice on cards awaiting review from red to light blue (`#78a9d6`), preserving the text while reducing visual distraction.
 - **Regression coverage**: trilingual key parity, non-empty values, enum maps, locale detection and placeholder substitution, template fallback and client translation-key scanning; task ID rendering, successful and denied copies, and en / zh / ru labels.
 
 ### 0.9.6 — 2026-10-25
