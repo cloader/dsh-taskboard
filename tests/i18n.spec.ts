@@ -1,28 +1,30 @@
 // @vitest-environment jsdom
 /**
- * i18n suite: bilingual key parity, translate() lookup + placeholder
- * substitution, fallback-locale detection, the DSH locale service
- * soft-attach (live switch), and a source scan asserting every t('...')
- * literal in the client actually exists in both dictionaries.
+ * i18n suite: trilingual key parity (zh/en/ru), translate() lookup +
+ * placeholder substitution, fallback-locale detection, the DSH locale
+ * service soft-attach (live switch), and a source scan asserting every
+ * t('...') literal in the client actually exists in all dictionaries.
  */
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { en } from '../src/client/i18n/en.ts'
+import { ru } from '../src/client/i18n/ru.ts'
 import { zh } from '../src/client/i18n/zh.ts'
 import { localizeBuiltinCategory, localizeBuiltinName, localizeBuiltinTask } from '../src/client/i18n/templates.ts'
 import { BUILTIN_TEMPLATE_IDS, builtinTemplateContent } from '../src/shared/builtin-templates.ts'
 import { COLUMN_KEYS, MOVE_KEYS, OUTCOME_KEYS, STATUS_KEYS, URGENCY_KEYS } from '../src/client/board/labels.ts'
-import { disposeI18n, initI18n, localeStore, translate } from '../src/client/i18n/runtime.ts'
+import { disposeI18n, initI18n, localeStore, setLocalePreference, translate } from '../src/client/i18n/runtime.ts'
 
 describe('dictionaries', () => {
-  it('zh and en carry identical key sets', () => {
+  it('zh, en and ru carry identical key sets', () => {
     expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())
+    expect(Object.keys(ru).sort()).toEqual(Object.keys(en).sort())
   })
 
   it('no value is empty (glue fragments may carry intentional edge spaces)', () => {
-    for (const [dict, name] of [[zh, 'zh'], [en, 'en']] as const) {
+    for (const [dict, name] of [[zh, 'zh'], [en, 'en'], [ru, 'ru']] as const) {
       for (const [key, value] of Object.entries(dict)) {
         expect(value.length, name + ':' + key).toBeGreaterThan(0)
         expect(value.trim().length, name + ':' + key).toBeGreaterThan(0)
@@ -35,6 +37,7 @@ describe('dictionaries', () => {
       for (const key of Object.values(map)) {
         expect(zh, key).toHaveProperty(key)
         expect(en, key).toHaveProperty(key)
+        expect(ru, key).toHaveProperty(key)
       }
     }
   })
@@ -46,6 +49,15 @@ describe('translate()', () => {
     disposeI18n()
     expect(localeStore.getSnapshot().active).toBe('zh')
     expect(translate('board.title')).toBe(zh['board.title'])
+  })
+
+  it('resolves ru via <html lang> and substitutes its placeholders', () => {
+    document.documentElement.lang = 'ru-RU'
+    disposeI18n()
+    expect(localeStore.getSnapshot().active).toBe('ru')
+    expect(translate('board.title')).toBe(ru['board.title'])
+    expect(translate('board.count.tasks', { n: 3, rev: 7 })).toBe(ru['board.count.tasks'].replace('{n}', '3').replace('{rev}', '7'))
+    expect(translate('form.prompt.placeholder')).toContain('{{lastExecution}}')
   })
 
   it('resolves en and falls back to the key itself (fail loud, never blank)', () => {
@@ -74,6 +86,8 @@ describe('translate()', () => {
 })
 
 describe('DSH locale service soft-attach', () => {
+  beforeEach(() => { localStorage.clear(); disposeI18n() })
+  afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); disposeI18n() })
   /** Minimal LocaleRuntime double: snapshot + subscribe only. */
   function fakeService(initial: string): { face: unknown; set(active: string): void } {
     let snap = { active: initial, revision: 1 }
@@ -96,6 +110,67 @@ describe('DSH locale service soft-attach', () => {
     expect(localeStore.getSnapshot().active).toBe('en')
     expect(translate('board.title')).toBe(en['board.title'])
     disposeI18n()
+  })
+
+  it('keeps a manual preference across host switches and follows the latest host locale on reset', () => {
+    const svc = fakeService('zh')
+    initI18n(svc.face)
+    expect(localeStore.getSnapshot().preference).toBe('follow')
+    setLocalePreference('ru')
+    expect(translate('board.title')).toBe(ru['board.title'])
+    svc.set('en')
+    expect(localeStore.getSnapshot()).toMatchObject({ preference: 'ru', active: 'ru' })
+    setLocalePreference('follow')
+    expect(localeStore.getSnapshot()).toMatchObject({ preference: 'follow', active: 'en' })
+    expect(localStorage.getItem('dsh-taskboard-locale-v1')).toBeNull()
+    svc.set('zh')
+    expect(localeStore.getSnapshot().active).toBe('zh')
+  })
+
+  it('restores a saved preference before and after the DSH service attaches', () => {
+    setLocalePreference('ru')
+    disposeI18n()
+    document.documentElement.lang = 'en'
+    initI18n(undefined)
+    expect(localeStore.getSnapshot()).toMatchObject({ preference: 'ru', active: 'ru' })
+    initI18n(fakeService('zh').face)
+    expect(localeStore.getSnapshot().active).toBe('ru')
+    setLocalePreference('follow')
+    expect(localeStore.getSnapshot().active).toBe('zh')
+  })
+
+  it('defaults to following DSH when the saved preference is invalid', () => {
+    localStorage.setItem('dsh-taskboard-locale-v1', 'invalid')
+    disposeI18n()
+    initI18n(fakeService('zh').face)
+    expect(localeStore.getSnapshot()).toMatchObject({ preference: 'follow', active: 'zh' })
+  })
+
+  it('still switches locally when storage is unavailable', () => {
+    initI18n(fakeService('zh').face)
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Quota exceeded', 'QuotaExceededError')
+    })
+    expect(() => setLocalePreference('ru')).not.toThrow()
+    expect(write).toHaveBeenCalledOnce()
+    expect(localeStore.getSnapshot()).toMatchObject({ preference: 'ru', active: 'ru' })
+    const remove = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('Access denied', 'SecurityError')
+    })
+    expect(() => setLocalePreference('follow')).not.toThrow()
+    expect(remove).toHaveBeenCalledOnce()
+    expect(localeStore.getSnapshot().active).toBe('zh')
+  })
+
+  it('notifies the settings selector when the preference changes without changing the active language', () => {
+    initI18n(fakeService('zh').face)
+    const listener = vi.fn()
+    const unsubscribe = localeStore.subscribe(listener)
+    try {
+      setLocalePreference('zh')
+      expect(listener).toHaveBeenCalledOnce()
+      expect(localeStore.getSnapshot()).toMatchObject({ preference: 'zh', active: 'zh' })
+    } finally { unsubscribe() }
   })
 
   it('ignores absent and malformed services (fallback takes over)', () => {
@@ -206,6 +281,14 @@ describe('built-in template localization', () => {
     expect(localizeBuiltinCategory(builtin)).toBe('开发')
   })
 
+  it('ru reuses the English built-in template content', () => {
+    document.documentElement.lang = 'ru-RU'
+    disposeI18n()
+    expect(localeStore.getSnapshot().active).toBe('ru')
+    expect(localizeBuiltinName(builtin)).toBe('New feature')
+    expect(localizeBuiltinCategory(builtin)).toBe('Development')
+  })
+
   it('custom templates and unknown built-in ids pass through untouched', () => {
     document.documentElement.lang = 'en-US'
     disposeI18n()
@@ -257,6 +340,51 @@ describe('host system message localization', () => {
     expect(merged).toContain('sub ⟲')
     expect(merged).toContain('x ✗ conflict')
   })
+
+  // @tc TC-FUNC-014
+  it('zh and en contain collapseBacklog and expandBacklog with expected translations', () => {
+    expect(zh).toHaveProperty('board.column.collapseBacklog')
+    expect(zh).toHaveProperty('board.column.expandBacklog')
+    expect(en).toHaveProperty('board.column.collapseBacklog')
+    expect(en).toHaveProperty('board.column.expandBacklog')
+    expect(zh).toHaveProperty('board.column.collapseTodo')
+    expect(zh).toHaveProperty('board.column.expandTodo')
+    expect(en).toHaveProperty('board.column.collapseTodo')
+    expect(en).toHaveProperty('board.column.expandTodo')
+
+    expect(zh['board.column.collapseBacklog']).toBe('收起「待规划」列')
+    expect(zh['board.column.expandBacklog']).toBe('展开「待规划」列')
+    expect(en['board.column.collapseBacklog']).toBe('Collapse "Backlog" column')
+    expect(en['board.column.expandBacklog']).toBe('Expand "Backlog" column')
+    expect(zh['board.column.collapseTodo']).toBe('收起「待办」列')
+    expect(zh['board.column.expandTodo']).toBe('展开「待办」列')
+    expect(en['board.column.collapseTodo']).toBe('Collapse "To Do" column')
+    expect(en['board.column.expandTodo']).toBe('Expand "To Do" column')
+  })
+
+  // @tc TC-FUNC-015
+  it('translate dynamically resolves collapseBacklog and expandBacklog based on active locale', () => {
+    document.documentElement.lang = 'zh-CN'
+    disposeI18n()
+    expect(translate('board.column.collapseBacklog')).toBe('收起「待规划」列')
+    expect(translate('board.column.expandBacklog')).toBe('展开「待规划」列')
+    expect(translate('board.column.collapseTodo')).toBe('收起「待办」列')
+    expect(translate('board.column.expandTodo')).toBe('展开「待办」列')
+
+    document.documentElement.lang = 'en-US'
+    disposeI18n()
+    expect(translate('board.column.collapseBacklog')).toBe('Collapse "Backlog" column')
+    expect(translate('board.column.expandBacklog')).toBe('Expand "Backlog" column')
+    expect(translate('board.column.collapseTodo')).toBe('Collapse "To Do" column')
+    expect(translate('board.column.expandTodo')).toBe('Expand "To Do" column')
+
+    document.documentElement.lang = 'ru-RU'
+    disposeI18n()
+    expect(translate('board.column.collapseBacklog')).toBe('Свернуть колонку «Бэклог»')
+    expect(translate('board.column.expandBacklog')).toBe('Развернуть колонку «Бэклог»')
+    expect(translate('board.column.collapseTodo')).toBe('Свернуть колонку «К выполнению»')
+    expect(translate('board.column.expandTodo')).toBe('Развернуть колонку «К выполнению»')
+  })
 })
 
 describe('source scan', () => {
@@ -272,7 +400,7 @@ describe('source scan', () => {
     return out
   }
 
-  it('every t(quoted-literal) in the client exists in BOTH dictionaries', () => {
+  it('every t(quoted-literal) in the client exists in ALL dictionaries', () => {
     const missing: string[] = []
     for (const file of walk(clientDir)) {
       const text = readFileSync(file, 'utf8')
@@ -280,6 +408,7 @@ describe('source scan', () => {
         const key = m[1] ?? ''
         if (!(key in zh)) missing.push('zh missing: ' + key)
         if (!(key in en)) missing.push('en missing: ' + key)
+        if (!(key in ru)) missing.push('ru missing: ' + key)
       }
     }
     expect(missing).toEqual([])

@@ -1,5 +1,25 @@
 # 更新日志 / Changelog
 
+### 0.9.7 — 2026-10-31
+
+- **看板语言设置**：通用设置新增「跟随 DSH（默认）／简体中文／English／Русский」选项，立即生效并在当前浏览器中保存；手动选择不受 DSH 语言切换影响，恢复跟随后使用 DSH 的最新语言。
+- **设置页布局**：界面语言、默认新建项目各自采用「左侧标签＋右侧下拉框」的横向布局，说明文字保留在下方；各设置分区底部增加横线，方便区分。切换语言保留其他未保存的设置草稿。
+- **俄语界面（ru）（[#67](https://github.com/cloader/dsh-taskboard/pull/67)，感谢 [@reysonk](https://github.com/reysonk)）**：新增 `src/client/i18n/ru.ts`（664 个键，与 zh/en 完全对齐），`LocaleId` 扩展为 `'zh' | 'en' | 'ru'`，字典与 `<html lang>`/`navigator` 回退检测支持 `ru`。内置模板正文仍复用英文内容（本 PR 不翻译模板）。
+- **任务详情显示 ID（[#68](https://github.com/cloader/dsh-taskboard/pull/68)，感谢 [@reysonk](https://github.com/reysonk)）**：详情头部在「更新 … · 最近操作 …」之后显示任务 ID，等宽字体、点击即复制并短暂提示「已复制」/「复制失败」。此前 ID 只用于搜索匹配和会话内部，界面从未展示，无法在对话、日志或问题报告里指认具体卡片。
+- **待规划与待办列折叠（[#65](https://github.com/cloader/dsh-taskboard/pull/65)，感谢 [@jw5555555555](https://github.com/jw5555555555)；集成修复 [#69](https://github.com/cloader/dsh-taskboard/pull/69)，感谢 [@cloader](https://github.com/cloader)）**：支持将两列收起为紧凑侧栏，保留任务计数和拖放流转；折叠状态在刷新后恢复，并与项目分组折叠独立保存，支持中英俄提示。
+- **弱化待验收提示（[#66](https://github.com/cloader/dsh-taskboard/issues/66)，[3054eba](https://github.com/cloader/dsh-taskboard/commit/3054eba6741a635966a0f5d593da8138bffc19ac)）**：将待验收卡片中的「缺少自验/验收记录」提示由红色调整为浅蓝色 `#78a9d6`，保留提示文字，减少视觉干扰。
+- **回归覆盖**：三语键集一致性、值非空、枚举映射、语言探测与占位符替换、模板回退及客户端翻译键扫描；任务 ID 渲染与复制反馈；语言偏好持久化、跟随 DSH 与手动选择切换、存储异常降级及设置草稿保留；整列与项目分组折叠组合使用及刷新恢复。
+
+**English:**
+
+- **Board language preference**: general settings offer Follow DSH (default), Chinese, English and Russian. Changes apply immediately and persist in the current browser; explicit choices remain independent of DSH, and returning to Follow DSH adopts its latest language.
+- **Settings layout**: interface language and the default project each use a horizontal label-and-selector row with help text below. Horizontal separators distinguish settings sections, and changing language preserves unsaved drafts for the other settings.
+- **Russian UI (ru) ([#67](https://github.com/cloader/dsh-taskboard/pull/67), thanks [@reysonk](https://github.com/reysonk))**: add `src/client/i18n/ru.ts` (664 keys, identical key set to zh/en); widen `LocaleId` to `'zh' | 'en' | 'ru'`, and accept `ru` in the dictionary plus the `<html lang>` / `navigator` fallback detection. Built-in template bodies keep using the English content (not translated by this PR).
+- **Task ID in the detail header ([#68](https://github.com/cloader/dsh-taskboard/pull/68), thanks [@reysonk](https://github.com/reysonk))**: the detail panel now shows the task ID after the "Updated … · last change by …" line, in a monospace chip that copies on click and briefly acknowledges with "Copied" or "Copy failed". The UI never rendered the ID before, so a card could not be pointed at from a conversation, a log or a bug report.
+- **Collapsible Backlog and To Do columns ([#65](https://github.com/cloader/dsh-taskboard/pull/65), thanks [@jw5555555555](https://github.com/jw5555555555); integration fixes [#69](https://github.com/cloader/dsh-taskboard/pull/69), thanks [@cloader](https://github.com/cloader))**: collapse either column into a compact rail with task counts and drag-and-drop transitions. Column state persists independently of project-group collapse state, with Chinese, English and Russian labels.
+- **Softer review notice ([#66](https://github.com/cloader/dsh-taskboard/issues/66), [3054eba](https://github.com/cloader/dsh-taskboard/commit/3054eba6741a635966a0f5d593da8138bffc19ac))**: change the missing verification/acceptance-record notice on cards awaiting review from red to light blue (`#78a9d6`), preserving the text while reducing visual distraction.
+- **Regression coverage**: trilingual key parity, non-empty values, enum maps, locale detection and placeholder substitution, template fallback and client translation-key scanning; task ID rendering and clipboard feedback; persisted language preferences, switching between DSH and explicit choices, unavailable storage and retained settings drafts; combined column/project-group collapse and reload.
+
 ### 0.9.6 — 2026-10-25
 
 - **关联工作区认领（[#62](https://github.com/cloader/dsh-taskboard/pull/62)，感谢 [@reysonk](https://github.com/reysonk)）**：新增看板全局设置 `allowClaimFromLinkedRoots`，默认关闭；开启后，会话可以认领其已挂载关联工作区中的任务，任务归属保持不变。需要多根工作区插件，服务缺失或调用抛错时退回主根认领规则。

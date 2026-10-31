@@ -30,21 +30,23 @@ export type SortBy = 'default' | 'updated' | 'urgency' | 'created' | 'title'
 const VIEW_KEY = 'dsh-taskboard-view-v1'
 
 /** Load the persisted view state (never throws; fresh on any parse error). */
-function loadView(): { workspaceId?: string; urgencies: Urgency[]; sortBy: SortBy; doneCollapsed: boolean; collapsedWorkspaceGroups?: string[] } {
+function loadView(): { workspaceId?: string; urgencies: Urgency[]; sortBy: SortBy; doneCollapsed: boolean; backlogCollapsed: boolean; todoCollapsed: boolean; collapsedWorkspaceGroups?: string[] } {
   try {
     const raw = localStorage.getItem(VIEW_KEY)
-    if (raw === null) return { urgencies: [], sortBy: 'default', doneCollapsed: false }
-    const parsed = JSON.parse(raw) as { workspaceId?: string; urgencies?: Urgency[]; sortBy?: SortBy; doneCollapsed?: boolean; collapsedWorkspaceGroups?: unknown }
+    if (raw === null) return { urgencies: [], sortBy: 'default', doneCollapsed: false, backlogCollapsed: false, todoCollapsed: false }
+    const parsed = JSON.parse(raw) as { workspaceId?: string; urgencies?: Urgency[]; sortBy?: SortBy; doneCollapsed?: boolean; backlogCollapsed?: boolean; todoCollapsed?: boolean; collapsedWorkspaceGroups?: unknown }
     const sortBy = parsed.sortBy === 'updated' || parsed.sortBy === 'urgency' || parsed.sortBy === 'created' || parsed.sortBy === 'title' ? parsed.sortBy : 'default'
     return {
       workspaceId: typeof parsed.workspaceId === 'string' ? parsed.workspaceId : undefined,
       urgencies: Array.isArray(parsed.urgencies) ? parsed.urgencies.filter(u => u === 'urgent' || u === 'normal' || u === 'relaxed') : [],
       sortBy,
       doneCollapsed: parsed.doneCollapsed === true,
+      backlogCollapsed: parsed.backlogCollapsed === true,
+      todoCollapsed: parsed.todoCollapsed === true,
       collapsedWorkspaceGroups: Array.isArray(parsed.collapsedWorkspaceGroups) ? parsed.collapsedWorkspaceGroups.filter((key): key is string => typeof key === 'string') : [],
     }
   } catch {
-    return { urgencies: [], sortBy: 'default', doneCollapsed: false }
+    return { urgencies: [], sortBy: 'default', doneCollapsed: false, backlogCollapsed: false, todoCollapsed: false }
   }
 }
 
@@ -62,6 +64,9 @@ export interface ControllerState {
   sortBy: SortBy
   /** Completed (done) column collapsed state; persisted in localStorage. */
   doneCollapsed: boolean
+  /** Backlog and todo column collapse states; persisted locally. */
+  backlogCollapsed: boolean
+  todoCollapsed: boolean
   /** Collapsed project groups, keyed by column and workspace; persisted locally. */
   collapsedWorkspaceGroups: string[]
   /** Total count of live completed tasks reported by the host. */
@@ -111,6 +116,8 @@ function initialState(): ControllerState {
     search: '',
     sortBy: view.sortBy,
     doneCollapsed: view.doneCollapsed,
+    backlogCollapsed: view.backlogCollapsed,
+    todoCollapsed: view.todoCollapsed,
     collapsedWorkspaceGroups: view.collapsedWorkspaceGroups ?? [],
     composerOpen: false,
     secondaryOpen: false,
@@ -322,6 +329,18 @@ export class BoardController {
     }
   }
 
+  setBacklogCollapsed(collapsed: boolean): void {
+    if (this.state.backlogCollapsed === collapsed) return
+    this.setState({ backlogCollapsed: collapsed })
+    this.persistView()
+  }
+
+  setTodoCollapsed(collapsed: boolean): void {
+    if (this.state.todoCollapsed === collapsed) return
+    this.setState({ todoCollapsed: collapsed })
+    this.persistView()
+  }
+
   isWorkspaceGroupCollapsed(column: string, workspaceId?: string): boolean {
     return this.state.collapsedWorkspaceGroups.includes(JSON.stringify([column, workspaceId ?? null]))
   }
@@ -341,6 +360,8 @@ export class BoardController {
         urgencies: this.state.filters.urgencies,
         sortBy: this.state.sortBy,
         doneCollapsed: this.state.doneCollapsed,
+        backlogCollapsed: this.state.backlogCollapsed,
+        todoCollapsed: this.state.todoCollapsed,
         collapsedWorkspaceGroups: this.state.collapsedWorkspaceGroups,
       }))
     } catch { /* storage unavailable (private mode etc.) — view just won't persist */ }

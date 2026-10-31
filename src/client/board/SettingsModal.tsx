@@ -2,7 +2,8 @@
  * Board-settings modal (0.5.0): the user-owned defaults applied when a NEW
  * task is created without an explicit choice, plus the host data-directory
  * migration surface. Saving goes through host routes and
- * the SSE change stream refreshes every open view.
+ * the SSE change stream refreshes every open view. The interface language
+ * preference applies immediately and is saved in the current browser.
  *
  * @module dsh-taskboard/client/board/SettingsModal
  */
@@ -11,7 +12,7 @@ import { ExternalSyncPanel } from './ExternalSyncPanel.tsx'
 import type { BoardController } from '../controller.ts'
 import type { CatalogModelItem, CatalogPresetItem } from '../../shared/api.ts'
 import { DEFAULT_COMPLETED_DISPLAY_LIMIT, DEFAULT_DISPATCH_INTERVAL_MS, DEFAULT_ISOLATION, DEFAULT_MAX_CONCURRENT, DEFAULT_QUEUE_MAX_AGE_MINUTES, DEFAULT_SCHEDULE_MISSED_AFTER_MINUTES, MIN_COMPLETED_DISPLAY_LIMIT, MAX_COMPLETED_DISPLAY_LIMIT, allowClaimFromLinkedRootsOf, completedDisplayLimitOf, defaultPermissionOf, defaultSyncExternalSessionsOf, dispatchIntervalMsOf, maxConcurrentOf, queueMaxAgeMinutesOf, scheduleMissedAfterMinutesOf, type IsolationMode, type PermissionMode } from '../../shared/protocol.ts'
-import { useT, type Translate } from '../i18n/runtime.ts'
+import { localeStore, setLocalePreference, useT, type LocalePreference, type Translate } from '../i18n/runtime.ts'
 
 /** The isolation options with one-line hints (mirrors the task form; translated per render). */
 const isolationOptions = (t: Translate): ReadonlyArray<{ value: IsolationMode; name: string; hint: string }> => [
@@ -26,6 +27,7 @@ const isolationOptions = (t: Translate): ReadonlyArray<{ value: IsolationMode; n
  */
 export function SettingsModal({ controller }: { controller: BoardController }) {
   const t = useT()
+  const localePreference = localeStore.getSnapshot().preference
   const [section, setSection] = useState<'general' | 'external'>('general')
   const state = controller.getSnapshot()
   const currentIso = state.ledger.settings?.defaultIsolation ?? DEFAULT_ISOLATION
@@ -143,6 +145,33 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
           <div className="dsh-atb-settings-content">
         <div className="dsh-atb-modal-body" id="dsh-atb-settings-panel-general" role="tabpanel" aria-labelledby="dsh-atb-settings-tab-general" hidden={section !== 'general'}>
           <section className="dsh-atb-diag-sec">
+            <label className="dsh-atb-field dsh-atb-field-inline">
+              <span className="dsh-atb-field-label">{t('set.language.label')}</span>
+              <select className="dsh-atb-input" value={localePreference} aria-describedby="dsh-atb-language-hint"
+                onChange={e => setLocalePreference(e.target.value as LocalePreference)}>
+                <option value="follow">{t('set.language.follow')}</option>
+                <option value="zh">简体中文</option>
+                <option value="en">English</option>
+                <option value="ru">Русский</option>
+              </select>
+            </label>
+            <p id="dsh-atb-language-hint" className="dsh-atb-isolation-note">{t('set.language.hint')}</p>
+          </section>
+          <section className="dsh-atb-diag-sec">
+            <label className="dsh-atb-field dsh-atb-field-inline">
+              <span className="dsh-atb-field-label">{t('set.workspace.field')}</span>
+              <select className="dsh-atb-input" value={draftDefaultWorkspace} onChange={e => setDraftDefaultWorkspace(e.target.value)}>
+                <option value="">{t('set.workspace.follow')}</option>
+                {draftDefaultWorkspace !== '' && !(state.workspaces ?? []).some(w => w.id === draftDefaultWorkspace) && (
+                  <option value={draftDefaultWorkspace}>{draftDefaultWorkspace}</option>
+                )}
+                {(state.workspaces ?? []).map(ws => <option key={ws.id} value={ws.id}>{ws.title || ws.path}</option>)}
+              </select>
+            </label>
+            <p className="dsh-atb-isolation-note">{t('set.workspace.hint')}</p>
+          </section>
+
+          <section className="dsh-atb-diag-sec">
             <h4>{t('set.iso.heading')}</h4>
             <div className="dsh-atb-mode-picker">
               {isolationOptions(t).map(o => (
@@ -195,20 +224,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
             </span>
           </section>
 
-          <section className="dsh-atb-diag-sec">
-            <h4>{t('set.workspace.heading')}</h4>
-            <p className="dsh-atb-isolation-note">{t('set.workspace.hint')}</p>
-            <label className="dsh-atb-field">
-              <span className="dsh-atb-field-label">{t('set.workspace.field')}</span>
-              <select className="dsh-atb-input" value={draftDefaultWorkspace} onChange={e => setDraftDefaultWorkspace(e.target.value)}>
-                <option value="">{t('set.workspace.follow')}</option>
-                {draftDefaultWorkspace !== '' && !(state.workspaces ?? []).some(w => w.id === draftDefaultWorkspace) && (
-                  <option value={draftDefaultWorkspace}>{draftDefaultWorkspace}</option>
-                )}
-                {(state.workspaces ?? []).map(ws => <option key={ws.id} value={ws.id}>{ws.title || ws.path}</option>)}
-              </select>
-            </label>
-          </section>
+
 
           <section className="dsh-atb-diag-sec">
             <h4>{t('set.multiroots.heading')}</h4>

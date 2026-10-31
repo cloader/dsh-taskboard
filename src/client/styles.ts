@@ -448,6 +448,15 @@ button.dsh-atb-chip2.dsh-atb-chip-btn:hover {
 .dsh-atb-chip2[data-tone="relaxed"] { background: rgba(62,99,221,.13); color: #6d92e8; }
 .dsh-atb-detail-sub { font-size: 11.5px; color: var(--dsw-text-secondary, gray); }
 
+.dsh-atb-detail-id {
+  margin-left: 8px; padding: 1px 6px; border: 1px solid rgba(128,128,128,.25); border-radius: 5px;
+  background: transparent; color: inherit; font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px; line-height: 1.5; cursor: copy;
+}
+.dsh-atb-detail-id:hover { border-color: rgba(128,128,128,.55); color: var(--dsw-text, inherit); }
+.dsh-atb-detail-id[data-state="copied"] { border-color: rgba(63,166,106,.55); color: #3fa66a; }
+.dsh-atb-detail-id[data-state="failed"] { border-color: rgba(220,80,80,.55); color: #d05050; }
+
 .dsh-atb-fieldcard {
   border: 1px solid var(--dsw-border, rgba(128,128,128,.22)); border-radius: 10px;
   padding: 9px 11px; display: flex; flex-direction: column; gap: 5px;
@@ -1059,6 +1068,16 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
 .dsh-atb-settings-content { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .dsh-atb-settings-content > [hidden] { display: none !important; }
 .dsh-atb-settings-content > .dsh-atb-modal-body { flex: 1; min-height: 0; max-height: none; }
+.dsh-atb-set .dsh-atb-field-inline {
+  display: grid;
+  grid-template-columns: min(128px, 35%) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.dsh-atb-settings-content > .dsh-atb-modal-body > .dsh-atb-diag-sec {
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2, var(--dsw-border, rgba(128,128,128,.22)));
+}
 @media (max-width: 600px) { .dsh-atb-settings-nav { flex-basis: 94px; padding: 12px 6px; } .dsh-atb-settings-nav button { padding: 10px 6px; font-size: 12px; } .dsh-atb-settings-content .dsh-atb-modal-foot { flex-wrap: wrap; gap: 8px; } }
 .dsh-atb-set .dsh-atb-mode-picker { margin-top: 8px; }
 .dsh-atb-set .dsh-atb-isolation-note { margin-top: 10px; }
@@ -1212,6 +1231,9 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
 .dsh-atb-deliv-warn {
   color: #e5484d;
   font-weight: 550;
+}
+.dsh-atb-deliv-muted {
+  color: #78a9d6;
 }
 .dsh-atb-card-deliv-summary {
   font-size: 11px;
