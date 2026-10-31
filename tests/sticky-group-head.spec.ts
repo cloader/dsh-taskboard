@@ -80,6 +80,35 @@ async function renderBoard(tasks: TaskRecord[], onController?: (controller: Boar
 }
 
 describe('sticky project group headers', () => {
+  it.each(['backlog', 'todo'] as const)('preserves project groups when the %s column collapses and reloads', async status => {
+    let controller!: BoardController
+    const tasks = [
+      { ...makeTask('a-1', 'ws-a'), status },
+      { ...makeTask('b-1', 'ws-b'), status },
+    ]
+    const host = await renderBoard(tasks, value => { controller = value })
+    await waitFor(() => host.querySelectorAll('.dsh-atb-ws-group-head').length === 2)
+    const alpha = host.querySelector<HTMLButtonElement>('.dsh-atb-ws-group-head')!
+    alpha.click()
+    await waitFor(() => alpha.getAttribute('aria-expanded') === 'false')
+    const collapse = alpha.closest('.dsh-atb-column')!.querySelector<HTMLButtonElement>('.dsh-atb-colfoldbtn')!
+    collapse.click()
+    await waitFor(() => host.querySelector('.dsh-atb-column[data-collapsed="true"]') !== null)
+    expect(controller.isWorkspaceGroupCollapsed(status, 'ws-a')).toBe(true)
+    expect(host.querySelector('.dsh-atb-col-collapsed-bar .dsh-atb-colcount')?.textContent).toBe('2')
+
+    let restored!: BoardController
+    const reloaded = await renderBoard(tasks, value => { restored = value })
+    await waitFor(() => reloaded.querySelector('.dsh-atb-col-collapsed-bar') !== null)
+    expect(restored.isWorkspaceGroupCollapsed(status, 'ws-a')).toBe(true)
+    reloaded.querySelector<HTMLButtonElement>('.dsh-atb-col-collapsed-bar button')!.click()
+    await waitFor(() => reloaded.querySelectorAll('.dsh-atb-ws-group-head').length === 2)
+    const heads = Array.from(reloaded.querySelectorAll<HTMLButtonElement>('.dsh-atb-ws-group-head'))
+    expect(heads.find(head => head.title === 'Alpha Repo')?.getAttribute('aria-expanded')).toBe('false')
+    expect(heads.find(head => head.title === 'Beta Repo')?.getAttribute('aria-expanded')).toBe('true')
+    expect(restored.getSnapshot().ledger.tasks).toEqual(tasks)
+  })
+
   it('collapses only the selected column/project, preserves counts, and restores after reload', async () => {
     const host = await renderBoard([
       makeTask('a-1', 'ws-a'), makeTask('b-1', 'ws-b'),
