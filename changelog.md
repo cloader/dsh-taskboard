@@ -1,5 +1,15 @@
 # 更新日志 / Changelog
 
+### 未发布 / Unreleased
+
+- **任务详情显示 ID**：详情头部在「更新 … · 最近操作 …」之后显示任务 ID，等宽字体、点击即复制并短暂提示「已复制」/「复制失败」。此前 ID 只用于搜索匹配和会话内部，界面从未展示，无法在对话、日志或问题报告里指认具体卡片。
+- **回归覆盖**：新增 `tests/detail-id.spec.tsx`，覆盖渲染、复制成功、复制被拒与多语言（en / zh）下的标题与文案。
+
+**English:**
+
+- **Task ID in the detail header**: the detail panel now shows the task ID after the "Updated … · last change by …" line, in a monospace chip that copies on click and briefly acknowledges with "Copied" or "Copy failed". The UI never rendered the ID before, so a card could not be pointed at from a conversation, a log or a bug report.
+- **Regression coverage**: add `tests/detail-id.spec.tsx` covering rendering, a successful copy, a denied copy and the en / zh labels.
+
 ### 0.9.6 — 2026-10-25
 
 - **关联工作区认领（[#62](https://github.com/cloader/dsh-taskboard/pull/62)，感谢 [@reysonk](https://github.com/reysonk)）**：新增看板全局设置 `allowClaimFromLinkedRoots`，默认关闭；开启后，会话可以认领其已挂载关联工作区中的任务，任务归属保持不变。需要多根工作区插件，服务缺失或调用抛错时退回主根认领规则。
