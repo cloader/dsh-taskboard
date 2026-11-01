@@ -526,12 +526,13 @@ describe('TaskStore', () => {
     expect(restarted.snapshot().settings).toEqual(settings)
   })
 
-  it('quarantines a corrupt ledger instead of throwing', async () => {
+  it('retains a corrupt ledger and refuses to present it as an empty board', async () => {
     const file = join(dir, 'corrupt.json')
     await writeFile(file, '{not json', 'utf8')
     const store = new TaskStore({ file })
-    await expect(store.load()).resolves.toBeUndefined()
-    expect(store.snapshot()).toEqual(emptyLedger())
+    await expect(store.load()).rejects.toThrow('taskboard_ledger_unavailable')
+    expect(await readFile(file, 'utf8')).toBe('{not json')
+    expect(() => store.snapshot()).toThrow('taskboard_ledger_unavailable')
   })
 
   it('hands out frozen clones — mutations cannot bypass the revision', async () => {

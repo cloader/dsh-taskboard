@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -26,6 +26,7 @@ async function directory() {
 // on Vitest's own unhandled-rejection listeners or killing the test runner.
 const startupProbe = `
   import { apply } from './lib/index.js'
+  import { Readable } from 'node:stream'
   process.on('unhandledRejection', error => { console.error('fatal load failure', error); process.exit(91) })
   const tools = [], routes = [], cleanups = []
   const ctx = {
@@ -40,20 +41,26 @@ const startupProbe = `
   }
   apply(ctx)
   await new Promise(resolve => setImmediate(resolve))
-  const handler = routes.find(route => route.kind === 'prefix').handler
-  async function request(url) {
-    let status, body
-    await handler({ method: 'GET', url }, { writeHead(s) { status = s }, end(b) { body = JSON.parse(b) } })
-    return { status, body }
+  async function request(url, method = 'GET', body) {
+    let status, response
+    const req = Object.assign(Readable.from(body === undefined ? [] : [Buffer.from(JSON.stringify(body))]), {
+      method, url, headers: { 'content-type': 'application/json', 'x-dsh-taskboard-upload': '1' },
+    })
+    const route = routes.find(route => route.kind === 'exact' && route.path === url)
+      ?? routes.find(route => route.kind === 'prefix')
+    await route.handler(req, { writeHead(s) { status = s }, end(b) { response = JSON.parse(b) } })
+    return { status, body: response }
   }
   let toolError
   try { await tools.find(tool => tool.name === 'taskboard_list').execute({}, {}) }
   catch (error) { toolError = String(error) }
   const storage = await request('/dsh-taskboard/storage')
   const state = await request('/dsh-taskboard/state')
+  const upload = await request('/dsh-taskboard/assets', 'POST', {})
+  const events = await request('/dsh-taskboard/events')
   await new Promise(resolve => setImmediate(resolve))
   for (const cleanup of cleanups.reverse()) cleanup()
-  console.log(JSON.stringify({ storage, state, toolError }))
+  console.log(JSON.stringify({ storage, state, upload, events, toolError }))
 `
 
 describe('storage startup failure isolation (#74)', () => {
@@ -81,6 +88,42 @@ describe('storage startup failure isolation (#74)', () => {
     expect(child.stderr).toContain('[dsh-taskboard]')
     expect(child.stderr).toContain(dataHome)
     expect(child.stderr).not.toContain('fatal load failure')
+  })
+})
+
+describe('damaged ledger startup isolation (#84)', () => {
+  it.each(['damaged live ledger', 'legacy quarantine only'])('%s retains attachments and reports recovery across restarts', async mode => {
+    const dir = await directory()
+    const file = join(dir, 'dsh-taskboard.json')
+    const retainedFile = mode === 'damaged live ledger' ? file : `${file}.corrupt-1234`
+    await writeFile(retainedFile, '{truncated')
+    const assets = join(dir, 'dsh-taskboard-assets')
+    await mkdir(assets)
+    const image = join(assets, `${'a'.repeat(64)}.png`)
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    await writeFile(image, bytes)
+    const old = new Date(Date.now() - 48 * 60 * 60_000)
+    await utimes(image, old, old)
+    for (let boot = 0; boot < 2; boot++) {
+      const child = spawnSync(process.execPath, ['--input-type=module', '-e', startupProbe], {
+        cwd: fileURLToPath(new URL('..', import.meta.url)),
+        env: { ...process.env, DSH_HOME: dir }, encoding: 'utf8', timeout: 10_000,
+      })
+      expect(child.status, child.stderr).toBe(0)
+      const report = JSON.parse(child.stdout.trim())
+      expect(report.storage.status).toBe(200)
+      expect(report.storage.body.value).toMatchObject({ writable: false, error: expect.stringContaining(retainedFile) })
+      expect(report.state.status).toBe(500)
+      expect(report.state.body.error.message).toContain('Repair or restore')
+      expect(report.upload.status).toBe(500)
+      expect(report.events.status).toBe(500)
+      expect(report.toolError).toContain('taskboard_ledger_unavailable')
+      expect(child.stderr).toContain(retainedFile)
+      expect(child.stderr).not.toContain('fatal load failure')
+      expect(await readFile(image)).toEqual(bytes)
+      expect(await readFile(retainedFile, 'utf8')).toBe('{truncated')
+    }
+    expect((await readdir(dir)).sort()).toEqual(['dsh-taskboard-assets', retainedFile.slice(dir.length + 1)].sort())
   })
 })
 

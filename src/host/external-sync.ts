@@ -35,6 +35,11 @@ export class ExternalSyncService {
   }) {
     this.registry = options.registry ?? createBuiltinProviders()
     this.ready = this.load()
+    // Construction is eager, before callers await ready. Keep the rejection
+    // for request guards without letting a damaged ledger terminate the host.
+    void this.ready.catch(error => {
+      console.warn('[dsh-taskboard] external sync initialization failed; ledger retained:', error)
+    })
   }
   private now(): number { return this.options.now?.() ?? Date.now() }
   private async load(): Promise<void> {

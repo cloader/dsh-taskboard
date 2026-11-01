@@ -104,6 +104,7 @@ export class StorageCoordinator {
   }
 
   async status(): Promise<StorageStatus> {
+    const error = this.startupError ?? this.stores?.ledger.loadError()
     let assetCount = 0
     let assetBytes = 0
     try {
@@ -118,10 +119,10 @@ export class StorageCoordinator {
       defaultDirectory: resolve(this.options.defaultDirectory),
       isDefault: samePath(this.currentDirectory, this.options.defaultDirectory),
       configured: this.configured,
-      writable: this.startupError === undefined,
+      writable: error === undefined,
       assetCount,
       assetBytes,
-      ...(this.startupError === undefined ? {} : { error: this.startupError }),
+      ...(error === undefined ? {} : { error }),
     }
   }
 

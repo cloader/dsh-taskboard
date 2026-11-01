@@ -188,6 +188,8 @@ agent：
 
 随时可顶栏「⬇ JSON」备份台账、「⬇ CSV」导出任务清单（带 BOM，Excel 直接打开）。图片附件不在 JSON 内；完整备份需复制设置页显示的数据目录中的 `dsh-taskboard-assets/` 文件夹。
 
+**台账读取失败时**：看板会显示错误及文件位置，保留原文件，暂停写入、迁移和附件清理。请先停止 DSH，备份整个数据目录，再修复或用可靠备份恢复 `dsh-taskboard.json`，然后重启。旧版遗留的 `.corrupt-*` 文件也会在原台账缺失时触发保护；不要把它们当成可随手删除的临时文件（[#84](https://github.com/cloader/dsh-taskboard/issues/84)）。
+
 ## 常见问题
 
 **侧边栏没有「任务看板」入口？**
@@ -262,6 +264,7 @@ node tests/manual-git-e2e.mjs   # 真 git 端到端手测（worktree 全链路 +
 
 ### 0.9.8
 
+- **数据保护**：台账读取失败时明确提示，保留原文件与图片，阻止空台账覆盖原数据（[#84](https://github.com/cloader/dsh-taskboard/issues/84)）。
 - **看板面板**：统一使用 DSH 官方面板切换，移除旧版挂载方式；需要 DSH 0.1.7 或更新版本（[#82](https://github.com/cloader/dsh-taskboard/pull/82)）。
 - **导入预览**：快速切换文件时，预览与实际导入内容保持一致（[#72](https://github.com/cloader/dsh-taskboard/issues/72)、[#75](https://github.com/cloader/dsh-taskboard/pull/75)）。感谢 [@timacek](https://github.com/timacek) 的贡献。
 - **执行更稳定**：修复存储异常导致 DSH 退出的问题，执行结果保存失败时会自动重试（[#74](https://github.com/cloader/dsh-taskboard/issues/74)、[#80](https://github.com/cloader/dsh-taskboard/pull/80)）。
