@@ -188,6 +188,8 @@ The data directory defaults to `DSH_HOME` and can be validated and migrated unde
 
 Use "⬇ JSON" in the toolbar to back up the ledger, or export the task list as CSV ("⬇ Export", BOM included, opens straight in Excel). Images are not embedded in JSON; for a complete backup, copy `dsh-taskboard-assets/` from the data directory shown in Settings.
 
+**If the ledger cannot be loaded**: the board reports the error and file path, retains the original file, and blocks writes, migration, and attachment cleanup. Stop DSH, back up the entire data directory, repair or restore `dsh-taskboard.json` from a trusted backup, then restart. A missing ledger with `.corrupt-*` files left by older versions also triggers protection; keep those files for recovery ([#84](https://github.com/cloader/dsh-taskboard/issues/84)).
+
 ## FAQ
 
 **No "Task Board" entry in the sidebar?**
@@ -258,6 +260,8 @@ Real-deployment validation on 2026-10-16 read 4 Bugs, 4 linked Stories and 8 Tas
 
 ### 0.9.8
 
+- **Claim protection**: prevent other sessions from deleting a claimed task in progress, keeping ongoing work intact ([#85](https://github.com/cloader/dsh-taskboard/issues/85), [#86](https://github.com/cloader/dsh-taskboard/pull/86)).
+- **Data protection**: report ledger load failures, retain the original file and images, and prevent an empty ledger from overwriting existing data ([#84](https://github.com/cloader/dsh-taskboard/issues/84), [#87](https://github.com/cloader/dsh-taskboard/pull/87)).
 - **Board panel**: use DSH's official panel switching and remove the older mounting method. Requires DSH 0.1.7 or newer ([#82](https://github.com/cloader/dsh-taskboard/pull/82)).
 - **Import preview**: keep the preview and imported content consistent when switching files quickly ([#72](https://github.com/cloader/dsh-taskboard/issues/72), [#75](https://github.com/cloader/dsh-taskboard/pull/75)). Thanks to [@timacek](https://github.com/timacek) for the contribution.
 - **More reliable execution**: fix storage errors that could close DSH, and retry saving execution results after a write failure ([#74](https://github.com/cloader/dsh-taskboard/issues/74), [#80](https://github.com/cloader/dsh-taskboard/pull/80)).

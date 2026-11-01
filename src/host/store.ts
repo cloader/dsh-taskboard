@@ -6,10 +6,10 @@
  *
  * @module dsh-taskboard/host/store
  */
-import { mkdir, open, readFile, rename } from 'node:fs/promises'
+import { mkdir, open, readFile, readdir, rename } from 'node:fs/promises'
 import { withLedgerWriteLock } from './ledger-lock.ts'
 import { applyHumanWaitingPatch } from '../shared/human-wait.ts'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import {
   LEDGER_SCHEMA_VERSION,
   asBoardSettings,
@@ -56,6 +56,8 @@ export class TaskStore {
   private queue: Promise<unknown> = Promise.resolve()
   private loaded = false
   private loadPromise: Promise<void> | undefined
+  private loadFailure?: Error
+  private hasReadLedger = false
 
   /** @param options - file location. */
   constructor(options: TaskStoreOptions) {
@@ -65,6 +67,20 @@ export class TaskStore {
 
   /** Current absolute ledger path. */
   location(): string { return this.file }
+
+  /** A failed load keeps every reader/writer closed until repair and restart. */
+  loadError(): string | undefined { return this.loadFailure?.message }
+
+  private assertReadable(): void {
+    if (this.loadFailure !== undefined) throw this.loadFailure
+  }
+
+  /** Only a successfully loaded ledger may authorize attachment deletion. */
+  assetReferences(): string {
+    this.assertReadable()
+    if (!this.loaded) throw new Error('taskboard_ledger_unavailable: load the ledger before cleaning attachments')
+    return JSON.stringify(this.ledger)
+  }
 
   /** Persist the live in-memory ledger to another file without switching. */
   async writeCopy(file: string): Promise<void> {
@@ -93,7 +109,7 @@ export class TaskStore {
     return next
   }
 
-  /** Load (once) from disk; a missing file starts empty; a corrupt file is quarantined, not thrown. */
+  /** Load once; only a genuinely new ledger starts empty. Failures retain the original file. */
   load(): Promise<void> {
     if (this.loaded) return Promise.resolve()
     if (this.loadPromise !== undefined) return this.loadPromise
@@ -104,70 +120,91 @@ export class TaskStore {
   /** Perform the single physical ledger read shared by all startup callers. */
   private async loadOnce(): Promise<void> {
     try {
-      const raw = await readFile(this.file, 'utf8')
+      let raw: string
+      try {
+        raw = await readFile(this.file, 'utf8')
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        // Older versions renamed damaged ledgers away. A restart must not
+        // mistake that missing live file for a new board and erase its images.
+        let entries: string[] = []
+        try { entries = await readdir(dirname(this.file)) } catch (scanError) {
+          if ((scanError as NodeJS.ErrnoException).code !== 'ENOENT') throw scanError
+        }
+        const quarantined = entries.filter(name => name.startsWith(`${basename(this.file)}.corrupt-`))
+        if (quarantined.length > 0) {
+          throw new Error(`ledger is missing; recovery files: ${quarantined.map(name => join(dirname(this.file), name)).join(', ')}`)
+        }
+        if (this.hasReadLedger) throw new Error('previously loaded ledger is now missing')
+        this.ledger = emptyLedger()
+        this.loaded = true
+        return
+      }
       const parsed = JSON.parse(raw) as TaskLedger
-      if (typeof parsed.revision === 'number' && Array.isArray(parsed.tasks)) {
-        // S11: trust no record wholesale — drop structurally broken entries
-        // (including R4's traversal-shaped ids from a hand-edited file) with
-        // a notice instead of letting them reach the path-building layers.
-        const plausible: TaskRecord[] = []
-        for (const entry of parsed.tasks as unknown[]) {
-          if (!isPlausibleTaskRecord(entry)) {
-            const rawId = (entry as { id?: unknown })?.id
-            const id = typeof rawId === 'string' ? rawId.slice(0, 60) : String(rawId)
-            console.warn('[dsh-taskboard] dropping implausible ledger entry on load:', id)
-            continue
-          }
-          plausible.push(entry as TaskRecord)
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)
+        || !Number.isSafeInteger(parsed.revision) || parsed.revision < 0 || !Array.isArray(parsed.tasks)
+        || (parsed.schemaVersion !== undefined && parsed.schemaVersion !== LEDGER_SCHEMA_VERSION)) {
+        throw new Error('invalid ledger structure or unsupported schema version')
+      }
+      // S11: never expose broken records to path-building layers. Refuse
+      // the whole document: dropping entries would lose their image refs.
+      const plausible: TaskRecord[] = []
+      const ids = new Set<string>()
+      for (const entry of parsed.tasks as unknown[]) {
+        if (!isPlausibleTaskRecord(entry)) {
+          throw new Error('ledger contains an invalid task record')
         }
-        const tasks = plausible
-        // Migration from pre-claim-field ledgers: an agent-held in_progress
-        // task carried its holder in updatedBy — backfill the explicit claim
-        // fields so the hold survives user edits (updatedBy is audit-only).
-        for (const task of tasks) {
-          try { applyHumanWaitingPatch(task, task) } catch {
-            delete task.waitingForHuman
-            delete task.waitingReason
-            console.warn('[dsh-taskboard] dropping invalid human-wait fields on load:', task.id)
-          }
-          if (task.external !== undefined) {
-            const external = normalizeExternalSource(task.external)
-            if (external === undefined) delete task.external
-            else task.external = external
-          }
-          if (task.status === 'in_progress' && task.claimedBy === undefined
-            && task.updatedBy?.kind === 'agent' && typeof task.updatedBy.sessionId === 'string') {
-            task.claimedBy = task.updatedBy.sessionId
-            task.claimedAt = task.updatedAt
-          }
+        const task = entry as TaskRecord
+        if (ids.has(task.id)) throw new Error('ledger contains duplicate task ids')
+        ids.add(task.id)
+        plausible.push(task)
+      }
+      const tasks = plausible
+      // Migration from pre-claim-field ledgers: an agent-held in_progress
+      // task carried its holder in updatedBy — backfill the explicit claim
+      // fields so the hold survives user edits (updatedBy is audit-only).
+      for (const task of tasks) {
+        try { applyHumanWaitingPatch(task, task) } catch {
+          delete task.waitingForHuman
+          delete task.waitingReason
+          console.warn('[dsh-taskboard] dropping invalid human-wait fields on load:', task.id)
         }
-        let settings = undefined
-        if (parsed.settings !== undefined) {
-          try {
-            settings = asBoardSettings(parsed.settings)
-          } catch {
-            console.warn('[dsh-taskboard] dropping invalid board settings on load')
-          }
+        if (task.external !== undefined) {
+          const external = normalizeExternalSource(task.external)
+          if (external === undefined) delete task.external
+          else task.external = external
         }
-        this.ledger = {
-          schemaVersion: LEDGER_SCHEMA_VERSION,
-          revision: parsed.revision,
-          tasks,
-          ...(parsed.externalSync !== undefined ? { externalSync: normalizeExternalSyncRecords(parsed.externalSync) } : {}),
-          ...(settings !== undefined ? { settings } : {}),
+        if (task.status === 'in_progress' && task.claimedBy === undefined
+          && task.updatedBy?.kind === 'agent' && typeof task.updatedBy.sessionId === 'string') {
+          task.claimedBy = task.updatedBy.sessionId
+          task.claimedAt = task.updatedAt
         }
       }
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if (code !== 'ENOENT') {
-        // Quarantine a corrupt ledger: rename it aside, start fresh. Never
-        // take the host down over ledger damage.
+      let settings = undefined
+      if (parsed.settings !== undefined) {
         try {
-          await rename(this.file, `${this.file}.corrupt-${Date.now()}`)
-        } catch { /* best effort */ }
+          settings = asBoardSettings(parsed.settings)
+        } catch {
+          console.warn('[dsh-taskboard] dropping invalid board settings on load')
+        }
       }
+      this.ledger = {
+        schemaVersion: LEDGER_SCHEMA_VERSION,
+        revision: parsed.revision,
+        tasks,
+        ...(parsed.externalSync !== undefined ? { externalSync: normalizeExternalSyncRecords(parsed.externalSync) } : {}),
+        ...(settings !== undefined ? { settings } : {}),
+      }
+      this.hasReadLedger = true
+      this.loaded = true
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      this.loadFailure = new Error(`taskboard_ledger_unavailable: cannot load ${this.file}: ${reason}. `
+        + 'Original files retained; writes and attachment cleanup are blocked. '
+        + 'Repair or restore the ledger at this path, then restart DSH.', { cause: error })
+      console.warn('[dsh-taskboard] ledger load failed; recovery required:', this.loadFailure.message, error)
+      throw this.loadFailure
     }
-    this.loaded = true
   }
 
   /**
@@ -176,11 +213,13 @@ export class TaskStore {
    * path; internal state is never handed out.
    */
   snapshot(): TaskLedger {
+    this.assertReadable()
     return deepFreeze(structuredClone(this.ledger))
   }
 
   /** Find a task by id (frozen clone; internal state is never handed out). */
   get(id: string): TaskRecord | undefined {
+    this.assertReadable()
     const task = this.ledger.tasks.find(t => t.id === id)
     return task === undefined ? undefined : deepFreeze(structuredClone(task))
   }
@@ -231,6 +270,7 @@ export class TaskStore {
         for (const task of changed) pruneExecutions(task)
         draft.revision += 1
         await persistAtomic(file, JSON.stringify(draft))
+        this.hasReadLedger = true
         this.ledger = draft
         const change: LedgerChange = { revision: draft.revision, tasks: changed, kind }
         for (const fn of this.subscribers) {
@@ -278,7 +318,7 @@ function deepFreeze<T>(value: T): T {
 /**
  * Atomic file persist: write temp, fsync, then rename over the target (S10:
  * without the sync, a power loss after rename can leave a zero-length file —
- * the next load would quarantine the ledger and start empty).
+ * the next load would refuse the damaged ledger).
  */
 async function persistAtomic(file: string, contents: string): Promise<void> {
   await mkdir(dirname(file), { recursive: true })

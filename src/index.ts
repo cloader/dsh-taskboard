@@ -71,10 +71,10 @@ export function apply(ctx: Context): void {
   // Eager first load: the tools and most routes read snapshot()/get() without
   // triggering the lazy load, so a fresh boot used to serve an EMPTY board to
   // taskboard_list/get until the scheduler catchup tick or the first
-  // GET /state happened to load the file (review P0). load() never throws —
-  // a corrupt ledger is quarantined instead.
+  // GET /state happened to load the file (review P0). Failed loads reject the
+  // startup barrier so tools, routes, and cleanup cannot accept an empty board.
   const storeReady = storage.ready().then(() => store.load())
-  void storeReady.then(() => assets.cleanup(JSON.stringify(store.snapshot()))).catch(error => {
+  void storeReady.then(() => assets.cleanup(store.assetReferences())).catch(error => {
     console.warn(`[dsh-taskboard] storage startup/asset cleanup failed (${storage.directory()}):`, error)
   })
   const now = () => Date.now()
