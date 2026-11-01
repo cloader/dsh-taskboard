@@ -168,10 +168,12 @@ export function apply(ctx: Context): void {
     }
 
     let agentSessions: { get?: (id: string) => unknown; list?: () => unknown[] } | undefined
+    let activeExecution: ExecutionService | undefined
 
     // External workspace sessions sync service (0.5.4).
     const sessionSync = new ExternalSessionSyncService({
       store,
+      isSessionManaged: sessionId => activeExecution?.managesSession(sessionId) ?? false,
       workspaces: workspaceFace(wsCtx.workspaceRegistry),
       events,
       sessions: {
@@ -275,6 +277,8 @@ export function apply(ctx: Context): void {
         },
         maxConcurrent,
       })
+
+      activeExecution = execution
 
       // Host-side cron scheduler: due scheduled tasks execute even with no
       // browser open. It starts before the routes so queue clearing never
@@ -416,6 +420,7 @@ export function apply(ctx: Context): void {
 
       return () => {
         disposeRoutes?.()
+        if (activeExecution === execution) activeExecution = undefined
         agentSessions = undefined
         for (const dispose of agentDisposers.splice(0)) dispose()
       }

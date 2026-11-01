@@ -260,6 +260,9 @@ Real-deployment validation on 2026-10-16 read 4 Bugs, 4 linked Stories and 8 Tas
 
 ### 0.9.8
 
+- **Complete exports**: JSON backups and CSV exports always fetch the full ledger, including completed tasks when the Done column is collapsed. Fetch failures show an error instead of producing an incomplete file.
+- **Stop external sessions**: stopping an automatically captured external session now cancels its live Agent and waits for it to stop before marking the execution cancelled. Failed stop attempts are retried, avoiding cards that appear cancelled while their sessions keep running.
+- **Comment execution protection**: track comment-triggered execution immediately and retry failed delivery-metadata writes during settlement, keeping the execution tracked and preventing the same queued comments from being delivered again.
 - **Claim protection**: prevent other sessions from deleting a claimed task in progress, keeping ongoing work intact ([#85](https://github.com/cloader/dsh-taskboard/issues/85), [#86](https://github.com/cloader/dsh-taskboard/pull/86)).
 - **Data protection**: report ledger load failures, retain the original file and images, and prevent an empty ledger from overwriting existing data ([#84](https://github.com/cloader/dsh-taskboard/issues/84), [#87](https://github.com/cloader/dsh-taskboard/pull/87)).
 - **Board panel**: use DSH's official panel switching and remove the older mounting method. Requires DSH 0.1.7 or newer ([#82](https://github.com/cloader/dsh-taskboard/pull/82)).

@@ -338,7 +338,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   type="button"
                   className="dsh-atb-newmenu-opt"
                   title={t('board.export.jsonTitle')}
-                  onClick={() => { closeExport(); controller.exportJson() }}
+                  onClick={() => { closeExport(); void controller.exportJson() }}
                 >
                   {t('board.export.json')}
                 </button>
@@ -346,7 +346,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   type="button"
                   className="dsh-atb-newmenu-opt"
                   title={t('board.export.csvTitle')}
-                  onClick={() => { closeExport(); controller.exportCsv() }}
+                  onClick={() => { closeExport(); void controller.exportCsv() }}
                 >
                   {t('board.export.csv')}
                 </button>

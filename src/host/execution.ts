@@ -228,6 +228,8 @@ interface RunEntry {
   stopping?: Promise<void>
   stopped?: boolean
   settlement?: PendingSettlement
+  commentDelivery?: { taskId: string; commentIds: string[]; announce: boolean }
+  deliveryWriting?: Promise<void>
 }
 
 interface PendingSettlement {
@@ -391,8 +393,10 @@ export class ExecutionService {
     const write = async (): Promise<boolean> => {
       pending.attempts += 1
       try {
-        await entry.stopping
+        if (pending.outcome === 'cancelled') await this.stopRun(entry)
+        else await entry.stopping
         if (this.disposed || this.runs.get(executionId) !== entry) return false
+        await this.flushCommentDelivery(executionId, entry)
         let settled = await this.settleExecution(executionId, entry.sessionId, entry.prepared, pending)
         // Cancellation may arrive after this attempt entered the store queue.
         // A skipped write waits for the agent stop before trying its new intent.
@@ -871,21 +875,25 @@ export class ExecutionService {
         source: { kind: 'user' as const },
       })
     }
-    // The comments are NOW in the conversation's queue — mark them delivered
-    // (idempotent per comment) and leave the wake trace, all in one mutation.
-    if (commentWake) {
-      await this.markCommentsDelivered(taskId, options!.comments!.map(c => c.id), executionId, sessionId, true)
+    // Track the live agent before any post-dispatch write can fail. Delivery
+    // metadata shares the settlement retry path, so a disk error cannot orphan
+    // the agent or make the already queued comments eligible for redelivery.
+    const entry: RunEntry = {
+      sessionId,
+      ...(prepared !== undefined ? { prepared } : {}),
+      dispose: () => handle.dispose(),
+      ...(commentWake ? { commentDelivery: { taskId, commentIds: options!.comments!.map(c => c.id), announce: true } } : {}),
     }
-
     // 6. Settlement watcher: mark succeeded, release the executing session's
     //    hold, collect the worktree evidence (commits / dirty / diff), and —
     //    when the session did NOT follow the handoff protocol — auto-move the
     //    card to in_review with a system comment.
-    this.watchRun(executionId, handle.agent, {
-      sessionId,
-      ...(prepared !== undefined ? { prepared } : {}),
-      dispose: () => handle.dispose(),
-    })
+    this.watchRun(executionId, handle.agent, entry)
+    if (commentWake) {
+      try { await this.flushCommentDelivery(executionId, entry) } catch (error) {
+        console.error('[dsh-taskboard] comment delivery metadata write failed; execution remains tracked and settlement will retry:', error)
+      }
+    }
 
     return { ok: true, executionId, sessionId }
   }
@@ -1116,6 +1124,21 @@ export class ExecutionService {
     return this.runs.size
   }
 
+  /** Managed sessions must not also be settled by external-session sync. */
+  managesSession(sessionId: string): boolean {
+    return [...this.runs.values()].some(entry => entry.sessionId === sessionId)
+  }
+
+  private stopRun(entry: RunEntry): Promise<void> {
+    entry.stopping ??= Promise.resolve().then(() => entry.dispose()).then(() => {
+      entry.stopped = true
+    }).catch(error => {
+      entry.stopping = undefined
+      throw error
+    })
+    return entry.stopping
+  }
+
   /**
    * Cancel the running execution of a task (user action): stop the agent
    * session, mark the execution cancelled, and hand the task back to todo.
@@ -1130,18 +1153,25 @@ export class ExecutionService {
 
     let entry = this.runs.get(running.id)
     if (entry === undefined) {
-      // Startup cancellation can precede agent creation; keep its write retryable.
+      const sessionId = running.sessionId ?? task.claimedBy ?? ''
+      const live = this.deps.liveAgent?.(sessionId)
+      // External-session sync records executions without owning their agents.
+      // Borrow the live registry handle to stop activity without disposing it.
+      // Startup cancellation can still precede creation of any live agent.
       entry = {
-        sessionId: running.sessionId ?? task.claimedBy ?? '',
+        sessionId,
         prepared: this.preparedFromExecution(running),
-        dispose: async () => {},
+        dispose: async () => {
+          if (live !== undefined) { live.cancel({ kind: 'user' }); await live.whenIdle() }
+        },
       }
       this.runs.set(running.id, entry)
     }
     // Register cancellation before dispose can resolve the idle watcher.
     // Repeated Stop requests share the same agent stop and in-progress write.
-    const tracked = entry
-    tracked.stopping ??= Promise.resolve().then(() => tracked.dispose()).catch(() => {}).then(() => { tracked.stopped = true })
+    // Start stopping even when a prior success write already owns the lane;
+    // that writer must await this stop before retrying with cancellation.
+    void this.stopRun(entry).catch(() => { /* settlement owns stop retries */ })
     const written = await this.requestSettlement(running.id, 'cancelled', undefined, true)
     const outcome = this.deps.store.get(taskId)?.executions.find(e => e.id === running.id)?.outcome
     if (written && outcome === 'cancelled') return { ok: true, executionId: running.id }
@@ -1223,7 +1253,8 @@ export class ExecutionService {
     if (task === undefined || task.trashedAt !== undefined) return { ok: false, error: `no task ${taskId}` }
     if (task.status !== 'in_review') return { ok: false, error: `comment wake requires in_review (current ${task.status})` }
     const pending = task.comments
-      .filter(c => c.systemKey === undefined && c.threadId === undefined && c.deliveredAt === undefined)
+      .filter(c => c.systemKey === undefined && c.threadId === undefined && c.deliveredAt === undefined
+        && ![...this.runs.values()].some(entry => entry.commentDelivery?.taskId === taskId && entry.commentDelivery.commentIds.includes(c.id)))
       .sort((a, b) => a.createdAt - b.createdAt)
     if (pending.length === 0) return { ok: false, error: '没有待投递的留言' }
     const running = task.executions.find(e => e.outcome === 'running')
@@ -1254,6 +1285,17 @@ export class ExecutionService {
     return { ok: true, delivered: 'run', count: pending.length, executionId: result.executionId, sessionId: result.sessionId }
   }
 
+  /** Serialize immediate delivery writes with settlement retries. */
+  private flushCommentDelivery(executionId: string, entry: RunEntry): Promise<void> {
+    if (entry.deliveryWriting !== undefined) return entry.deliveryWriting
+    const delivery = entry.commentDelivery
+    if (delivery === undefined) return Promise.resolve()
+    entry.deliveryWriting = this.markCommentsDelivered(delivery.taskId, delivery.commentIds, executionId, entry.sessionId, delivery.announce)
+      .then(() => { entry.commentDelivery = undefined })
+      .finally(() => { entry.deliveryWriting = undefined })
+    return entry.deliveryWriting
+  }
+
   /**
    * Mark comments delivered (idempotent per comment) and — for the run
    * channel — leave the wake trace as a system comment, in ONE mutation.
@@ -1272,7 +1314,7 @@ export class ExecutionService {
           touched = true
         }
       }
-      if (!touched && !announce) return undefined
+      if (!touched) return undefined
       if (announce) {
         target.comments.push({
           id: newCommentId(),
