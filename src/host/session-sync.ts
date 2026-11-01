@@ -264,6 +264,8 @@ export interface SessionSyncDeps {
   }
   now: () => number
   scanIntervalMs?: number
+  /** Executions owned by the execution service have their own settlement. */
+  isSessionManaged?: (sessionId: string) => boolean
 }
 
 /** Default scan interval: 4s. */
@@ -321,6 +323,7 @@ export class ExternalSessionSyncService {
     for (const task of tasks) {
       const sessionId = task.claimedBy ?? task.executions[task.executions.length - 1]?.sessionId
       if (sessionId === undefined || typeof sessionId !== 'string') continue
+      if (this.deps.isSessionManaged?.(sessionId)) continue
       if (this.ignoredSessions.has(sessionId) || sessionId.startsWith('session-taskboard-')) continue
 
       let session: unknown
@@ -400,6 +403,7 @@ export class ExternalSessionSyncService {
       options?: { subagentDepth?: number }
     },
   ): Promise<void> {
+    if (this.deps.isSessionManaged?.(sessionId)) return
     // 1. Check if already ignored
     if (this.ignoredSessions.has(sessionId)) return
 
