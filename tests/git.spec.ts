@@ -57,6 +57,7 @@ function scripted(handlers: Array<{ match: (args: string[], options: { cwd?: str
         return result
       }
     }
+    if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') return { ok: true, stdout: options.cwd ?? '', stderr: '' }
     return { ok: false, stdout: '', stderr: `unexpected args: ${args.join(' ')}` }
   }
   return Object.assign(fn, { calls })
@@ -197,6 +198,34 @@ describe('createGitFace (scripted exec)', () => {
     ])
     await expect(createGitFace(exec).removeWorktree('/r', '/wt')).rejects.toThrow('worktree 有 1 处未提交修改')
     expect(exec.calls.some(a => a[0] === 'worktree' && a[1] === 'remove')).toBe(false)
+  })
+
+  it.each([bad('status timed out'), new Error('status runner rejected')])('removeWorktree refuses failed status even with force', async result => {
+    const exec = scripted([{ match: a => a[0] === 'status', result }])
+    const git = createGitFace(exec)
+    await expect(git.removeWorktree('/r', '/wt', { force: true, exempt: ['sub'] }))
+      .rejects.toMatchObject({ code: 'worktree-status-unavailable' })
+    expect(exec.calls.some(a => a[0] === 'worktree' && a[1] === 'remove')).toBe(false)
+  })
+
+  it('refuses a parent repository status inherited by an unregistered directory', async () => {
+    const exec = scripted([
+      { match: a => a[0] === 'status', result: ok('') },
+      { match: a => a[0] === 'rev-parse', result: ok('/r') },
+    ])
+    await expect(createGitFace(exec).removeWorktree('/r', '/r/.dsh-worktrees/t-orphan', { force: true }))
+      .rejects.toMatchObject({ code: 'worktree-status-unavailable' })
+    expect(exec.calls.some(a => a[0] === 'worktree')).toBe(false)
+  })
+
+  it('does not classify an unreadable worktree list as unregistered', async () => {
+    const exec = scripted([
+      { match: a => a[0] === 'status', result: ok('') },
+      { match: a => a[0] === 'worktree' && a[1] === 'remove', result: bad('remove failed') },
+      { match: a => a[0] === 'worktree' && a[1] === 'list', result: bad('list failed') },
+    ])
+    await expect(createGitFace(exec).removeWorktree('/r', '/wt'))
+      .rejects.toMatchObject({ code: 'worktree-status-unavailable' })
   })
 
   it('removeWorktree: clean → removed; unregistered leftover → structured outcome; other failures throw', async () => {

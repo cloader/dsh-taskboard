@@ -12,7 +12,7 @@ import { applyHumanWaitingPatch } from '../shared/human-wait.ts'
  * @module dsh-taskboard/host/routes
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { readdir, rm } from 'node:fs/promises'
+import { readdir } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only: pulls the webServer Context merge (ctx.webServer).
@@ -1030,9 +1030,6 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
                       { git: options.git, scanner: options.scanner ?? createRepoScanner() },
                       { workspacePath: ws.path, taskId: id },
                     )
-                    // Leftovers unknown to git ('unregistered' worktrees, or a
-                    // plain mirror dir when the workspace root is no repo).
-                    await rm(path, { recursive: true, force: true })
                   } catch (error) {
                     const message = error instanceof Error ? error.message : String(error)
                     // Structured classification (review P2): git tags its dirty
@@ -1255,7 +1252,6 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
                 { git: options.git, scanner: options.scanner ?? createRepoScanner() },
                 { workspacePath: ws.path, taskId: id },
               )
-              await rm(path, { recursive: true, force: true })
             } catch (error) {
               throw new Error(`Error: invalid_input: ${error instanceof Error ? error.message : String(error)}`)
             }
@@ -1332,13 +1328,12 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
           }
           try {
             // 0.6.3: an orphan mirror may hold several repo worktrees —
-            // aggregated children-first removal, then the leftover fs rm
+            // aggregated children-first removal and empty-container cleanup
             // (scope-verified above).
             await removeMirror(
               { git: options.git, scanner: options.scanner ?? createRepoScanner() },
               { workspacePath: ws.path, taskId },
             )
-            await rm(path, { recursive: true, force: true })
           } catch (error) {
             throw new Error(`Error: invalid_input: ${error instanceof Error ? error.message : String(error)}`)
           }

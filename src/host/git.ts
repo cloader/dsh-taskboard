@@ -103,6 +103,13 @@ export interface ExecResult { ok: boolean; stdout: string; stderr: string }
 /** The injectable exec layer: run `git <args>` under a cwd with a timeout. */
 export type ExecFn = (args: string[], options: { cwd?: string; timeout?: number }) => Promise<ExecResult>
 
+/** Unknown status must never authorize worktree or filesystem deletion. */
+export function worktreeStatusError(path: string, cause?: unknown): Error & { code: string } {
+  return Object.assign(new Error(`Cannot verify worktree status; refusing to delete: ${path}`, { cause }), {
+    code: 'worktree-status-unavailable',
+  })
+}
+
 /** Facts needed to open an isolated execution. */
 export interface WorktreeInfo {
   /** Absolute worktree path (the session's cwd). */
@@ -152,8 +159,8 @@ export interface GitFace {
   collect(worktreePath: string, baseCommit: string, excludeRelPaths?: readonly string[]): Promise<SettlementFacts>
   /**
    * Uncommitted-change lines of a working tree ([] = clean; undefined on git
-   * failure). Mirror removal pre-checks EVERY repo worktree before deleting
-   * any, so one dirty repo refuses the whole mirror (0.6.3).
+   * failure or when cwd is not the worktree root). Undefined is UNKNOWN,
+   * never clean: destructive callers must refuse it.
    */
   dirtyLines(cwd: string): Promise<string[] | undefined>
   /**
@@ -250,6 +257,19 @@ const realExec: ExecFn = (args, options) => new Promise(resolve => {
 export function createGitFace(exec: ExecFn = realExec): GitFace {
   const quick = (args: string[], cwd?: string): Promise<ExecResult> => exec(args, { cwd, timeout: QUICK_TIMEOUT_MS })
   const heavy = (args: string[], cwd?: string): Promise<ExecResult> => exec(args, { cwd, timeout: HEAVY_TIMEOUT_MS })
+
+  const dirtyLines = async (cwd: string): Promise<string[] | undefined> => {
+    try {
+      const status = await quick(['status', '--porcelain'], cwd)
+      if (!status.ok) return undefined
+      // A leftover with no .git can inherit the MAIN repo's clean status.
+      // Only the requested worktree's own status can authorize its removal.
+      const top = await quick(['rev-parse', '--show-toplevel'], cwd)
+      const normalize = (path: string) => process.platform === 'win32' ? resolve(path).toLowerCase() : resolve(path)
+      if (!top.ok || top.stdout.trim().length === 0 || normalize(top.stdout.trim()) !== normalize(cwd)) return undefined
+      return status.stdout.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+    } catch { return undefined }
+  }
 
   // Per-root mutex (0.3.1): structural git ops on the SAME repository run one
   // at a time — concurrent isolated executions must not race on git's locks.
@@ -359,11 +379,7 @@ export function createGitFace(exec: ExecFn = realExec): GitFace {
       return facts
     },
 
-    async dirtyLines(cwd) {
-      const status = await quick(['status', '--porcelain'], cwd)
-      if (!status.ok) return undefined
-      return status.stdout.split('\n').map(l => l.trim()).filter(l => l.length > 0)
-    },
+    dirtyLines,
 
     merge: (root, branch, exemptRelPaths) => withRootLock(root, async () => {
       // Main-clean check. The plugin's own worktree directory
@@ -396,13 +412,13 @@ export function createGitFace(exec: ExecFn = realExec): GitFace {
     },
 
     removeWorktree: (root, worktreePath, opts) => withRootLock(root, async (): Promise<'removed' | 'unregistered'> => {
-      const status = await quick(['status', '--porcelain'], worktreePath)
-      if (status.ok && status.stdout.trim().length > 0) {
+      const status = await dirtyLines(worktreePath)
+      if (status === undefined) throw worktreeStatusError(worktreePath)
+      if (status.length > 0) {
         // opts.exempt drops mirror-structural noise (nested child worktrees /
         // gitlink drift) — the caller's aggregated check already refused real
         // dirt before reaching here.
-        const lines = status.stdout.split('\n')
-          .filter(l => l.trim().length > 0)
+        const lines = status
           .filter(l => !statusLineUnder(l, opts?.exempt ?? []))
           .map(l => l.trim())
         if (lines.length > 0) {
@@ -418,7 +434,8 @@ export function createGitFace(exec: ExecFn = realExec): GitFace {
       // a path absent from `worktree list` is an unregistered leftover, not
       // an error the caller should relay verbatim.
       const list = await quick(['worktree', 'list', '--porcelain'], root)
-      const registered = list.ok && list.stdout.split('\n')
+      if (!list.ok) throw worktreeStatusError(worktreePath)
+      const registered = list.stdout.split('\n')
         .some(l => l.startsWith('worktree ')
           && resolve(l.slice('worktree '.length).trim()).toLowerCase() === resolve(worktreePath).toLowerCase())
       if (!registered) return 'unregistered'

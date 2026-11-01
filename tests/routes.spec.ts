@@ -101,7 +101,7 @@ const gitFace: GitFace = {
   binaryAvailable: async () => true,
   prepareWorktree: async () => undefined,
   collect: async () => ({ commits: [], commitsTotal: 0, dirtyFiles: [], dirtyFilesTotal: 0, changedFiles: 0 }),
-  dirtyLines: async cwd => (gitBehavior.dirty?.(cwd) ?? []),
+  dirtyLines: async cwd => gitBehavior.dirty === undefined ? [] : gitBehavior.dirty(cwd),
   isAncestor: async () => gitBehavior.noop === true,
   merge: async (root, branch, exempt) => {
     gitBehavior.merged.push({ root, branch, ...(exempt !== undefined && exempt.length > 0 ? { exempt: [...exempt] } : {}) })
@@ -833,6 +833,27 @@ describe('taskboard routes', () => {
     const full = await (await fetch(`${base}/dsh-taskboard/tasks/${id}`)).json()
     const mergeComment = (full.value.comments as Array<{ body: string }>).find(c => c.body.includes('已合并到主工作区'))
     expect(mergeComment).toBeTruthy()
+  })
+
+  it.each(['worktree-remove', 'purge', 'orphan-cleanup'])('%s preserves files and ledger on unknown status', async flow => {
+    wsList.push({ id: 'ws-status', path: dir, title: 'Status fixture' })
+    const created = await post('/dsh-taskboard/tasks', { title: 'Keep my work', workspaceId: 'ws-status', urgency: 'normal' })
+    const taskId = created.json.value.id as string
+    const id = flow === 'orphan-cleanup' ? 't-unknown-orphan' : taskId
+    const path = join(dir, '.dsh-worktrees', id)
+    await mkdir(path, { recursive: true })
+    await writeFile(join(path, 'keep.txt'), 'uncommitted work')
+    if (flow === 'purge') await post(`/dsh-taskboard/tasks/${id}/delete`, { ifVersion: 1 })
+    gitBehavior.dirty = () => undefined
+    const result = flow === 'orphan-cleanup'
+      ? await post('/dsh-taskboard/worktree-cleanup', { workspaceId: 'ws-status', taskId: id })
+      : await post(`/dsh-taskboard/tasks/${id}/${flow === 'purge' ? 'delete' : flow}`, { purge: flow === 'purge', deleteBranch: true })
+    expect(result.status).toBe(400)
+    expect(result.json.error.message).toContain('Cannot verify worktree status')
+    expect(await readFile(join(path, 'keep.txt'), 'utf8')).toBe('uncommitted work')
+    expect(gitBehavior.removed).toEqual([])
+    expect(gitBehavior.deletedBranches).toEqual([])
+    expect(store.get(taskId)).toBeDefined()
   })
 
   it('worktree-remove: refuses dirty worktrees with 400; deleteBranch failures surface as branchError', async () => {

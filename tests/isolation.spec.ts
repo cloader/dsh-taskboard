@@ -12,7 +12,7 @@
  *
  * @module dsh-taskboard/host/isolation.spec
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -54,7 +54,7 @@ function stubGit(opts: {
     binaryAvailable: async () => true,
     prepareWorktree: async (_root, path, branch) => ({ path, branch, baseCommit: 'base' }),
     collect: async () => empties,
-    dirtyLines: async cwd => opts.dirty?.[cwd],
+    dirtyLines: async cwd => opts.dirty?.[cwd] ?? [],
     merge: async () => {},
     isAncestor: async () => false,
     removeWorktree: async (_root, path) => {
@@ -73,6 +73,81 @@ function scannerOf(ws: string, rels: string[]): RepoScanner {
 }
 
 describe('removeMirror (0.6.3 review fixes)', () => {
+  it.each(['root', 'child'])('unknown %s status refuses the whole mirror before any removal', async where => {
+    const { ws, root, childPaths } = wsFixture(['sub'])
+    const unknown = where === 'root' ? root : childPaths[0]!
+    writeFileSync(join(unknown, 'keep.txt'), 'uncommitted work')
+    const removes: string[] = []
+    const git = stubGit({ removes })
+    git.dirtyLines = async path => path === unknown ? undefined : []
+    await expect(removeMirror({ git, scanner: scannerOf(ws, ['sub']) }, { workspacePath: ws, taskId: 't-fix' }))
+      .rejects.toMatchObject({ code: 'worktree-status-unavailable' })
+    expect(removes).toEqual([])
+    expect(readFileSync(join(unknown, 'keep.txt'), 'utf8')).toBe('uncommitted work')
+    expect(existsSync(childPaths[0]!)).toBe(true)
+  })
+
+  it('a rejected status probe also preserves files', async () => {
+    const { ws, root } = wsFixture([])
+    writeFileSync(join(root, 'keep.txt'), 'save me')
+    const removes: string[] = []
+    const git = stubGit({ removes })
+    git.dirtyLines = async () => { throw new Error('status unavailable') }
+    await expect(removeMirror({ git, scanner: scannerOf(ws, []) }, { workspacePath: ws, taskId: 't-fix' }))
+      .rejects.toMatchObject({ code: 'worktree-status-unavailable' })
+    expect(removes).toEqual([])
+    expect(readFileSync(join(root, 'keep.txt'), 'utf8')).toBe('save me')
+  })
+
+  it('stops before removing the parent when a child fails its fresh removal check', async () => {
+    const { ws, root, childPaths } = wsFixture(['sub'])
+    writeFileSync(join(childPaths[0]!, 'keep.txt'), 'new work after preflight')
+    const removes: string[] = []
+    const git = stubGit({ removes })
+    git.removeWorktree = async (_repo, path) => {
+      removes.push(path)
+      throw new Error('cannot verify child status')
+    }
+    await expect(removeMirror({ git, scanner: scannerOf(ws, ['sub']) }, { workspacePath: ws, taskId: 't-fix' }))
+      .rejects.toThrow('cannot verify child status')
+    expect(removes).toEqual([childPaths[0]])
+    expect(existsSync(root)).toBe(true)
+    expect(readFileSync(join(childPaths[0]!, 'keep.txt'), 'utf8')).toBe('new work after preflight')
+  })
+
+  it('never unlinks leftover files even if git reports an unregistered clean path', async () => {
+    const { ws, root } = wsFixture([])
+    writeFileSync(join(root, 'keep.txt'), 'leftover work')
+    const git = stubGit({})
+    git.removeWorktree = async () => 'unregistered'
+    await expect(removeMirror({ git, scanner: scannerOf(ws, []) }, { workspacePath: ws, taskId: 't-fix' }))
+      .rejects.toMatchObject({ code: 'worktree-status-unavailable' })
+    expect(readFileSync(join(root, 'keep.txt'), 'utf8')).toBe('leftover work')
+  })
+
+  it.each(['removed', 'unregistered'] as const)('a child reported %s must contain no files before its parent can be removed', async outcome => {
+    const { ws, root, childPaths } = wsFixture(['sub'])
+    writeFileSync(join(childPaths[0]!, 'keep.txt'), 'leftover child work')
+    const removes: string[] = []
+    const git = stubGit({})
+    git.removeWorktree = async (_repo, path) => { removes.push(path); return outcome }
+    await expect(removeMirror({ git, scanner: scannerOf(ws, ['sub']) }, { workspacePath: ws, taskId: 't-fix' }))
+      .rejects.toThrow('Cannot verify worktree status')
+    expect(removes).toEqual([childPaths[0]])
+    expect(existsSync(root)).toBe(true)
+    expect(readFileSync(join(childPaths[0]!, 'keep.txt'), 'utf8')).toBe('leftover child work')
+  })
+
+  it('cleans an empty non-git orphan container without forcing git removal', async () => {
+    const { ws, root } = wsFixture(['empty/nested'])
+    const removes: string[] = []
+    const git = stubGit({ removes })
+    git.dirtyLines = async () => undefined
+    await removeMirror({ git, scanner: scannerOf(ws, []) }, { workspacePath: ws, taskId: 't-fix' })
+    expect(removes).toEqual([])
+    expect(existsSync(root)).toBe(false)
+  })
+
   it('ignores nested child worktrees in the ROOT status (untracked + gitlink shapes), removes children first', async () => {
     const { ws, root, childPaths } = wsFixture(['dsh-taskboard', 'dsh-devlaunch'])
     const removes: string[] = []
