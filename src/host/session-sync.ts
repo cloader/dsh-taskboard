@@ -281,13 +281,17 @@ export class ExternalSessionSyncService {
 
   constructor(private readonly deps: SessionSyncDeps) {
     this.unsubscribe = deps.events.onSessionEvent((sessionId, event, sessionMeta) => {
-      return this.handleSessionEvent(sessionId, event, sessionMeta)
+      return this.handleSessionEvent(sessionId, event, sessionMeta).catch(error => {
+        console.error('[dsh-taskboard] external session event sync failed:', error)
+      })
     })
 
     const interval = deps.scanIntervalMs ?? DEFAULT_SCAN_INTERVAL_MS
     if (interval > 0) {
       this.scanTimer = setInterval(() => {
-        void this.scanActiveSessions()
+        void this.scanActiveSessions().catch(error => {
+          console.error('[dsh-taskboard] external session scan failed:', error)
+        })
       }, interval)
     }
   }
