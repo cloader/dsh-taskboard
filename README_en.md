@@ -258,7 +258,7 @@ Real-deployment validation on 2026-10-16 read 4 Bugs, 4 linked Stories and 8 Tas
 
 ### 0.9.8
 
-- **Board panel**: use DSH's official panel switching and remove the older mounting method. Requires DSH 0.1.7 or newer.
+- **Board panel**: use DSH's official panel switching and remove the older mounting method. Requires DSH 0.1.7 or newer ([#82](https://github.com/cloader/dsh-taskboard/pull/82)).
 - **Import preview**: keep the preview and imported content consistent when switching files quickly ([#72](https://github.com/cloader/dsh-taskboard/issues/72), [#75](https://github.com/cloader/dsh-taskboard/pull/75)). Thanks to [@timacek](https://github.com/timacek) for the contribution.
 - **More reliable execution**: fix storage errors that could close DSH, and retry saving execution results after a write failure ([#74](https://github.com/cloader/dsh-taskboard/issues/74), [#80](https://github.com/cloader/dsh-taskboard/pull/80)).
 - **Work directory protection**: stop deletion when changes cannot be checked, preserving uncommitted files ([#73](https://github.com/cloader/dsh-taskboard/issues/73), [#81](https://github.com/cloader/dsh-taskboard/pull/81)).
