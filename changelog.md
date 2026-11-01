@@ -2,6 +2,9 @@
 
 ### 0.9.8 — 2026-11-01
 
+- **完整导出**：JSON 备份和 CSV 导出始终获取完整台账，折叠「已完成」列后也不会遗漏任务；读取失败时提示错误，不生成残缺文件（[#89](https://github.com/cloader/dsh-taskboard/pull/89)）。
+- **停止外部会话**：自动纳入看板的外部会话支持真正停止 Agent，等待停止后再标记取消；停止失败会重试，避免卡片显示已取消但会话仍在执行（[#89](https://github.com/cloader/dsh-taskboard/pull/89)）。
+- **留言执行保护**：留言唤醒后立即跟踪执行，投递标记保存失败时随结算重试，避免执行无人结算，并防止同一批已入队留言重复投递（[#89](https://github.com/cloader/dsh-taskboard/pull/89)，贡献者 [@cloader](https://github.com/cloader)）。
 - **认领保护**：阻止其他会话删除已认领的进行中任务，避免工作被打断（[#85](https://github.com/cloader/dsh-taskboard/issues/85)、[#86](https://github.com/cloader/dsh-taskboard/pull/86)）。
 - **数据保护**：台账读取失败时明确提示，保留原文件与图片，阻止空台账覆盖原数据（[#84](https://github.com/cloader/dsh-taskboard/issues/84)、[#87](https://github.com/cloader/dsh-taskboard/pull/87)）。
 - **看板面板**：统一使用 DSH 官方面板切换，移除旧版挂载方式；需要 DSH 0.1.7 或更新版本（[#82](https://github.com/cloader/dsh-taskboard/pull/82)）。
@@ -13,6 +16,9 @@
 
 **English:**
 
+- **Complete exports**: JSON backups and CSV exports always fetch the full ledger, including completed tasks when the Done column is collapsed. Fetch failures show an error instead of producing an incomplete file ([#89](https://github.com/cloader/dsh-taskboard/pull/89)).
+- **Stop external sessions**: stopping an automatically captured external session now cancels its live Agent and waits for it to stop before marking the execution cancelled. Failed stop attempts are retried, avoiding cards that appear cancelled while their sessions keep running ([#89](https://github.com/cloader/dsh-taskboard/pull/89)).
+- **Comment execution protection**: track comment-triggered execution immediately and retry failed delivery-metadata writes during settlement, keeping the execution tracked and preventing the same queued comments from being delivered again ([#89](https://github.com/cloader/dsh-taskboard/pull/89), contributed by [@cloader](https://github.com/cloader)).
 - **Claim protection**: prevent other sessions from deleting a claimed task in progress, keeping ongoing work intact ([#85](https://github.com/cloader/dsh-taskboard/issues/85), [#86](https://github.com/cloader/dsh-taskboard/pull/86)).
 - **Data protection**: report ledger load failures, retain the original file and images, and prevent an empty ledger from overwriting existing data ([#84](https://github.com/cloader/dsh-taskboard/issues/84), [#87](https://github.com/cloader/dsh-taskboard/pull/87)).
 - **Board panel**: use DSH's official panel switching and remove the older mounting method. Requires DSH 0.1.7 or newer ([#82](https://github.com/cloader/dsh-taskboard/pull/82)).

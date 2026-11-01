@@ -964,37 +964,47 @@ export class BoardController {
   }
 
   /** Download the whole ledger as a JSON backup file. */
-  exportJson(): void {
-    const stamp = new Date()
-    const pad = (n: number) => String(n).padStart(2, '0')
-    const name = `dsh-taskboard-${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}-${pad(stamp.getHours())}${pad(stamp.getMinutes())}.json`
-    const body = JSON.stringify(this.state.ledger, null, 2)
-    this.download(name, body, 'application/json')
+  async exportJson(): Promise<void> {
+    try {
+      const ledger = await this.client.state({ excludeDone: false })
+      const stamp = new Date()
+      const pad = (n: number) => String(n).padStart(2, '0')
+      const name = `dsh-taskboard-${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}-${pad(stamp.getHours())}${pad(stamp.getMinutes())}.json`
+      const body = JSON.stringify(ledger, null, 2)
+      this.download(name, body, 'application/json')
+    } catch (error) {
+      this.setState({ error: error instanceof Error ? error.message : String(error) })
+    }
   }
 
   /** Download the task list as a CSV (BOM-prefixed for Excel + Chinese text). */
-  exportCsv(): void {
-    const esc = (v: unknown): string => {
-      let s = String(v ?? '')
-      // S17: formula-injection guard — title/description are agent-controllable
-      // and a cell starting with = + - @ would be EXECUTED as a formula by
-      // Excel; neutralize with a leading apostrophe.
-      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
-      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  async exportCsv(): Promise<void> {
+    try {
+      const ledger = await this.client.state({ excludeDone: false })
+      const esc = (v: unknown): string => {
+        let s = String(v ?? '')
+        // S17: formula-injection guard — title/description are agent-controllable
+        // and a cell starting with = + - @ would be EXECUTED as a formula by
+        // Excel; neutralize with a leading apostrophe.
+        if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
+        return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+      }
+      const header = ['id', 'title', 'status', 'urgency', 'blocked', 'project', 'claimedBy', 'mode', 'cron', 'nextRunAt', 'model', 'createdAt', 'updatedAt', 'comments', 'executions', 'waitingForHuman', 'waitingReason']
+      const rows = ledger.tasks.map(t => [
+        t.id, t.title, t.status, t.urgency, t.blocked ? 'yes' : 'no', t.workspaceId,
+        t.claimedBy ?? '', t.execution.mode, t.execution.cron ?? '',
+        t.execution.nextRunAt !== undefined ? new Date(t.execution.nextRunAt).toISOString() : '',
+        t.model !== undefined ? `${t.model.provider}/${t.model.model}` : '',
+        new Date(t.createdAt).toISOString(), new Date(t.updatedAt).toISOString(),
+        t.comments.length, t.executions.length, t.waitingForHuman === undefined ? 'auto' : t.waitingForHuman ? 'yes' : 'no', t.waitingReason ?? '',
+      ].map(esc).join(','))
+      const stamp = new Date()
+      const pad = (n: number) => String(n).padStart(2, '0')
+      const name = `dsh-taskboard-${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}.csv`
+      this.download(name, `\uFEFF${[header.join(','), ...rows].join('\r\n')}`, 'text/csv')
+    } catch (error) {
+      this.setState({ error: error instanceof Error ? error.message : String(error) })
     }
-    const header = ['id', 'title', 'status', 'urgency', 'blocked', 'project', 'claimedBy', 'mode', 'cron', 'nextRunAt', 'model', 'createdAt', 'updatedAt', 'comments', 'executions', 'waitingForHuman', 'waitingReason']
-    const rows = this.state.ledger.tasks.map(t => [
-      t.id, t.title, t.status, t.urgency, t.blocked ? 'yes' : 'no', t.workspaceId,
-      t.claimedBy ?? '', t.execution.mode, t.execution.cron ?? '',
-      t.execution.nextRunAt !== undefined ? new Date(t.execution.nextRunAt).toISOString() : '',
-      t.model !== undefined ? `${t.model.provider}/${t.model.model}` : '',
-      new Date(t.createdAt).toISOString(), new Date(t.updatedAt).toISOString(),
-      t.comments.length, t.executions.length, t.waitingForHuman === undefined ? 'auto' : t.waitingForHuman ? 'yes' : 'no', t.waitingReason ?? '',
-    ].map(esc).join(','))
-    const stamp = new Date()
-    const pad = (n: number) => String(n).padStart(2, '0')
-    const name = `dsh-taskboard-${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}.csv`
-    this.download(name, `\uFEFF${[header.join(','), ...rows].join('\r\n')}`, 'text/csv')
   }
 
   /** Trigger a browser download (no-op when the DOM is unavailable). */
