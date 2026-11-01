@@ -37,10 +37,13 @@ export function ImportModal({ controller }: { controller: BoardController }) {
   const [result, setResult] = useState<string | undefined>(undefined)
   const [confirmReplace, setConfirmReplace] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  /** Pick sequence: a late read/preview may only land for the current file. */
+  const loadSeq = useRef(0)
   const { alert: showAlert, el: alertEl } = useAlert()
 
   /** Read + parse the picked file, then dry-run the preview. */
   const onFile = (file: File | undefined): void => {
+    const seq = ++loadSeq.current
     setPlan(undefined)
     setParseError(undefined)
     setResult(undefined)
@@ -49,15 +52,21 @@ export function ImportModal({ controller }: { controller: BoardController }) {
     setParsed(null)
     if (file === undefined) return
     void file.text().then(text => {
+      // The user may have picked another file while this read was pending:
+      // never let the older read replace the newer file's parsed payload.
+      if (seq !== loadSeq.current) return
       try {
         const value: unknown = JSON.parse(text)
         setParsed(value)
         setFileName(file.name)
         void controller.importPreview(value).then(p => {
-          if (p !== undefined) setPlan(p)
+          // Previews can resolve out of order; only the current pick may set
+          // the plan, otherwise Run would commit a file whose preview was
+          // never shown (replace mode = whole-ledger swap).
+          if (seq === loadSeq.current && p !== undefined) setPlan(p)
         })
       } catch {
-        setParseError(t('imp.parseError'))
+        if (seq === loadSeq.current) setParseError(t('imp.parseError'))
       }
     })
   }
