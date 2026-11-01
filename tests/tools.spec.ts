@@ -4,7 +4,7 @@
  * even though JSON.stringify would silently drop them (a real E2E bug:
  * `value is not lossless JSON` on taskboard_move/list).
  */
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -374,6 +374,88 @@ describe('R1 regression: writes guard inside the serial queue', () => {
     const after = store.get(id)!
     expect(after.title).toBe('Stale')
     expect(after.comments.map(c => c.body)).toEqual(['GUI comment'])
+    for (const dispose of disposers) dispose()
+  })
+
+  it.each([
+    ['taskboard_move', '/proj/a'],
+    ['taskboard_move', '/proj/b'],
+    ['taskboard_delete', '/proj/a'],
+    ['taskboard_delete', '/proj/b'],
+  ] as const)('%s refuses another session holding a task (caller cwd %s)', async (name, cwd) => {
+    const { store, disposers, tool, exec } = await setup()
+    const created = await tool('taskboard_create').execute({ title: 'Held task', workspaceId: 'ws-a', urgency: 'normal' }, exec) as { task: { id: string } }
+    const id = created.task.id
+    await tool('taskboard_move').execute({ id, status: 'in_progress', ifVersion: 1 }, exec)
+    const before = await readFile(store.location(), 'utf8')
+    const outsider = { agent: { id: 'session-2', session: { header: { cwd } } } }
+    const args = { id, ifVersion: 2, ...(name === 'taskboard_move' ? { status: 'in_review' } : {}) }
+    await expect(tool(name).execute(args, outsider))
+      .rejects.toThrow(/forbidden: task is held by session session-1/)
+    expect(await readFile(store.location(), 'utf8')).toBe(before)
+    expect(store.get(id)).toMatchObject({ status: 'in_progress', claimedBy: 'session-1', version: 2, executions: [] })
+    expect(store.get(id)!.trashedAt).toBeUndefined()
+    for (const dispose of disposers) dispose()
+  })
+
+  it('lets the holder soft-delete an idle claimed task and keeps the version guard', async () => {
+    const { store, disposers, tool, exec } = await setup()
+    const created = await tool('taskboard_create').execute({ title: 'Own claim', workspaceId: 'ws-a', urgency: 'normal' }, exec) as { task: { id: string } }
+    const id = created.task.id
+    await tool('taskboard_move').execute({ id, status: 'in_progress', ifVersion: 1 }, exec)
+    await expect(tool('taskboard_delete').execute({ id, ifVersion: 1 }, exec)).rejects.toThrow(/version_conflict/)
+    expect(store.get(id)!.claimedBy).toBe('session-1')
+    expect(store.get(id)!.trashedAt).toBeUndefined()
+    expect(await tool('taskboard_delete').execute({ id, ifVersion: 2 }, exec)).toEqual({ trashed: true })
+    expect(store.get(id)).toMatchObject({ trashedAt: 7_000, version: 3 })
+    expect(store.get(id)!.claimedBy).toBeUndefined()
+    expect(store.get(id)!.claimedAt).toBeUndefined()
+    for (const dispose of disposers) dispose()
+  })
+
+  it('keeps unclaimed tasks deletable by another project session', async () => {
+    const { store, disposers, tool, exec } = await setup()
+    const created = await tool('taskboard_create').execute({ title: 'Unclaimed task', workspaceId: 'ws-a', urgency: 'normal' }, exec) as { task: { id: string } }
+    const outsider = { agent: { id: 'session-2', session: { header: { cwd: '/proj/b' } } } }
+    expect(await tool('taskboard_delete').execute({ id: created.task.id, ifVersion: 1 }, outsider)).toEqual({ trashed: true })
+    expect(store.get(created.task.id)!.trashedAt).toBe(7_000)
+    for (const dispose of disposers) dispose()
+  })
+
+  it('checks the latest on-disk holder when deleting through a stale store', async () => {
+    const { store, disposers, tool, exec } = await setup()
+    const created = await tool('taskboard_create').execute({ title: 'Fresh holder check', workspaceId: 'ws-a', urgency: 'normal' }, exec) as { task: { id: string } }
+    const id = created.task.id
+    await tool('taskboard_move').execute({ id, status: 'in_progress', ifVersion: 1 }, exec)
+    const otherStore = new TaskStore({ file: store.location() })
+    await otherStore.mutate('task-updated', ledger => {
+      const task = ledger.tasks.find(t => t.id === id)!
+      task.claimedBy = 'session-2'
+      task.version += 1
+      return [task]
+    })
+    expect(store.get(id)!.claimedBy).toBe('session-1')
+    const before = await readFile(store.location(), 'utf8')
+    await expect(tool('taskboard_delete').execute({ id, ifVersion: 3 }, exec))
+      .rejects.toThrow(/forbidden: task is held by session session-2/)
+    expect(await readFile(store.location(), 'utf8')).toBe(before)
+    for (const dispose of disposers) dispose()
+  })
+
+  it('refuses to delete even the holder\'s task while an execution is running', async () => {
+    const { store, disposers, tool, exec } = await setup()
+    const created = await tool('taskboard_create').execute({ title: 'Own live run', workspaceId: 'ws-a', urgency: 'normal' }, exec) as { task: { id: string } }
+    const id = created.task.id
+    await tool('taskboard_move').execute({ id, status: 'in_progress', ifVersion: 1 }, exec)
+    await store.mutate('execution-recorded', ledger => {
+      const task = ledger.tasks.find(t => t.id === id)!
+      task.executions.push({ id: 'e-held', trigger: 'manual', outcome: 'running' })
+      task.version += 1
+      return [task]
+    })
+    await expect(tool('taskboard_delete').execute({ id, ifVersion: 3 }, exec)).rejects.toThrow('正在运行')
+    expect(store.get(id)!.claimedBy).toBe('session-1')
+    expect(store.get(id)!.trashedAt).toBeUndefined()
     for (const dispose of disposers) dispose()
   })
 
