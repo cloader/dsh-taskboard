@@ -1,10 +1,9 @@
 /**
  * Browser half entry for dsh-taskboard: wires the route client and the
  * board controller, exposes the model catalog (via the runtime's llm.models
- * RPC when the connection service is present), mounts the sidebar entry and
- * the board view.
+ * RPC when available), and registers the official board panel.
  *
- * Failure policy: DOM mounting problems are logged, never thrown — the web
+ * Failure policy: panel registration problems are logged, never thrown — the web
  * shell fails the whole boot when a plugin apply throws.
  *
  * Export shape: `name` / `inject` / `apply`, no default.
@@ -15,14 +14,14 @@ import { createClient } from './api.ts'
 import { BoardController } from './controller.ts'
 import { disposeI18n, initI18n } from './i18n/runtime.ts'
 import { injectStyles } from './styles.ts'
-import { mountBoardCompat } from './official-panel.tsx'
+import { mountBoardPanel } from './official-panel.tsx'
 import { createSessionJumper, type SessionsServiceFace, type UiWorkspaceFace, type WorkspacesServiceFace } from './session-jump.ts'
 
 /** Client plugin name. */
 export const name = 'dsh-taskboard/client'
 
 /** Required client services (fiber inject waiting). */
-export const inject = ['connection']
+export const inject = ['slots']
 
 /** Narrow connection face for the model catalog + preset roster. */
 interface ConnectionFace {
@@ -61,7 +60,7 @@ interface ClientContextFace {
 }
 
 /**
- * Client entry: installs styles, starts the controller, mounts DOM seats.
+ * Client entry: installs styles, starts the controller, registers the panel.
  * @param ctx - the cordis client context.
  */
 export function apply(ctx: ClientContextFace): void {
@@ -70,8 +69,8 @@ export function apply(ctx: ClientContextFace): void {
     // Locale source (设置 → 通用设置 → 语言): soft-attached — absent on
     // compositions without the DSH locale plugin, where the fallback
     // (<html lang> / navigator) takes over. Never a hard inject. The getter
-    // rides along (issue #16): our client bundle activates with zero service
-    // deps, potentially BEFORE the locale service provides — the runtime
+    // rides along (issue #16): our client bundle can activate
+    // BEFORE the locale service provides — the runtime
     // re-polls it for ~2s and watches <html lang> until it does.
     initI18n(ctx.get?.('locale'), () => ctx.get?.('locale'))
     const client = createClient()
@@ -277,9 +276,8 @@ export function apply(ctx: ClientContextFace): void {
     controller.start()
     const disposers: Array<() => void> = []
     try {
-      // 0.8.0: official slot-API panel when the shell supports it (dsh
-      // 0.1.7+), legacy forced-DOM injection otherwise — mutually exclusive.
-      disposers.push(mountBoardCompat(ctx, controller))
+      // The host owns panel registration and visibility.
+      disposers.push(mountBoardPanel(ctx, controller))
     } catch (error) {
       // DOM failures degrade the board, never the GUI.
       console.error('[dsh-taskboard] mount failed:', error)

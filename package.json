@@ -1,7 +1,7 @@
 {
   "name": "dsh-taskboard",
   "description": "Agent-first task board for the DSH web GUI: host-authoritative task ledger with taskboard_* agent tools, project (= workspace) claim boundaries, per-task model execution with optional existing-session reuse, optional per-task git-worktree isolation (dedicated task branches, commit evidence, one-click merge), host-side cron scheduling, and a live SSE kanban view. Mounts via the official dsh plugin system — no DSH source changes.",
-  "version": "0.9.7",
+  "version": "0.9.8",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -15,20 +15,13 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "inject": [],
+      "inject": [
+        "slots"
+      ],
       "platform": "web"
     },
     "compatibility": {
       "dshReleases": {
-        "0.1.0-rc.8": "unknown",
-        "0.1.1-rc.1": "unknown",
-        "0.1.1-rc.2": "compatible",
-        "0.1.2-alpha.2": "compatible",
-        "0.1.2-alpha.3": "compatible",
-        "0.1.2-alpha.4": "compatible",
-        "0.1.2-alpha.5": "compatible",
-        "0.1.2-rc.1": "compatible",
-        "0.1.5-rc.1": "compatible",
         "0.2.0-rc.2": "compatible"
       }
     }

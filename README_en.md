@@ -42,9 +42,11 @@ A **task board plugin for DeepSeek Harness**: humans create cards, agents claim 
 
 | Dependency | Requirement | Notes |
 | --- | --- | --- |
-| DeepSeek Harness | ≥ 0.1.1 | Requires the `dsh plugin` subcommand and the web profile |
+| DeepSeek Harness | ≥ 0.1.7 | Requires official panel support and the web profile |
 | Node.js | ≥ 22 | For local development and source builds |
 | git | optional | Required for worktree isolation; falls back to running in place when missing |
+
+> **Panel requirement from 0.9.8**: DSH manages the board entry and page through its official panels. Upgrade older DSH installations before updating the plugin.
 
 ## Installation
 
@@ -254,13 +256,22 @@ Real-deployment validation on 2026-10-16 read 4 Bugs, 4 linked Stories and 8 Tas
 
 ## Changelog
 
+### 0.9.8
+
+- **Board panel**: use DSH's official panel switching and remove the older mounting method. Requires DSH 0.1.7 or newer ([#82](https://github.com/cloader/dsh-taskboard/pull/82)).
+- **Import preview**: keep the preview and imported content consistent when switching files quickly ([#72](https://github.com/cloader/dsh-taskboard/issues/72), [#75](https://github.com/cloader/dsh-taskboard/pull/75)). Thanks to [@timacek](https://github.com/timacek) for the contribution.
+- **More reliable execution**: fix storage errors that could close DSH, and retry saving execution results after a write failure ([#74](https://github.com/cloader/dsh-taskboard/issues/74), [#80](https://github.com/cloader/dsh-taskboard/pull/80)).
+- **Work directory protection**: stop deletion when changes cannot be checked, preserving uncommitted files ([#73](https://github.com/cloader/dsh-taskboard/issues/73), [#81](https://github.com/cloader/dsh-taskboard/pull/81)).
+- **Installation guide**: use npm and remove the non-working GitHub installation instructions ([#76](https://github.com/cloader/dsh-taskboard/issues/76), [#79](https://github.com/cloader/dsh-taskboard/pull/79)).
+- **Development**: fix test compatibility on Node 26 ([#71](https://github.com/cloader/dsh-taskboard/issues/71), [#78](https://github.com/cloader/dsh-taskboard/pull/78)).
+
 ### 0.9.7
 
 - **Board language preference**: general settings offer Follow DSH (default), Chinese, English and Russian. Changes apply immediately and persist in the current browser; explicit choices remain independent of DSH, and returning to Follow DSH adopts its latest language.
 - **Settings layout**: interface language and the default project each use a horizontal label-and-selector row with help text below. Horizontal separators distinguish settings sections, and changing language preserves unsaved drafts for the other settings.
 - **Russian UI (ru) ([#67](https://github.com/cloader/dsh-taskboard/pull/67), thanks [@reysonk](https://github.com/reysonk))**: add `src/client/i18n/ru.ts` (664 keys, identical key set to zh/en); widen `LocaleId` to `'zh' | 'en' | 'ru'`, and accept `ru` in the dictionary plus the `<html lang>` / `navigator` fallback detection. Built-in template bodies keep using the English content (not translated by this PR).
 - **Task ID in the detail header ([#68](https://github.com/cloader/dsh-taskboard/pull/68), thanks [@reysonk](https://github.com/reysonk))**: the detail panel now shows the task ID after the "Updated … · last change by …" line, in a monospace chip that copies on click and briefly acknowledges with "Copied" or "Copy failed". The UI never rendered the ID before, so a card could not be pointed at from a conversation, a log or a bug report.
-- **Collapsible Backlog and To Do columns ([#65](https://github.com/cloader/dsh-taskboard/pull/65), thanks [@jw5555555555](https://github.com/jw5555555555); integration fixes [#69](https://github.com/cloader/dsh-taskboard/pull/69), thanks [@cloader](https://github.com/cloader))**: collapse either column into a compact rail with task counts and drag-and-drop transitions. Column state persists independently of project-group collapse state, with Chinese, English and Russian labels.
+- **Collapsible Backlog and To Do columns ([#65](https://github.com/cloader/dsh-taskboard/pull/65), thanks [@jw5555555555](https://github.com/jw5555555555); integration fixes [#69](https://github.com/cloader/dsh-taskboard/pull/69))**: collapse either column into a compact rail with task counts and drag-and-drop transitions. Column state persists independently of project-group collapse state, with Chinese, English and Russian labels.
 - **Softer review notice ([#66](https://github.com/cloader/dsh-taskboard/issues/66), [3054eba](https://github.com/cloader/dsh-taskboard/commit/3054eba6741a635966a0f5d593da8138bffc19ac))**: change the missing verification/acceptance-record notice on cards awaiting review from red to light blue (`#78a9d6`), preserving the text while reducing visual distraction.
 - **Regression coverage**: trilingual key parity, non-empty values, enum maps, locale detection and placeholder substitution, template fallback and client translation-key scanning; task ID rendering and clipboard feedback; persisted language preferences, switching between DSH and explicit choices, unavailable storage and retained settings drafts; combined column/project-group collapse and reload.
 

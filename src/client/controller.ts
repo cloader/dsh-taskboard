@@ -54,7 +54,6 @@ function loadView(): { workspaceId?: string; urgencies: Urgency[]; sortBy: SortB
 export interface ControllerState {
   archiveSessionsSupported?: boolean
   sessionArchive?: { taskId: string; result: SessionArchiveResult }
-  boardOpen: boolean
   ledger: TaskLedger
   workspaces: WorkspaceView[]
   filters: BoardFilters
@@ -109,7 +108,6 @@ export interface ControllerState {
 function initialState(): ControllerState {
   const view = loadView()
   return {
-    boardOpen: false,
     ledger: emptyLedger(),
     workspaces: [],
     filters: { workspaceId: view.workspaceId, urgencies: view.urgencies },
@@ -265,33 +263,11 @@ export class BoardController {
   }
 
   // ------------------------------------------------------------------ view
-  /** Open the board (sidebar entry). */
-  openBoard(): void { this.setState({ boardOpen: true }) }
+  /** Return to the conversation through the host layout. */
+  closeBoard(): void { this.closeRequester?.() }
 
-  /**
-   * Close the board. Official panel mode routes through the installed
-   * close requester (layout.selectPanel(null) — the host owns visibility);
-   * legacy mode flips the local boardOpen state as before.
-   */
-  closeBoard(): void {
-    if (this.closeRequester !== undefined) {
-      this.closeRequester()
-      return
-    }
-    this.setState({ boardOpen: false })
-  }
-
-  /**
-   * Install (or clear) the external close bridge. Set by the official
-   * panel mount; the legacy mount leaves it unset.
-   * @param fn - the close bridge, or undefined to restore legacy behavior.
-   */
-  installCloseRequester(fn: (() => void) | undefined): void {
-    this.closeRequester = fn
-  }
-
-  /** Toggle the board. */
-  toggleBoard(): void { this.setState({ boardOpen: !this.state.boardOpen }) }
+  /** Install or clear the host panel's close callback. */
+  installCloseRequester(fn: (() => void) | undefined): void { this.closeRequester = fn }
 
   /** Set the project filter (persisted). */
   setWorkspaceFilter(workspaceId?: string): void {
