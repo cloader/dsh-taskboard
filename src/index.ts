@@ -74,7 +74,9 @@ export function apply(ctx: Context): void {
   // GET /state happened to load the file (review P0). load() never throws —
   // a corrupt ledger is quarantined instead.
   const storeReady = storage.ready().then(() => store.load())
-  void storeReady.then(() => assets.cleanup(JSON.stringify(store.snapshot())))
+  void storeReady.then(() => assets.cleanup(JSON.stringify(store.snapshot()))).catch(error => {
+    console.warn(`[dsh-taskboard] storage startup/asset cleanup failed (${storage.directory()}):`, error)
+  })
   const now = () => Date.now()
   // Global execution concurrency cap (DSH_TASKBOARD_MAX_CONCURRENT overrides).
   const deploymentMaxConcurrent = Math.max(1, Number.parseInt(process.env.DSH_TASKBOARD_MAX_CONCURRENT ?? '', 10) || DEFAULT_MAX_CONCURRENT)
@@ -287,7 +289,9 @@ export function apply(ctx: Context): void {
         workspaceExists: id => workspaces.get(id) !== undefined,
         registry: createBuiltinProviders(),
       })
-      void storeReady.then(() => externalSync.start())
+      void storeReady.then(() => externalSync.start()).catch(error => {
+        console.warn(`[dsh-taskboard] external sync startup skipped; storage unavailable (${storage.directory()}):`, error)
+      })
       agentDisposers.push(() => externalSync.dispose())
       let disposeRoutes: (() => void) | undefined
       agentCtx.inject(['webServer'], (webCtx: Context) => {
