@@ -42,42 +42,21 @@ DeepSeek Harness 的**任务看板插件**：人建卡、agent 认领执行、�
 
 | 依赖 | 要求 | 说明 |
 | --- | --- | --- |
-| DeepSeek Harness | ≥ 0.1.1 | 需要 `dsh plugin` 子命令与 web profile |
-| Node.js | ≥ 20 | 仅 GitHub 源安装构建时需要 |
+| DeepSeek Harness | ≥ 0.1.7 | 需要官方面板支持与 web profile |
+| Node.js | ≥ 22 | 本地开发和源码构建环境 |
 | git | 可选 | Worktree 隔离需要；缺失时自动降级原目录执行 |
 
-> **双轨挂载（0.8.0）**：dsh ≥ 0.1.7（带官方 slot 系统）时，看板作为**一等侧边栏面板**注册（`sidebar.panellist` + `main`，宿主拥有侧栏行与面板切换，从根本上消除「看板打开后其他面板点不动」这类问题，[#31](https://github.com/cloader/dsh-taskboard/issues/31)）；旧版 shell 自动回落到原有的 DOM 注入方式，行为与 0.7.x 完全一致。两条路径运行时自动互斥选择，无需配置。
+> **0.9.8 起的面板要求**：看板入口和页面统一交给 DSH 官方面板管理，不再支持旧版挂载方式。使用旧版 DSH 时请先升级。
 
 ## 安装
 
-```bash
-# 一键安装（npm，预构建、免构建授权 —— 推荐）
-dsh plugin --profile web add dsh-taskboard
+插件已发布到 [npm](https://www.npmjs.com/package/dsh-taskboard)，包含预构建产物，无需本地编译。
 
-# 或从 GitHub 源安装
-dsh plugin --profile web add github:cloader/dsh-taskboard
+```bash
+dsh plugin --profile web add dsh-taskboard
 ```
 
 安装后**重启 `dsh web` 并刷新页面**：侧边栏出现「任务看板」入口即成功。无需任何后续配置。
-
-<details>
-<summary>GitHub 源安装卡在 prepare / allowBuilds？</summary>
-
-git 源插件安装时经 prepare 脚本构建，pnpm 会先阻止——按报错提示把精确 key 加进 profile 目录 `pnpm-workspace.yaml` 的 `allowBuilds` 后重跑即可。npm 源是预构建产物，无此步骤。
-</details>
-
-<details>
-<summary>开发模式安装（改代码即生效）</summary>
-
-```bash
-git clone https://github.com/cloader/dsh-taskboard.git
-cd dsh-taskboard
-npm install && npm run build
-dsh plugin --profile web add "link:/path/to/dsh-taskboard"
-```
-
-link 安装后，仓库里 `npm run build` 重建、刷新页面即生效；改完宿主侧代码需重启 `dsh web`。
-</details>
 
 卸载：`dsh plugin --profile web remove dsh-taskboard`（台账数据保留在当前数据目录，见[配置与数据](#配置与数据)）。
 
@@ -232,9 +211,6 @@ agent：
 **agent 会把任务直接标成「已完成」吗？**
 不会。这是代码级协议闸（不是提示词约定）：`taskboard_move` 到 done 的调用被直接拒绝，验收永远由人在看板完成。
 
-**GitHub 源安装报 prepare 被阻止？**
-pnpm 的构建授权——按报错把 key 加进 profile 的 `pnpm-workspace.yaml` `allowBuilds` 后重跑；或改用 npm 源（预构建，无此步骤）。
-
 **和 dsh-better-sidebar 并存，看板顶栏右侧按钮被遮住？**
 0.6.5 起已自动避让：better-sidebar 收起时其右上角常驻按钮簇（展开底部面板 / 展开侧边栏）占据视口右上 10~70px，看板激活时会为工具条右侧预留这块区域（镜像 better-sidebar 对 DSH 原生会话头的避让契约），任何窗口宽度都不再重叠；未安装 better-sidebar 或其侧栏展开时无任何影响（[#19](https://github.com/cloader/dsh-taskboard/issues/19)）。
 
@@ -255,6 +231,8 @@ node tests/manual-git-e2e.mjs   # 真 git 端到端手测（worktree 全链路 +
 ```
 
 `npm run build` 在构建前清理 `lib/` 的旧产物，再生成 host ESM 和客户端注册模块 `lib/client.js`。`npm run build:host`、`npm run build:client` 只重建对应部分并保留另一部分产物；发布前请运行完整构建。
+
+本地开发时，先完成构建，再用 `dsh plugin --profile web add "link:/path/to/dsh-taskboard"` 挂载本地仓库。修改客户端后重新构建并刷新页面；修改宿主侧代码后还需重启 `dsh web`。
 
 ## 外部任务同步
 
@@ -282,13 +260,22 @@ node tests/manual-git-e2e.mjs   # 真 git 端到端手测（worktree 全链路 +
 
 ## 升级日志
 
+### 0.9.8
+
+- **看板面板**：统一使用 DSH 官方面板切换，移除旧版挂载方式；需要 DSH 0.1.7 或更新版本（[#82](https://github.com/cloader/dsh-taskboard/pull/82)）。
+- **导入预览**：快速切换文件时，预览与实际导入内容保持一致（[#72](https://github.com/cloader/dsh-taskboard/issues/72)、[#75](https://github.com/cloader/dsh-taskboard/pull/75)）。感谢 [@timacek](https://github.com/timacek) 的贡献。
+- **执行更稳定**：修复存储异常导致 DSH 退出的问题，执行结果保存失败时会自动重试（[#74](https://github.com/cloader/dsh-taskboard/issues/74)、[#80](https://github.com/cloader/dsh-taskboard/pull/80)）。
+- **工作目录保护**：无法确认修改状态时停止删除，保留未提交的文件（[#73](https://github.com/cloader/dsh-taskboard/issues/73)、[#81](https://github.com/cloader/dsh-taskboard/pull/81)）。
+- **安装说明**：统一使用 npm 安装，移除无法直接使用的 GitHub 安装说明（[#76](https://github.com/cloader/dsh-taskboard/issues/76)、[#79](https://github.com/cloader/dsh-taskboard/pull/79)）。
+- **开发环境**：修复 Node 26 下的测试兼容问题（[#71](https://github.com/cloader/dsh-taskboard/issues/71)、[#78](https://github.com/cloader/dsh-taskboard/pull/78)）。
+
 ### 0.9.7
 
 - **看板语言设置**：通用设置新增「跟随 DSH（默认）／简体中文／English／Русский」选项，立即生效并在当前浏览器中保存；手动选择不受 DSH 语言切换影响，恢复跟随后使用 DSH 的最新语言。
 - **设置页布局**：界面语言、默认新建项目各自采用「左侧标签＋右侧下拉框」的横向布局，说明文字保留在下方；各设置分区底部增加横线，方便区分。切换语言保留其他未保存的设置草稿。
 - **俄语界面（ru）（[#67](https://github.com/cloader/dsh-taskboard/pull/67)，感谢 [@reysonk](https://github.com/reysonk)）**：新增 `src/client/i18n/ru.ts`（664 个键，与 zh/en 完全对齐），`LocaleId` 扩展为 `'zh' | 'en' | 'ru'`，字典与 `<html lang>`/`navigator` 回退检测支持 `ru`。内置模板正文仍复用英文内容（本 PR 不翻译模板）。
 - **任务详情显示 ID（[#68](https://github.com/cloader/dsh-taskboard/pull/68)，感谢 [@reysonk](https://github.com/reysonk)）**：详情头部在「更新 … · 最近操作 …」之后显示任务 ID，等宽字体、点击即复制并短暂提示「已复制」/「复制失败」。此前 ID 只用于搜索匹配和会话内部，界面从未展示，无法在对话、日志或问题报告里指认具体卡片。
-- **待规划与待办列折叠（[#65](https://github.com/cloader/dsh-taskboard/pull/65)，感谢 [@jw5555555555](https://github.com/jw5555555555)；集成修复 [#69](https://github.com/cloader/dsh-taskboard/pull/69)，感谢 [@cloader](https://github.com/cloader)）**：支持将两列收起为紧凑侧栏，保留任务计数和拖放流转；折叠状态在刷新后恢复，并与项目分组折叠独立保存，支持中英俄提示。
+- **待规划与待办列折叠（[#65](https://github.com/cloader/dsh-taskboard/pull/65)，感谢 [@jw5555555555](https://github.com/jw5555555555)；集成修复 [#69](https://github.com/cloader/dsh-taskboard/pull/69)）**：支持将两列收起为紧凑侧栏，保留任务计数和拖放流转；折叠状态在刷新后恢复，并与项目分组折叠独立保存，支持中英俄提示。
 - **弱化待验收提示（[#66](https://github.com/cloader/dsh-taskboard/issues/66)，[3054eba](https://github.com/cloader/dsh-taskboard/commit/3054eba6741a635966a0f5d593da8138bffc19ac)）**：将待验收卡片中的「缺少自验/验收记录」提示由红色调整为浅蓝色 `#78a9d6`，保留提示文字，减少视觉干扰。
 - **回归覆盖**：三语键集一致性、值非空、枚举映射、语言探测与占位符替换、模板回退及客户端翻译键扫描；任务 ID 渲染与复制反馈；语言偏好持久化、跟随 DSH 与手动选择切换、存储异常降级及设置草稿保留；整列与项目分组折叠组合使用及刷新恢复。
 

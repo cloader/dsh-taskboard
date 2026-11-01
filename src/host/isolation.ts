@@ -17,14 +17,15 @@
  *   worktree reads as untracked noise there, so the root worktree is only
  *   removable once they are gone.
  *
- * Every git interaction stays fail-soft at the boundaries the execution
- * service already owns: this module returns outcomes, it never fails a run.
+ * Preparation stays fail-soft at the execution boundary. Destructive removal
+ * refuses unknown status and propagates errors to the user action.
  *
  * @module dsh-taskboard/host/isolation
  */
 import { MAX_MIRROR_REPOS, isValidRelRepoPath } from '../shared/protocol.ts'
+import { lstat, readdir, rmdir } from 'node:fs/promises'
 import type { GitFace } from './git.ts'
-import { statusLineUnder, worktreePathOf } from './git.ts'
+import { statusLineUnder, worktreePathOf, worktreeStatusError } from './git.ts'
 import type { RepoRef, RepoScanner } from './repos.ts'
 
 /** One prepared repo worktree inside a task mirror. */
@@ -85,6 +86,50 @@ async function pathExists(path: string): Promise<boolean> {
 /** Join a repo relative path under a base path (forward slashes). */
 function under(base: string, rel: string): string {
   return rel === '' ? base : base + '/' + rel
+}
+
+/** Unlike preparation's fail-soft probe, deletion may only ignore ENOENT. */
+async function removalPathExists(path: string): Promise<boolean> {
+  try {
+    const info = await lstat(path)
+    if (!info.isDirectory() || info.isSymbolicLink()) throw worktreeStatusError(path)
+    return true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw worktreeStatusError(path, error)
+  }
+}
+
+/** A non-git mirror root is removable only when it contains checked children
+ * and empty container directories. Files, .git markers, and symlinks refuse. */
+async function assertPlainContainer(path: string, children: readonly string[], rel = ''): Promise<void> {
+  for (const entry of await readdir(path, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.isSymbolicLink() || entry.name === '.git') throw worktreeStatusError(path)
+    const childRel = rel.length === 0 ? entry.name : rel + '/' + entry.name
+    if (!children.includes(childRel)) await assertPlainContainer(under(path, entry.name), children, childRel)
+  }
+}
+
+/** Git removes registered worktrees. Leftover containers may lose empty
+ * directories only; never recursively unlink files after a status check. */
+async function removeEmptyContainers(root: string): Promise<void> {
+  const directories: string[] = []
+  const inspect = async (path: string): Promise<void> => {
+    if (!await removalPathExists(path)) return
+    for (const entry of await readdir(path, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.isSymbolicLink()) throw worktreeStatusError(path)
+      await inspect(under(path, entry.name))
+    }
+    directories.push(path)
+  }
+  try {
+    await inspect(root)
+    for (const path of directories) {
+      // rmdir also refuses files created since inspection (ENOTEMPTY).
+      try { await rmdir(path) }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+    }
+  } catch (error) { throw worktreeStatusError(root, error) }
 }
 
 /**
@@ -181,8 +226,8 @@ export async function prepareMirror(
  * Remove a task whole mirror: aggregate the dirty pre-check across EVERY
  * repo worktree first (one dirty repo refuses everything, nothing is
  * deleted), then remove children before the root (see module doc).
- * Unknown-to-git leftovers report as unregistered — the caller fs-removes
- * the mirror root afterwards (scope-verified route flows own that rm).
+ * Unknown status refuses deletion; a plain root container must contain only
+ * verified children. After git removal, only empty directories are cleaned.
  * @throws with code dirty-mirror when any repo worktree holds uncommitted changes.
  */
 export async function removeMirror(
@@ -199,24 +244,38 @@ export async function removeMirror(
   let nested: RepoRef[] = []
   try {
     nested = await scanner.findNestedRepos(args.workspacePath)
-  } catch { nested = [] }
+  } catch (error) { throw worktreeStatusError(mirrorRoot, error) }
 
   const targets: Array<{ repo: string; repoRoot: string; path: string }> = []
   for (const repo of nested) {
     assertRepoKey(repo.relPath)
     const path = under(mirrorRoot, repo.relPath)
-    if (await pathExists(path)) targets.push({ repo: repo.relPath, repoRoot: repo.absPath, path })
+    if (await removalPathExists(path)) targets.push({ repo: repo.relPath, repoRoot: repo.absPath, path })
   }
   // The mirror ROOT is always a target (the legacy flow called removeWorktree
   // unconditionally): when the workspace root is a repo this removes the root
   // worktree; when it is not (plain mirror dir, already-gone path) git side
-  // reports it unregistered and the caller's fs rm cleans up.
-  targets.push({ repo: '', repoRoot: args.workspacePath, path: mirrorRoot });
+  // status preflight proves it is a plain container or an already-gone path.
+  targets.push({ repo: '', repoRoot: args.workspacePath, path: mirrorRoot })
 
   const childRels = targets.filter(t => t.repo !== '').map(t => t.repo)
   const dirty: Array<{ repo: string; lines: string[] }> = []
+  const skipGit = new Set<string>()
   for (const target of targets) {
     const raw = await git.dirtyLines(target.path).catch(() => undefined)
+    if (raw === undefined) {
+      if (!await removalPathExists(target.path)) {
+        skipGit.add(target.path)
+        continue
+      }
+      if (target.repo !== '') throw worktreeStatusError(target.path)
+      // Plain container roots have no git status of their own. Prove that
+      // their only contents are the children checked by this same preflight.
+      try { await assertPlainContainer(target.path, childRels) }
+      catch (error) { throw worktreeStatusError(target.path, error) }
+      skipGit.add(target.path)
+      continue
+    }
     // The root worktree's status lists its nested child worktrees as untracked
     // noise (`?? sub/`) — those trees belong to the children (checked in their
     // own pass below), not to the root repo's uncommitted changes. Without
@@ -241,21 +300,26 @@ export async function removeMirror(
   // this IS the children-first order. (The original reverse loop removed the
   // root FIRST — its own doc said children-first; the P1 dirty refusal above
   // masked the bug because the loop never actually ran on a real mirror.)
-  const failures: string[] = []
   for (const target of targets) {
+    if (skipGit.has(target.path) && target.repo === '') continue
     try {
       // The root's structural noise (nested child worktrees / gitlink drift)
       // survived the aggregated pre-check above — exempt + force is safe by
       // construction: real dirt never got past it.
-      await git.removeWorktree(target.repoRoot, target.path,
-        target.repo === '' ? { exempt: childRels, force: true } : undefined)
+      if (!skipGit.has(target.path)) {
+        await git.removeWorktree(target.repoRoot, target.path,
+          target.repo === '' ? { exempt: childRels, force: true } : undefined)
+      }
+      // Unregistered/partly removed children must not survive under a parent
+      // that is about to be force-removed with a structural-noise exemption.
+      if (target.repo !== '') await removeEmptyContainers(target.path)
     } catch (error) {
-      failures.push((target.repo === '' ? '根仓库' : target.repo) + '：' + (error instanceof Error ? error.message : String(error)))
+      // Never force-remove the parent after a child failed its own fresh
+      // status check or removal: the child's files are still inside it.
+      throw new Error('删除镜像失败：' + (target.repo === '' ? '根仓库' : target.repo) + '：' + (error instanceof Error ? error.message : String(error)), { cause: error })
     }
   }
-  if (failures.length > 0) {
-    throw new Error('删除镜像失败：\n' + failures.slice(0, 5).join('\n'))
-  }
+  await removeEmptyContainers(mirrorRoot)
 }
 
 /**

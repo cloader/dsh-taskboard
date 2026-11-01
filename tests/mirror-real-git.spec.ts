@@ -10,9 +10,9 @@
  * @module dsh-taskboard/host/mirror-real-git.spec
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createGitFace } from '../src/host/git.ts'
 import { prepareMirror, removeMirror } from '../src/host/isolation.ts'
@@ -43,6 +43,76 @@ const gitAvailable = (() => {
 const d = gitAvailable ? describe : describe.skip
 
 d('mirror orchestration on real git (0.6.3)', () => {
+  it('preserves uncommitted work when a registered worktree index is corrupt', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'dsh-atb-corrupt-index-'))
+    try {
+      const ws = join(base, 'ws')
+      mkdirSync(ws)
+      git(ws, 'init', '-q')
+      withIdentity(ws)
+      writeFileSync(join(ws, 'tracked.txt'), 'initial\n')
+      git(ws, 'add', '.')
+      git(ws, 'commit', '-qm', 'init')
+      const face = createGitFace()
+      const scanner = createRepoScanner()
+      const outcome = await prepareMirror({ git: face, scanner }, {
+        workspacePath: ws, taskId: 't-corrupt', branch: 'task/corrupt+t-corrupt', reuse: false,
+      })
+      if (!('mirror' in outcome)) throw new Error('expected mirror')
+      const mirror = outcome.mirror.root
+      const keep = join(mirror, 'keep.txt')
+      writeFileSync(keep, 'uncommitted agent work\n')
+      await expect(removeMirror({ git: face, scanner }, { workspacePath: ws, taskId: 't-corrupt' }))
+        .rejects.toMatchObject({ code: 'dirty-mirror' })
+
+      const index = resolve(mirror, execFileSync('git', ['rev-parse', '--git-path', 'index'], { cwd: mirror, encoding: 'utf8' }).trim())
+      const rel = relative(base, index)
+      expect(isAbsolute(rel) || rel.startsWith('..')).toBe(false)
+      writeFileSync(index, 'corrupt index fixture')
+      expect(await face.dirtyLines(mirror)).toBeUndefined()
+      await expect(removeMirror({ git: face, scanner }, { workspacePath: ws, taskId: 't-corrupt' }))
+        .rejects.toMatchObject({ code: 'worktree-status-unavailable' })
+      await expect(face.removeWorktree(ws, mirror, { force: true }))
+        .rejects.toMatchObject({ code: 'worktree-status-unavailable' })
+      expect(readFileSync(keep, 'utf8')).toBe('uncommitted agent work\n')
+      const registered = execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: ws, encoding: 'utf8' })
+      expect(registered.replaceAll('\\', '/')).toContain(mirror.replaceAll('\\', '/'))
+    } finally { rmSync(base, { recursive: true, force: true, maxRetries: 3 }) }
+  }, 30_000)
+
+  it('preserves stray files in a plain container and still removes verified child mirrors when clean', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'dsh-atb-plain-container-'))
+    try {
+      const ws = join(base, 'ws')
+      const sub = join(ws, 'packages', 'sub')
+      mkdirSync(sub, { recursive: true })
+      git(sub, 'init', '-q')
+      withIdentity(sub)
+      writeFileSync(join(sub, 'tracked.txt'), 'child\n')
+      git(sub, 'add', '.')
+      git(sub, 'commit', '-qm', 'init')
+      const face = createGitFace()
+      const scanner = createRepoScanner()
+      const outcome = await prepareMirror({ git: face, scanner }, {
+        workspacePath: ws, taskId: 't-container', branch: 'task/container+t-container', reuse: false,
+      })
+      if (!('mirror' in outcome)) throw new Error('expected child mirror')
+      const mirror = outcome.mirror.root
+      const child = outcome.mirror.repos[0]!.worktreePath
+      expect(outcome.mirror.repos[0]!.repo).toBe('packages/sub')
+      expect(await face.dirtyLines(mirror)).toBeUndefined()
+      const keep = join(mirror, 'keep.txt')
+      writeFileSync(keep, 'outside every child repository')
+      await expect(removeMirror({ git: face, scanner }, { workspacePath: ws, taskId: 't-container' }))
+        .rejects.toMatchObject({ code: 'worktree-status-unavailable' })
+      expect(readFileSync(join(child, 'tracked.txt'), 'utf8').replaceAll('\r\n', '\n')).toBe('child\n')
+      expect(readFileSync(keep, 'utf8')).toBe('outside every child repository')
+      rmSync(keep)
+      await removeMirror({ git: face, scanner }, { workspacePath: ws, taskId: 't-container' })
+      expect(existsSync(mirror)).toBe(false)
+    } finally { rmSync(base, { recursive: true, force: true, maxRetries: 3 }) }
+  }, 30_000)
+
   it('prepares a root+parallel mirror, keeps evidence clean, removes children-first', async () => {
     const base = mkdtempSync(join(tmpdir(), 'dsh-atb-mirror-'))
     try {

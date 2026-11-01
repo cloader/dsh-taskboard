@@ -89,8 +89,13 @@ export class StorageCoordinator {
 
   async ready(): Promise<void> {
     if (this.startupError !== undefined) throw new Error(`taskboard_storage_unavailable: ${this.startupError}`)
-    await mkdir(this.currentDirectory, { recursive: true })
-    await access(this.currentDirectory, constants.R_OK | constants.W_OK)
+    try {
+      await mkdir(this.currentDirectory, { recursive: true })
+      await access(this.currentDirectory, constants.R_OK | constants.W_OK)
+    } catch (error) {
+      this.startupError = `cannot access storage directory ${this.currentDirectory}: ${error instanceof Error ? error.message : String(error)}`
+      throw new Error(`taskboard_storage_unavailable: ${this.startupError}`, { cause: error })
+    }
   }
 
   private requireStores(): { ledger: TaskStore; templates: TemplateStore; assets: AssetStore } {

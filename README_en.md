@@ -42,40 +42,21 @@ A **task board plugin for DeepSeek Harness**: humans create cards, agents claim 
 
 | Dependency | Requirement | Notes |
 | --- | --- | --- |
-| DeepSeek Harness | ≥ 0.1.1 | Requires the `dsh plugin` subcommand and the web profile |
-| Node.js | ≥ 20 | Only needed when installing/building from the GitHub source |
+| DeepSeek Harness | ≥ 0.1.7 | Requires official panel support and the web profile |
+| Node.js | ≥ 22 | For local development and source builds |
 | git | optional | Required for worktree isolation; falls back to running in place when missing |
+
+> **Panel requirement from 0.9.8**: DSH manages the board entry and page through its official panels. Upgrade older DSH installations before updating the plugin.
 
 ## Installation
 
-```bash
-# One-command install from npm (prebuilt, no build approval — recommended)
-dsh plugin --profile web add dsh-taskboard
+The plugin is published on [npm](https://www.npmjs.com/package/dsh-taskboard) with prebuilt artifacts, so no local compilation is needed.
 
-# Or install from the GitHub source
-dsh plugin --profile web add github:cloader/dsh-taskboard
+```bash
+dsh plugin --profile web add dsh-taskboard
 ```
 
 After installing, **restart `dsh web` and refresh the page**: you should see a "Task Board" entry in the sidebar. No further configuration needed.
-
-<details>
-<summary>GitHub-source install stuck on prepare / allowBuilds?</summary>
-
-Plugins installed from a git source go through a prepare script, and pnpm blocks it first — follow the error message and add the exact key to `allowBuilds` in your profile's `pnpm-workspace.yaml`, then retry. The npm package ships prebuilt artifacts and never hits this step.
-</details>
-
-<details>
-<summary>Developer-mode install (edit code and see changes immediately)</summary>
-
-```bash
-git clone https://github.com/cloader/dsh-taskboard.git
-cd dsh-taskboard
-npm install && npm run build
-dsh plugin --profile web add "link:/path/to/dsh-taskboard"
-```
-
-With a link install, rebuild via `npm run build` in the repo and refresh the page; host-side changes additionally require restarting `dsh web`.
-</details>
 
 Uninstall: `dsh plugin --profile web remove dsh-taskboard` (ledger data stays in the active data directory — see [Configuration & Data](#configuration--data)).
 
@@ -230,9 +211,6 @@ Tasks attach to projects (= DSH workspaces). Claiming validates session ownershi
 **Can an agent mark a task "Done" itself?**
 No. That is a code-level protocol gate (not a prompt convention): `taskboard_move` calls targeting *done* are rejected outright; acceptance is always performed by a human on the board.
 
-**GitHub-source install blocked at prepare?**
-That's pnpm build authorization — add the key printed in the error to `allowBuilds` in the profile's `pnpm-workspace.yaml` and retry; or install from npm instead (prebuilt, no such step).
-
 **Board toolbar's right-side buttons covered when dsh-better-sidebar is installed?**
 Fixed since 0.6.5 with automatic yielding: while better-sidebar's right panel is collapsed, its persistent corner cluster ("expand bottom panel" / "expand sidebar") occupies the top-right 10-70px of the viewport; the active board now reserves that strip on the toolbar's right side (mirroring better-sidebar's own yield contract for DSH's native session header), so they never overlap at any window width. No effect when better-sidebar is absent or its panel is open ([#19](https://github.com/cloader/dsh-taskboard/issues/19)).
 
@@ -253,6 +231,8 @@ node tests/manual-git-e2e.mjs   # real-git end-to-end manual test (full worktree
 ```
 
 `npm run build` cleans stale files from `lib/` before generating the host ESM modules and the client registration module, `lib/client.js`. `npm run build:host` and `npm run build:client` rebuild only their respective half and preserve the other half's output; run the full build before publishing.
+
+For local development, build first, then link the local repository with `dsh plugin --profile web add "link:/path/to/dsh-taskboard"`. Rebuild and refresh the page after client changes; host-side changes also require restarting `dsh web`.
 
 ## External task sync
 
@@ -276,13 +256,22 @@ Real-deployment validation on 2026-10-16 read 4 Bugs, 4 linked Stories and 8 Tas
 
 ## Changelog
 
+### 0.9.8
+
+- **Board panel**: use DSH's official panel switching and remove the older mounting method. Requires DSH 0.1.7 or newer ([#82](https://github.com/cloader/dsh-taskboard/pull/82)).
+- **Import preview**: keep the preview and imported content consistent when switching files quickly ([#72](https://github.com/cloader/dsh-taskboard/issues/72), [#75](https://github.com/cloader/dsh-taskboard/pull/75)). Thanks to [@timacek](https://github.com/timacek) for the contribution.
+- **More reliable execution**: fix storage errors that could close DSH, and retry saving execution results after a write failure ([#74](https://github.com/cloader/dsh-taskboard/issues/74), [#80](https://github.com/cloader/dsh-taskboard/pull/80)).
+- **Work directory protection**: stop deletion when changes cannot be checked, preserving uncommitted files ([#73](https://github.com/cloader/dsh-taskboard/issues/73), [#81](https://github.com/cloader/dsh-taskboard/pull/81)).
+- **Installation guide**: use npm and remove the non-working GitHub installation instructions ([#76](https://github.com/cloader/dsh-taskboard/issues/76), [#79](https://github.com/cloader/dsh-taskboard/pull/79)).
+- **Development**: fix test compatibility on Node 26 ([#71](https://github.com/cloader/dsh-taskboard/issues/71), [#78](https://github.com/cloader/dsh-taskboard/pull/78)).
+
 ### 0.9.7
 
 - **Board language preference**: general settings offer Follow DSH (default), Chinese, English and Russian. Changes apply immediately and persist in the current browser; explicit choices remain independent of DSH, and returning to Follow DSH adopts its latest language.
 - **Settings layout**: interface language and the default project each use a horizontal label-and-selector row with help text below. Horizontal separators distinguish settings sections, and changing language preserves unsaved drafts for the other settings.
 - **Russian UI (ru) ([#67](https://github.com/cloader/dsh-taskboard/pull/67), thanks [@reysonk](https://github.com/reysonk))**: add `src/client/i18n/ru.ts` (664 keys, identical key set to zh/en); widen `LocaleId` to `'zh' | 'en' | 'ru'`, and accept `ru` in the dictionary plus the `<html lang>` / `navigator` fallback detection. Built-in template bodies keep using the English content (not translated by this PR).
 - **Task ID in the detail header ([#68](https://github.com/cloader/dsh-taskboard/pull/68), thanks [@reysonk](https://github.com/reysonk))**: the detail panel now shows the task ID after the "Updated … · last change by …" line, in a monospace chip that copies on click and briefly acknowledges with "Copied" or "Copy failed". The UI never rendered the ID before, so a card could not be pointed at from a conversation, a log or a bug report.
-- **Collapsible Backlog and To Do columns ([#65](https://github.com/cloader/dsh-taskboard/pull/65), thanks [@jw5555555555](https://github.com/jw5555555555); integration fixes [#69](https://github.com/cloader/dsh-taskboard/pull/69), thanks [@cloader](https://github.com/cloader))**: collapse either column into a compact rail with task counts and drag-and-drop transitions. Column state persists independently of project-group collapse state, with Chinese, English and Russian labels.
+- **Collapsible Backlog and To Do columns ([#65](https://github.com/cloader/dsh-taskboard/pull/65), thanks [@jw5555555555](https://github.com/jw5555555555); integration fixes [#69](https://github.com/cloader/dsh-taskboard/pull/69))**: collapse either column into a compact rail with task counts and drag-and-drop transitions. Column state persists independently of project-group collapse state, with Chinese, English and Russian labels.
 - **Softer review notice ([#66](https://github.com/cloader/dsh-taskboard/issues/66), [3054eba](https://github.com/cloader/dsh-taskboard/commit/3054eba6741a635966a0f5d593da8138bffc19ac))**: change the missing verification/acceptance-record notice on cards awaiting review from red to light blue (`#78a9d6`), preserving the text while reducing visual distraction.
 - **Regression coverage**: trilingual key parity, non-empty values, enum maps, locale detection and placeholder substitution, template fallback and client translation-key scanning; task ID rendering and clipboard feedback; persisted language preferences, switching between DSH and explicit choices, unavailable storage and retained settings drafts; combined column/project-group collapse and reload.
 

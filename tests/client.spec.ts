@@ -60,7 +60,7 @@ describe('client half', () => {
     vi.unstubAllGlobals()
   })
 
-  it('apply() mounts styles, waits for panes, and survives without panes', async () => {
+  it('apply() registers the host panel and disposes the client services', async () => {
     vi.stubGlobal('fetch', fetchMock)
     vi.stubGlobal('EventSource', EventSourceMock as unknown as typeof EventSource)
     const { apply } = await import('../src/client/index.ts')
@@ -69,7 +69,12 @@ describe('client half', () => {
     // value is the disposer (this fake caught nothing when the plugin passed
     // a single-layer arrow that cordis executed as immediate teardown).
     const disposers: unknown[] = []
-    const ctx = { get: () => undefined, effect: (fn: () => unknown) => { disposers.push(fn()) } }
+    const registrations: string[] = []
+    const slots = {
+      inject: (_key: string, callback: () => unknown) => callback(),
+      register: (options: { name: string }) => { registrations.push(options.name); return () => {} },
+    }
+    const ctx = { get: (name: string) => name === 'slots' ? slots : undefined, effect: (fn: () => unknown) => { disposers.push(fn()) } }
     expect(() => apply(ctx as never)).not.toThrow()
 
     // Styles injected exactly once, and ownership-tagged: the shell's
@@ -81,8 +86,8 @@ describe('client half', () => {
     expect(styleEl.getAttribute('data-plugin')).toBe('dsh-taskboard')
     expect(styleEl.getAttribute('data-plugin-css')).toBe('dsh-taskboard/styles')
 
-    // No panes exist: mounts wait via observers without throwing. Give the
-    // controller's initial refresh a tick.
+    expect(registrations).toEqual(['main', 'sidebar.panellist'])
+    // Give the controller's initial refresh a tick.
     await new Promise(r => setTimeout(r, 10))
     expect(fetchMock).toHaveBeenCalled()
 
@@ -139,109 +144,10 @@ describe('client half', () => {
     // The yield rule mirrors better-sidebar's own contract for DSH's session
     // header (padding-right 78px from the viewport edge; ours sits inside the
     // board's 16px padding → 78 − 16 = 62px). It must stay gated on BOTH the
-    // board being active (html attr) and better-sidebar's right panel being
+    // official panel root and better-sidebar's right panel being
     // collapsed (body attr), so it never matches on setups without the plugin.
-    expect(css).toContain('html[data-dsh-atb-active] body[data-dsh-sidebar-collapsed] .dsh-atb-toolbar')
+    expect(css).toContain('body[data-dsh-sidebar-collapsed] .dsh-atb-panel-root .dsh-atb-toolbar')
     expect(css).toContain('.dsh-atb-toolbar { padding-right: 62px; }')
-  })
-
-  it('sidebar entry places itself once a sidebar pane exists', async () => {
-    vi.stubGlobal('fetch', fetchMock)
-    vi.stubGlobal('EventSource', EventSourceMock as unknown as typeof EventSource)
-    const { createClient } = await import('../src/client/api.ts')
-    const { BoardController } = await import('../src/client/controller.ts')
-    const { mountSidebarEntry } = await import('../src/client/sidebar-entry.ts')
-
-    // Build the REAL shell shape (reverse-engineered from the live GUI):
-    // sidebarCol pane > wrapper > root > [logoRow(brand aria button)] +
-    // direct-child newSession BUTTON (the family plugins' fallback target).
-    const column = document.createElement('div')
-    column.className = 'pI_x6G_sidebarCol'
-    column.dataset.pane = 'sidebar'
-    const root = document.createElement('div')
-    root.className = 'hHd-Xa_root'
-    const row = document.createElement('div')
-    row.className = 'hHd-Xa_logoRow'
-    const brand = document.createElement('button')
-    brand.className = 'hHd-Xa_brand hHd-Xa_wide'
-    brand.setAttribute('aria-label', '新建会话')
-    brand.innerHTML = '<svg></svg>'
-    row.append(brand)
-    const newSession = document.createElement('button')
-    newSession.textContent = '新会话'
-    root.append(row, newSession)
-    const wrapper = document.createElement('div')
-    wrapper.append(root)
-    column.append(wrapper)
-    document.body.append(column)
-
-    const controller = new BoardController(createClient())
-    const dispose = mountSidebarEntry(controller)
-    disposers.push(dispose)
-
-    await new Promise(r => setTimeout(r, 20))
-    const entry = document.querySelector('[data-dsh-atb-entry]')
-    expect(entry).not.toBeNull()
-    // Entry is a direct child of the root, right after the newSession button
-    // (the direct-child fallback anchor — same landing spot as the family
-    // plugins: after the button block, before the workspace browser).
-    expect(entry!.parentElement).toBe(root)
-    expect(entry!.previousElementSibling).toBe(newSession)
-
-    controller.toggleBoard()
-    expect((entry as HTMLElement).dataset.active).toBe('true')
-  })
-
-  it('sidebar entry shows todo|in_progress|in_review counts with tooltip', async () => {
-    localStorage.clear()
-    const { BoardController } = await import('../src/client/controller.ts')
-    const { mountSidebarEntry } = await import('../src/client/sidebar-entry.ts')
-
-    const mkTask = (id: string, status: string) => ({
-      id, title: id, description: '', prompt: '', workspaceId: 'ws-a',
-      urgency: 'normal' as const, status: status as never, blocked: false,
-      execution: { mode: 'claim' as const }, version: 1, createdAt: 0, updatedAt: 0,
-      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
-      comments: [], executions: [],
-    })
-    const tasks = [
-      mkTask('t-1', 'todo'), mkTask('t-2', 'todo'),
-      mkTask('t-3', 'in_progress'),
-      mkTask('t-4', 'in_review'), mkTask('t-5', 'in_review'), mkTask('t-6', 'in_review'),
-      mkTask('t-7', 'done'),            // not counted
-      mkTask('t-8', 'backlog'),         // not counted
-    ]
-    const client = {
-      state: async () => ({ schemaVersion: 1, revision: 1, tasks }),
-      workspaces: async () => [],
-      stream: () => () => {},
-    }
-    const controller = new BoardController(client as never)
-    const dispose = mountSidebarEntry(controller)
-    disposers.push(dispose)
-    controller.start()
-    // Initial mount renders 0|0|0; the refresh then rolls each slot to the
-    // live counts. jsdom never fires transitionend, so each slot settles via
-    // the 400ms fallback — poll the DOM until the strip reaches its final
-    // text (no fixed sleep racing the animation constant).
-    await waitFor(() => document.querySelector<HTMLElement>('.dsh-atb-entry-stats')?.textContent === '2|1|3', 3_000)
-
-    const stats = document.querySelector<HTMLElement>('.dsh-atb-entry-stats')
-    expect(stats).not.toBeNull()
-    // Slots + separators render as "todo|in_progress|in_review".
-    expect(stats!.textContent).toBe('2|1|3')
-    // Each slot carries its status so the stylesheet colors the digits.
-    const rolls = stats!.querySelectorAll<HTMLElement>('.dsh-atb-roll')
-    expect(rolls.length).toBe(3)
-    expect(rolls[0]!.dataset.stat).toBe('todo')
-    expect(rolls[1]!.dataset.stat).toBe('in_progress')
-    expect(rolls[2]!.dataset.stat).toBe('in_review')
-    // The tooltip explains the meaning and carries the live numbers.
-    expect(stats!.title).toContain('待办 2')
-    expect(stats!.title).toContain('进行中 1')
-    expect(stats!.title).toContain('待验收 3')
-    controller.dispose()
-    localStorage.clear()
   })
 
   it('board columns wear status dots before their labels', async () => {
@@ -912,7 +818,9 @@ describe('client half', () => {
       stream: () => () => {},
     }
     const controller = new BoardController(client as never)
-    controller.openBoard()
+    const closePanel = vi.fn()
+    controller.installCloseRequester(closePanel)
+    closePanel.mockClear()
 
     // Fake runtime services: list mirror + archive set + staging open.
     let byId: Record<string, unknown> = { 's-live': {}, 's-arch': {} }
@@ -936,20 +844,20 @@ describe('client half', () => {
       getWorkspaces: () => (provided ? workspaces : undefined) as never,
     }))
     expect(await controller.openSession('s-live')).toBe('unavailable')
-    expect(controller.getSnapshot().boardOpen).toBe(true)
+    expect(closePanel).not.toHaveBeenCalled()
     provided = true
 
     // Listed + not archived: opens, and the board closes over the session.
     expect(await controller.openSession('s-live')).toBe('opened')
     expect(opened).toEqual(['s-live'])
-    expect(controller.getSnapshot().boardOpen).toBe(false)
+    expect(closePanel).toHaveBeenCalledTimes(1)
 
     // Archived: a definitive verdict — no refresh, never opened.
-    controller.openBoard()
+    closePanel.mockClear()
     expect(await controller.openSession('s-arch')).toBe('archived')
     expect(refreshed).toBe(0)
     expect(opened).toEqual(['s-live'])
-    expect(controller.getSnapshot().boardOpen).toBe(true)
+    expect(closePanel).not.toHaveBeenCalled()
 
     // Deleted (absent from the list): one refresh re-check, still missing.
     expect(await controller.openSession('s-gone')).toBe('missing')
@@ -980,7 +888,9 @@ describe('client half', () => {
       stream: () => () => {},
     }
     const controller = new BoardController(client as never)
-    controller.openBoard()
+    const closePanel = vi.fn()
+    controller.installCloseRequester(closePanel)
+    closePanel.mockClear()
 
     // Runtime-shaped services: probe-clean, no `open` key at all.
     const sessions = {
@@ -1001,7 +911,7 @@ describe('client half', () => {
     // board must close over the session it navigated to.
     expect(await controller.openSession('s-live')).toBe('opened')
     expect(navigated).toEqual(['s-live'])
-    expect(controller.getSnapshot().boardOpen).toBe(false)
+    expect(closePanel).toHaveBeenCalledTimes(1)
 
     controller.dispose()
   })
@@ -1705,7 +1615,6 @@ describe('client half', () => {
     const controller = new BoardController(client as never)
     controller.start()
     await new Promise(r => setTimeout(r, 10))
-    controller.openBoard()
 
     const host = document.createElement('div')
     document.body.append(host)
@@ -2001,275 +1910,6 @@ describe('client half', () => {
     localStorage.clear()
   })
 
-  it('0.4.1 竞态回归：入口嵌在 newSession 容器内时点击自己仍正常 toggle，点真 newSession 仍让位', async () => {
-    localStorage.clear()
-    const { BoardController } = await import('../src/client/controller.ts')
-    const { mountSidebarEntry } = await import('../src/client/sidebar-entry.ts')
-    const { mountBoard } = await import('../src/client/board-mount.tsx')
-    const { createClient } = await import('../src/client/api.ts')
-    const client = {
-      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [] }),
-      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
-      stream: () => () => {},
-      templates: async () => ({ templates: [] }),
-    }
-    const controller = new BoardController(client as never)
-    controller.start()
-    await new Promise(r => setTimeout(r, 10))
-
-    // The race-report shell shape: the sidebar root nests a NEW SESSION
-    // button inside a [class*="newSession"] container row, and our entry
-    // gets inserted as a SIBLING of that button — i.e. INSIDE the
-    // newSession-classed container (closest() from the entry hits it).
-    const column = document.createElement('div')
-    column.className = 'pI_x6G_sidebarCol'
-    column.dataset.pane = 'sidebar'
-    const root = document.createElement('div')
-    root.className = 'hHd-Xa_root'
-    const newSessionRow = document.createElement('div')
-    newSessionRow.className = 'hHd-Xa_newSession'
-    const newSession = document.createElement('button')
-    newSession.className = 'hHd-Xa_button'
-    newSession.textContent = '新会话'
-    newSessionRow.append(newSession)
-    root.append(newSessionRow)
-    const wrapper = document.createElement('div')
-    wrapper.append(root)
-    column.append(wrapper)
-    // Center column the board mounts into.
-    const conversation = document.createElement('div')
-    conversation.dataset.pane = 'conversation'
-    document.body.append(column, conversation)
-
-    const disposeEntry = mountSidebarEntry(controller)
-    const disposeBoard = mountBoard(controller)
-    await new Promise(r => setTimeout(r, 20))
-
-    // The entry landed next to the newSession row; force the exact racy
-    // shape some shells produce: a sibling INSIDE the classed container
-    // (closest() from the entry then matches [class*="newSession"]).
-    const entry = document.querySelector<HTMLElement>('[data-dsh-atb-entry]')!
-    expect(entry).not.toBeNull()
-    if (entry.closest('[class*="newSession"]') === null) {
-      newSessionRow.append(entry)
-    }
-    expect(entry.closest('[class*="newSession"]')).not.toBeNull()
-    // Detach the entry's self-heal observers AFTER the move: they would
-    // otherwise re-place the entry (fighting the racy position we forced)
-    // on every mutation burst below.
-    disposeEntry()
-
-    // mountBoard already renders the board React tree into its container;
-    // nothing extra to mount here.
-
-    // 1) Clicking OUR entry while open must NOT close the board (the capture
-    //    listener exempts the entry subtree) — toggle handles it: open→close.
-    controller.openBoard()
-    await new Promise(r => setTimeout(r, 10))
-    entry.click()
-    await new Promise(r => setTimeout(r, 10))
-    expect(controller.getSnapshot().boardOpen).toBe(false)
-
-    // open again; a second click on the entry closes it via toggle — no race.
-    entry.click()
-    await new Promise(r => setTimeout(r, 10))
-    expect(controller.getSnapshot().boardOpen).toBe(true)
-    entry.click()
-    await new Promise(r => setTimeout(r, 10))
-    expect(controller.getSnapshot().boardOpen).toBe(false)
-
-    // 2) Clicking the REAL new-session button while open still closes the
-    //    board (the yield-to-sidebar semantics survive the fix).
-    controller.openBoard()
-    await new Promise(r => setTimeout(r, 10))
-    newSession.click()
-    await new Promise(r => setTimeout(r, 10))
-    expect(controller.getSnapshot().boardOpen).toBe(false)
-
-    disposeBoard()
-    column.remove()
-    conversation.remove()
-    controller.dispose()
-    localStorage.clear()
-  })
-
-  it('0.4.2 回归：无 data-pane 的 Desktop shell（哈希类名 centerCol）也能挂载看板；隐藏规则双选择器', async () => {
-    localStorage.clear()
-    const { BoardController } = await import('../src/client/controller.ts')
-    const { mountBoard, BOARD_VIEW_SELECTOR } = await import('../src/client/board-mount.tsx')
-    const { createClient } = await import('../src/client/api.ts')
-    const { injectStyles } = await import('../src/client/styles.ts')
-    injectStyles()
-
-    const client = {
-      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [] }),
-      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
-      stream: () => () => {},
-      templates: async () => ({ templates: [] }),
-    }
-    const controller = new BoardController(client as never)
-    controller.start()
-    await new Promise(r => setTimeout(r, 10))
-
-    // The DSH Desktop shell shape: NO data-pane anywhere; the center column
-    // carries the CSS-Module hashed class (verified against
-    // dsh-client-ui-layout: "centerCol": "pI_x6G_centerCol").
-    const center = document.createElement('div')
-    center.className = 'pI_x6G_centerCol'
-    const conversationContent = document.createElement('div')
-    conversationContent.textContent = '会话内容'
-    center.append(conversationContent)
-    document.body.append(center)
-
-    const dispose = mountBoard(controller)
-    await new Promise(r => setTimeout(r, 20))
-
-    // The board container was created INSIDE the hashed-class column — on
-    // 0.4.1 this stayed null forever (the board never rendered).
-    const view = document.querySelector<HTMLElement>(BOARD_VIEW_SELECTOR)
-    expect(view).not.toBeNull()
-    expect(view!.parentElement).toBe(center)
-
-    // Opening the board flips the html attribute the dual hide rule keys on.
-    controller.openBoard()
-    await new Promise(r => setTimeout(r, 10))
-    expect(document.documentElement.hasAttribute('data-dsh-atb-active')).toBe(true)
-
-    // The injected stylesheet carries BOTH hide selectors (old data-pane
-    // pane + hashed centerCol), so conversation content hides on either shell.
-    const styleEl = document.getElementById('dsh-taskboard-styles')!
-    expect(styleEl).not.toBeNull()
-    expect(styleEl.textContent).toContain('html[data-dsh-atb-active] [data-pane="conversation"] > *:not([data-dsh-atb-view])')
-    expect(styleEl.textContent).toContain('html[data-dsh-atb-active] [class*="centerCol"] > *:not([data-dsh-atb-view])')
-
-    dispose()
-    controller.closeBoard()
-    center.remove()
-    controller.dispose()
-    localStorage.clear()
-  })
-
-  it('0.4.3 回归：折叠侧边栏时入口收成纯图标轨道（双信号选择器都在样式表里）', async () => {
-    localStorage.clear()
-    const { injectStyles } = await import('../src/client/styles.ts')
-    injectStyles()
-
-    // The collapse signals verified against the live shell packages:
-    // dsh-client-ui-layout sets data-sidebar-collapsed on the frame;
-    // dsh-client-ui-sidebar's root toggles its CSS-Module *_collapsed class
-    // (e.g. hHd-Xa_collapsed). The rail rules must key on BOTH (0.4.2
-    // dual-selector doctrine) and hide label + stats, with the native 36×36
-    // rail geometry the shell gives its own collapsed buttons.
-    const css = document.getElementById('dsh-taskboard-styles')!.textContent ?? ''
-    for (const signal of ['[data-sidebar-collapsed]', '[class*="_collapsed"]']) {
-      expect(css).toContain(`${signal} [data-dsh-atb-entry] .dsh-atb-entry-label,\n${signal} [data-dsh-atb-entry] .dsh-atb-entry-stats`)
-    }
-    expect(css).toContain('width: 36px; height: 36px; min-width: 36px;')
-    expect(css).toContain('margin: 0 0 12px; padding: 0;')
-
-    // DOM level: the entry markup keeps its label/stats spans (only the
-    // stylesheet hides them in the rail), and the collapse class on the
-    // sidebar root is exactly what the CSS keys on — verify the selector
-    // string the shell really produces matches our pattern.
-    const root = document.createElement('div')
-    root.className = 'hHd-Xa_root hHd-Xa_collapsed'
-    expect(root.matches('[class*="_collapsed"]')).toBe(true)
-    const expanded = document.createElement('div')
-    expanded.className = 'hHd-Xa_root'
-    expect(expanded.matches('[class*="_collapsed"]')).toBe(false)
-  })
-
-  it('0.5.2 回归：DSH Desktop 非兼容模式（extended frame）下入口与看板都能挂载；隐藏规则第三选择器', async () => {
-    localStorage.clear()
-    // Earlier tests in this file leave their shell fixtures in the shared
-    // jsdom document (they dispose the entry, not the columns) — clear
-    // every prior column/entry/view so the selectors below see ONLY the
-    // extended frame built in this test.
-    for (const selector of [
-      '[data-pane="sidebar"]', '[class*="sidebarCol"]',
-      '[data-pane="conversation"]', '[class*="centerCol"]',
-      '[data-dsh-atb-entry]', '[data-dsh-atb-view]',
-    ]) {
-      for (const el of document.querySelectorAll(selector)) el.remove()
-    }
-    const { BoardController } = await import('../src/client/controller.ts')
-    const { mountSidebarEntry } = await import('../src/client/sidebar-entry.ts')
-    const { mountBoard, BOARD_VIEW_SELECTOR } = await import('../src/client/board-mount.tsx')
-    const { injectStyles } = await import('../src/client/styles.ts')
-    injectStyles()
-
-    const client = {
-      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [] }),
-      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
-      stream: () => () => {},
-      templates: async () => ({ templates: [] }),
-    }
-    const controller = new BoardController(client as never)
-    controller.start()
-    await new Promise(r => setTimeout(r, 10))
-
-    // The DSH Desktop extended-mode frame shape (verified against
-    // anywhere-labs/dsh-desktop ExtendedFrame.tsx and the installed
-    // app.asar): the official ui-layout row is DISABLED — the desktop
-    // package owns the columns. NO data-pane attributes, NO
-    // sidebarCol/centerCol substrings; the official sidebar still renders
-    // (unchanged) inside dshDesktopUpstreamSidebar with its Xa_ classes.
-    const frame = document.createElement('div')
-    frame.className = 'dshDesktopFrame'
-    frame.dataset.desktopMode = 'extended'
-    const surface = document.createElement('aside')
-    surface.className = 'dshDesktopSidebarSurface'
-    const upstream = document.createElement('div')
-    upstream.className = 'dshDesktopUpstreamSidebar'
-    const sidebarRoot = document.createElement('div')
-    sidebarRoot.className = 'hHd-Xa_root'
-    const logoRow = document.createElement('div')
-    logoRow.className = 'hHd-Xa_logoRow'
-    const newSession = document.createElement('button')
-    newSession.className = 'hHd-Xa_newSession'
-    newSession.textContent = '新会话'
-    logoRow.append(newSession)
-    sidebarRoot.append(logoRow)
-    upstream.append(sidebarRoot)
-    surface.append(upstream)
-    const center = document.createElement('main')
-    center.className = 'dshDesktopConversationSurface'
-    const conversationContent = document.createElement('div')
-    conversationContent.textContent = '会话内容'
-    center.append(conversationContent)
-    frame.append(surface, center)
-    document.body.append(frame)
-
-    const disposeEntry = mountSidebarEntry(controller)
-    const disposeBoard = mountBoard(controller)
-    await new Promise(r => setTimeout(r, 20))
-
-    // On 0.5.1 both stayed null forever: sidebarRoot()'s column selector
-    // matched nothing in the extended frame, so the entry never placed.
-    const entry = document.querySelector<HTMLElement>('[data-dsh-atb-entry]')
-    expect(entry).not.toBeNull()
-    expect(upstream.contains(entry)).toBe(true)
-    const view = document.querySelector<HTMLElement>(BOARD_VIEW_SELECTOR)
-    expect(view).not.toBeNull()
-    expect(view!.parentElement).toBe(center)
-
-    // The hide rule knows the third column generation.
-    const css = document.getElementById('dsh-taskboard-styles')!.textContent ?? ''
-    expect(css).toContain('html[data-dsh-atb-active] .dshDesktopConversationSurface > *:not([data-dsh-atb-view])')
-
-    // Collapse signal: the extended frame sets data-sidebar-collapsed on
-    // ITSELF — the existing rail rules key on that attribute unchanged.
-    frame.setAttribute('data-sidebar-collapsed', '')
-    expect(frame.matches('[data-sidebar-collapsed]')).toBe(true)
-
-    disposeEntry()
-    disposeBoard()
-    controller.closeBoard()
-    frame.remove()
-    controller.dispose()
-    localStorage.clear()
-  })
-
   it('SSE 帧对账：hello/change 按 api.ts 的 revision 规则触发 onGap/onChange', async () => {
     localStorage.clear()
     vi.stubGlobal('EventSource', EventSourceMock as unknown as typeof EventSource)
@@ -2489,6 +2129,8 @@ describe('client half', () => {
       stream: () => () => {},
     }
     const controller = new BoardController(client as never)
+    const closePanel = vi.fn()
+    controller.installCloseRequester(closePanel)
 
     const opened: string[] = []
     const sessions = {
@@ -2519,7 +2161,7 @@ describe('client half', () => {
     host = document.createElement('div')
     document.body.append(host)
     root = createRoot(host)
-    controller.openBoard()
+    closePanel.mockClear()
     const alerts: string[] = []
     root.render(React.createElement(TaskCard, {
       task: taskLive as never,
@@ -2534,7 +2176,7 @@ describe('client half', () => {
     cardEl.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))
     await new Promise(r => setTimeout(r, 20))
     expect(opened).toEqual(['session-taskboard-t-live-11112222'])
-    expect(controller.getSnapshot().boardOpen).toBe(false)
+    expect(closePanel).toHaveBeenCalledTimes(1)
     root.unmount()
     host.remove()
 
@@ -2542,7 +2184,7 @@ describe('client half', () => {
     host = document.createElement('div')
     document.body.append(host)
     root = createRoot(host)
-    controller.openBoard()
+    closePanel.mockClear()
     root.render(React.createElement(TaskCard, {
       task: taskArchived as never,
       controller,
@@ -2555,7 +2197,7 @@ describe('client half', () => {
     await new Promise(r => setTimeout(r, 20))
     expect(alerts).toHaveLength(1)
     expect(alerts[0]).toContain('该会话已归档')
-    expect(controller.getSnapshot().boardOpen).toBe(true)
+    expect(closePanel).not.toHaveBeenCalled()
     root.unmount()
     host.remove()
 
@@ -2563,7 +2205,7 @@ describe('client half', () => {
     host = document.createElement('div')
     document.body.append(host)
     root = createRoot(host)
-    controller.openBoard()
+    closePanel.mockClear()
     root.render(React.createElement(TaskDetail, {
       task: taskLive as never,
       controller,
@@ -2583,7 +2225,7 @@ describe('client half', () => {
     topSessionBtn.click()
     await new Promise(r => setTimeout(r, 20))
     expect(opened).toEqual(['session-taskboard-t-live-11112222', 'session-taskboard-t-live-11112222'])
-    expect(controller.getSnapshot().boardOpen).toBe(false)
+    expect(closePanel).toHaveBeenCalledTimes(1)
 
     root.unmount()
     host.remove()
@@ -2617,6 +2259,8 @@ describe('client half', () => {
       stream: () => () => {},
     }
     const controller = new BoardController(client as never)
+    const closePanel = vi.fn()
+    controller.installCloseRequester(closePanel)
 
     const opened: string[] = []
     const sessions = {
@@ -2631,7 +2275,7 @@ describe('client half', () => {
       getWorkspaces: () => workspaces as never,
     }))
     controller.start()
-    controller.openBoard()
+    closePanel.mockClear()
     await new Promise(r => setTimeout(r, 10))
 
     const host = document.createElement('div')
@@ -2649,7 +2293,7 @@ describe('client half', () => {
     await new Promise(r => setTimeout(r, 300))
 
     expect(opened).toEqual(['session-taskboard-t-dbl-1234'])
-    expect(controller.getSnapshot().boardOpen).toBe(false)
+    expect(closePanel).toHaveBeenCalledTimes(1)
     // Detail was NOT open previously, and double-click must NOT open it
     expect(controller.getSnapshot().selectedId).toBeUndefined()
 
@@ -2883,182 +2527,6 @@ describe('client half', () => {
     })
   })
 
-  it('0.8.0 回归：官方 slot 系统可用时走官方面板注册（不注入 DOM、不设 active 属性、注册 id/key 正确）', async () => {
-    localStorage.clear()
-    const { BoardController } = await import('../src/client/controller.ts')
-    const { mountBoardCompat, OFFICIAL_PANEL_ID } = await import('../src/client/official-panel.tsx')
-    const { injectStyles } = await import('../src/client/styles.ts')
-    injectStyles()
-
-    const client = {
-      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [] }),
-      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
-      stream: () => () => {},
-      templates: async () => ({ templates: [] }),
-    }
-    const controller = new BoardController(client as never)
-    controller.start()
-    await new Promise(r => setTimeout(r, 10))
-
-    // Fake official slots service: records registrations, declares the two
-    // slots (spec() non-undefined), mirrors the guardedSlots proxy surface.
-    const registrations: Array<{ slot: string, options: Record<string, unknown> }> = []
-    const injectEffects: Array<() => unknown> = []
-    const slots = {
-      inject: (key: string, callback: () => unknown) => {
-        injectEffects.push(callback)
-        return () => {}
-      },
-      register: (options: Record<string, unknown>) => {
-        registrations.push({ slot: options.name as string, options })
-        return () => {}
-      },
-      spec: (key: string) => (key === 'main' || key === 'sidebar.panellist' ? { kind: 'stub' } : undefined),
-    }
-    const selectPanelCalls: Array<unknown> = []
-    const ctx = {
-      get: (name: string) => name === 'slots' ? slots : name === 'layout' ? { selectPanel: (id: unknown) => { selectPanelCalls.push(id) } } : undefined,
-    }
-
-    const dispose = mountBoardCompat(ctx as never, controller)
-    // The inject() callbacks run synchronously in the real service when the
-    // declaration exists — run them here the same way.
-    for (const run of injectEffects.splice(0)) run()
-
-    // Both official registrations landed with the shared panel id.
-    const main = registrations.find(r => r.slot === 'main')
-    const row = registrations.find(r => r.slot === 'sidebar.panellist')
-    expect(main).toBeDefined()
-    expect(main!.options.key).toBe(OFFICIAL_PANEL_ID)
-    expect(main!.options.key).toBe('dsh-taskboard')
-    expect(row).toBeDefined()
-    expect(row!.options.id).toBe(OFFICIAL_PANEL_ID)
-    expect(typeof row!.options.order).toBe('number')
-    expect(typeof row!.options.label).toBe('function')
-
-    // Official mode injects NO legacy DOM and never sets the hide attribute.
-    expect(document.querySelector('[data-dsh-atb-entry]')).toBeNull()
-    expect(document.querySelector('[data-dsh-atb-view]')).toBeNull()
-    expect(document.documentElement.hasAttribute('data-dsh-atb-active')).toBe(false)
-
-    // Close bridge: closeBoard routes to layout.selectPanel(null) without
-    // setting the legacy hide attribute (the host owns visibility).
-    controller.openBoard()
-    await new Promise(r => setTimeout(r, 10))
-    expect(document.documentElement.hasAttribute('data-dsh-atb-active')).toBe(false)
-    controller.closeBoard()
-    expect(selectPanelCalls).toEqual([null])
-
-    dispose()
-    controller.dispose()
-    localStorage.clear()
-  })
-
-  it('0.8.0 回归：slot 系统缺失时回退 legacy 注入路径', async () => {
-    localStorage.clear()
-    const { BoardController } = await import('../src/client/controller.ts')
-    const { mountBoardCompat } = await import('../src/client/official-panel.tsx')
-    const { BOARD_VIEW_SELECTOR } = await import('../src/client/board-mount.tsx')
-    const { injectStyles } = await import('../src/client/styles.ts')
-    injectStyles()
-
-    const client = {
-      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [] }),
-      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
-      stream: () => () => {},
-      templates: async () => ({ templates: [] }),
-    }
-    const controller = new BoardController(client as never)
-    controller.start()
-    await new Promise(r => setTimeout(r, 10))
-
-    // Legacy shell shape (data-pane columns, no slots service on ctx).
-    const column = document.createElement('div')
-    column.dataset.pane = 'sidebar'
-    const logoRow = document.createElement('div')
-    logoRow.className = 'x_logoRow'
-    const newSession = document.createElement('button')
-    newSession.className = 'x_newSession'
-    logoRow.append(newSession)
-    column.append(logoRow)
-    const conversation = document.createElement('div')
-    conversation.dataset.pane = 'conversation'
-    document.body.append(column, conversation)
-
-    // No 'slots' on ctx at all → immediate legacy mounting.
-    const dispose = mountBoardCompat({} as never, controller)
-    await new Promise(r => setTimeout(r, 20))
-
-    expect(document.querySelector('[data-dsh-atb-entry]')).not.toBeNull()
-    const view = document.querySelector<HTMLElement>(BOARD_VIEW_SELECTOR)
-    expect(view).not.toBeNull()
-    expect(view!.parentElement).toBe(conversation)
-
-    // …and the legacy open path still flips the hide attribute (untouched).
-    controller.openBoard()
-    await new Promise(r => setTimeout(r, 10))
-    expect(document.documentElement.hasAttribute('data-dsh-atb-active')).toBe(true)
-    controller.closeBoard()
-
-    dispose()
-    column.remove()
-    conversation.remove()
-    controller.dispose()
-    localStorage.clear()
-  })
-
-  it('0.8.0 回归：官方注册抛错时降级 legacy（不出现双看板）', async () => {
-    localStorage.clear()
-    const { BoardController } = await import('../src/client/controller.ts')
-    const { mountBoardCompat } = await import('../src/client/official-panel.tsx')
-    const { injectStyles } = await import('../src/client/styles.ts')
-    injectStyles()
-
-    const client = {
-      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [] }),
-      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
-      stream: () => () => {},
-      templates: async () => ({ templates: [] }),
-    }
-    const controller = new BoardController(client as never)
-    controller.start()
-    await new Promise(r => setTimeout(r, 10))
-
-    const column = document.createElement('div')
-    column.dataset.pane = 'sidebar'
-    const logoRow = document.createElement('div')
-    logoRow.className = 'x_logoRow'
-    const newSession = document.createElement('button')
-    newSession.className = 'x_newSession'
-    logoRow.append(newSession)
-    column.append(logoRow)
-    const conversation = document.createElement('div')
-    conversation.dataset.pane = 'conversation'
-    document.body.append(column, conversation)
-
-    // Slots present and declared, but register() throws mid-flight. The
-    // real service runs an inject() callback synchronously when the slot is
-    // already declared — the fake mirrors that.
-    const slots = {
-      inject: (_key: string, callback: () => unknown) => { void callback(); return () => {} },
-      register: () => { throw new Error('boom') },
-      spec: () => ({ kind: 'stub' }),
-    }
-    const dispose = mountBoardCompat({ get: (name: string) => name === 'slots' ? slots : undefined } as never, controller)
-    await new Promise(r => setTimeout(r, 20))
-
-    // Degraded to legacy: the injected entry exists and exactly ONE board
-    // view (the throwing official path cleaned up before falling back).
-    expect(document.querySelector('[data-dsh-atb-entry]')).not.toBeNull()
-    expect(document.querySelectorAll('[data-dsh-atb-view]')).toHaveLength(1)
-
-    dispose()
-    column.remove()
-    conversation.remove()
-    controller.dispose()
-    localStorage.clear()
-  })
-
   it('TaskBoard: clicking outside the detail panel dismisses it', async () => {
     localStorage.clear()
     const React = await import('react')
@@ -3088,7 +2556,6 @@ describe('client half', () => {
     }
     const controller = new BoardController(client as never)
     controller.start()
-    controller.openBoard()
     await new Promise(r => setTimeout(r, 10))
 
     const host = document.createElement('div')
@@ -3173,7 +2640,6 @@ describe('client half', () => {
 
     const controller = new BoardController(client as never)
     controller.start()
-    controller.openBoard()
     await new Promise(r => setTimeout(r, 10))
 
     const host = document.createElement('div')
@@ -3319,7 +2785,6 @@ describe('client half', () => {
 
     const controller = new BoardController(client as never)
     controller.start()
-    controller.openBoard()
     await new Promise(r => setTimeout(r, 20))
 
     const host = document.createElement('div')
@@ -3486,7 +2951,6 @@ describe('client half', () => {
 
     // @tc TC-EDGE-005
     // 零容量集合边界：当 backlog 任务数为 0 时，徽标显示 "0" (RT-004)
-    controller.openBoard()
     currentTasks = [taskTodo, taskDone]
     await controller.refresh()
     await new Promise(r => setTimeout(r, 20))
@@ -3767,7 +3231,6 @@ describe('client half', () => {
 
     const controller = new BoardController(client as never)
     controller.start()
-    controller.openBoard()
     await new Promise(r => setTimeout(r, 20))
 
     const host = document.createElement('div')
