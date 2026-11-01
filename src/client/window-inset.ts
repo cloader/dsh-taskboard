@@ -21,7 +21,6 @@ export function installWindowInset(view: HTMLElement): () => void {
     attributes: true, childList: true, subtree: true,
     attributeFilter: ['class', 'data-dsh-desktop-platform', 'data-dsh-desktop-mode', 'data-details-collapsed'],
   })
-  mutations.observe(document.documentElement, { attributes: true, attributeFilter: ['data-dsh-atb-active'] })
   const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(schedule)
   resize?.observe(view)
   if (view.parentElement !== null) resize?.observe(view.parentElement)
