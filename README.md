@@ -43,41 +43,20 @@ DeepSeek Harness 的**任务看板插件**：人建卡、agent 认领执行、�
 | 依赖 | 要求 | 说明 |
 | --- | --- | --- |
 | DeepSeek Harness | ≥ 0.1.1 | 需要 `dsh plugin` 子命令与 web profile |
-| Node.js | ≥ 20 | 仅 GitHub 源安装构建时需要 |
+| Node.js | ≥ 22 | 本地开发和源码构建环境 |
 | git | 可选 | Worktree 隔离需要；缺失时自动降级原目录执行 |
 
 > **双轨挂载（0.8.0）**：dsh ≥ 0.1.7（带官方 slot 系统）时，看板作为**一等侧边栏面板**注册（`sidebar.panellist` + `main`，宿主拥有侧栏行与面板切换，从根本上消除「看板打开后其他面板点不动」这类问题，[#31](https://github.com/cloader/dsh-taskboard/issues/31)）；旧版 shell 自动回落到原有的 DOM 注入方式，行为与 0.7.x 完全一致。两条路径运行时自动互斥选择，无需配置。
 
 ## 安装
 
-```bash
-# 一键安装（npm，预构建、免构建授权 —— 推荐）
-dsh plugin --profile web add dsh-taskboard
+插件已发布到 [npm](https://www.npmjs.com/package/dsh-taskboard)，包含预构建产物，无需本地编译。
 
-# 或从 GitHub 源安装
-dsh plugin --profile web add github:cloader/dsh-taskboard
+```bash
+dsh plugin --profile web add dsh-taskboard
 ```
 
 安装后**重启 `dsh web` 并刷新页面**：侧边栏出现「任务看板」入口即成功。无需任何后续配置。
-
-<details>
-<summary>GitHub 源安装卡在 prepare / allowBuilds？</summary>
-
-git 源插件安装时经 prepare 脚本构建，pnpm 会先阻止——按报错提示把精确 key 加进 profile 目录 `pnpm-workspace.yaml` 的 `allowBuilds` 后重跑即可。npm 源是预构建产物，无此步骤。
-</details>
-
-<details>
-<summary>开发模式安装（改代码即生效）</summary>
-
-```bash
-git clone https://github.com/cloader/dsh-taskboard.git
-cd dsh-taskboard
-npm install && npm run build
-dsh plugin --profile web add "link:/path/to/dsh-taskboard"
-```
-
-link 安装后，仓库里 `npm run build` 重建、刷新页面即生效；改完宿主侧代码需重启 `dsh web`。
-</details>
 
 卸载：`dsh plugin --profile web remove dsh-taskboard`（台账数据保留在当前数据目录，见[配置与数据](#配置与数据)）。
 
@@ -232,9 +211,6 @@ agent：
 **agent 会把任务直接标成「已完成」吗？**
 不会。这是代码级协议闸（不是提示词约定）：`taskboard_move` 到 done 的调用被直接拒绝，验收永远由人在看板完成。
 
-**GitHub 源安装报 prepare 被阻止？**
-pnpm 的构建授权——按报错把 key 加进 profile 的 `pnpm-workspace.yaml` `allowBuilds` 后重跑；或改用 npm 源（预构建，无此步骤）。
-
 **和 dsh-better-sidebar 并存，看板顶栏右侧按钮被遮住？**
 0.6.5 起已自动避让：better-sidebar 收起时其右上角常驻按钮簇（展开底部面板 / 展开侧边栏）占据视口右上 10~70px，看板激活时会为工具条右侧预留这块区域（镜像 better-sidebar 对 DSH 原生会话头的避让契约），任何窗口宽度都不再重叠；未安装 better-sidebar 或其侧栏展开时无任何影响（[#19](https://github.com/cloader/dsh-taskboard/issues/19)）。
 
@@ -255,6 +231,8 @@ node tests/manual-git-e2e.mjs   # 真 git 端到端手测（worktree 全链路 +
 ```
 
 `npm run build` 在构建前清理 `lib/` 的旧产物，再生成 host ESM 和客户端注册模块 `lib/client.js`。`npm run build:host`、`npm run build:client` 只重建对应部分并保留另一部分产物；发布前请运行完整构建。
+
+本地开发时，先完成构建，再用 `dsh plugin --profile web add "link:/path/to/dsh-taskboard"` 挂载本地仓库。修改客户端后重新构建并刷新页面；修改宿主侧代码后还需重启 `dsh web`。
 
 ## 外部任务同步
 

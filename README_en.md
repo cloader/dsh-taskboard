@@ -43,39 +43,18 @@ A **task board plugin for DeepSeek Harness**: humans create cards, agents claim 
 | Dependency | Requirement | Notes |
 | --- | --- | --- |
 | DeepSeek Harness | ≥ 0.1.1 | Requires the `dsh plugin` subcommand and the web profile |
-| Node.js | ≥ 20 | Only needed when installing/building from the GitHub source |
+| Node.js | ≥ 22 | For local development and source builds |
 | git | optional | Required for worktree isolation; falls back to running in place when missing |
 
 ## Installation
 
-```bash
-# One-command install from npm (prebuilt, no build approval — recommended)
-dsh plugin --profile web add dsh-taskboard
+The plugin is published on [npm](https://www.npmjs.com/package/dsh-taskboard) with prebuilt artifacts, so no local compilation is needed.
 
-# Or install from the GitHub source
-dsh plugin --profile web add github:cloader/dsh-taskboard
+```bash
+dsh plugin --profile web add dsh-taskboard
 ```
 
 After installing, **restart `dsh web` and refresh the page**: you should see a "Task Board" entry in the sidebar. No further configuration needed.
-
-<details>
-<summary>GitHub-source install stuck on prepare / allowBuilds?</summary>
-
-Plugins installed from a git source go through a prepare script, and pnpm blocks it first — follow the error message and add the exact key to `allowBuilds` in your profile's `pnpm-workspace.yaml`, then retry. The npm package ships prebuilt artifacts and never hits this step.
-</details>
-
-<details>
-<summary>Developer-mode install (edit code and see changes immediately)</summary>
-
-```bash
-git clone https://github.com/cloader/dsh-taskboard.git
-cd dsh-taskboard
-npm install && npm run build
-dsh plugin --profile web add "link:/path/to/dsh-taskboard"
-```
-
-With a link install, rebuild via `npm run build` in the repo and refresh the page; host-side changes additionally require restarting `dsh web`.
-</details>
 
 Uninstall: `dsh plugin --profile web remove dsh-taskboard` (ledger data stays in the active data directory — see [Configuration & Data](#configuration--data)).
 
@@ -230,9 +209,6 @@ Tasks attach to projects (= DSH workspaces). Claiming validates session ownershi
 **Can an agent mark a task "Done" itself?**
 No. That is a code-level protocol gate (not a prompt convention): `taskboard_move` calls targeting *done* are rejected outright; acceptance is always performed by a human on the board.
 
-**GitHub-source install blocked at prepare?**
-That's pnpm build authorization — add the key printed in the error to `allowBuilds` in the profile's `pnpm-workspace.yaml` and retry; or install from npm instead (prebuilt, no such step).
-
 **Board toolbar's right-side buttons covered when dsh-better-sidebar is installed?**
 Fixed since 0.6.5 with automatic yielding: while better-sidebar's right panel is collapsed, its persistent corner cluster ("expand bottom panel" / "expand sidebar") occupies the top-right 10-70px of the viewport; the active board now reserves that strip on the toolbar's right side (mirroring better-sidebar's own yield contract for DSH's native session header), so they never overlap at any window width. No effect when better-sidebar is absent or its panel is open ([#19](https://github.com/cloader/dsh-taskboard/issues/19)).
 
@@ -253,6 +229,8 @@ node tests/manual-git-e2e.mjs   # real-git end-to-end manual test (full worktree
 ```
 
 `npm run build` cleans stale files from `lib/` before generating the host ESM modules and the client registration module, `lib/client.js`. `npm run build:host` and `npm run build:client` rebuild only their respective half and preserve the other half's output; run the full build before publishing.
+
+For local development, build first, then link the local repository with `dsh plugin --profile web add "link:/path/to/dsh-taskboard"`. Rebuild and refresh the page after client changes; host-side changes also require restarting `dsh web`.
 
 ## External task sync
 
