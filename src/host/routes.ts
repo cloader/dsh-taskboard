@@ -638,6 +638,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
       // non-simple cross-origin request, preserving the JSON routes' CSRF fence.
       if (pathname === `${ROUTE_PREFIX}/assets`) {
         await options.ready?.()
+        await store.load()
         if (options.assets === undefined) {
           const f = fail('invalid_input', 'image attachments unavailable')
           json(res, f.res, 501)
@@ -651,7 +652,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
         const declaredMime = String(req.headers['content-type'] ?? '').split(';', 1)[0]!.trim().toLowerCase()
         try {
           const bytes = await readBytes(req, MAX_ASSET_BYTES)
-          await options.assets.cleanup(JSON.stringify(store.snapshot()))
+          await options.assets.cleanup(store.assetReferences())
           const asset = await options.assets.put(bytes, declaredMime)
           json(res, { ok: true, value: asset }, 201)
         } catch (error) {
@@ -1505,7 +1506,15 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
     }
   }
 
-  const sse = (req: IncomingMessage, res: ServerResponse): void => {
+  const sse = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    try {
+      await options.ready?.()
+      await store.load()
+    } catch (error) {
+      const f = fail('internal', error instanceof Error ? error.message : String(error))
+      json(res, f.res, f.status)
+      return
+    }
     res.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
       'cache-control': 'no-cache',

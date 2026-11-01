@@ -149,6 +149,7 @@ function installLiveStores(next: InstanceType<typeof TaskStore>, nextTemplates: 
 
 const storeFace = {
   load: () => store.load(),
+  assetReferences: () => store.assetReferences(),
   snapshot: () => store.snapshot(),
   get: (id: string) => store.get(id),
   subscribe: (fn: (change: LedgerChange) => void) => {
