@@ -264,6 +264,7 @@ node tests/manual-git-e2e.mjs   # 真 git 端到端手测（worktree 全链路 +
 
 ### 0.9.8
 
+- **认领保护**：阻止其他会话删除已认领的进行中任务，避免工作被打断（[#85](https://github.com/cloader/dsh-taskboard/issues/85)、[#86](https://github.com/cloader/dsh-taskboard/pull/86)）。
 - **数据保护**：台账读取失败时明确提示，保留原文件与图片，阻止空台账覆盖原数据（[#84](https://github.com/cloader/dsh-taskboard/issues/84)、[#87](https://github.com/cloader/dsh-taskboard/pull/87)）。
 - **看板面板**：统一使用 DSH 官方面板切换，移除旧版挂载方式；需要 DSH 0.1.7 或更新版本（[#82](https://github.com/cloader/dsh-taskboard/pull/82)）。
 - **导入预览**：快速切换文件时，预览与实际导入内容保持一致（[#72](https://github.com/cloader/dsh-taskboard/issues/72)、[#75](https://github.com/cloader/dsh-taskboard/pull/75)）。感谢 [@timacek](https://github.com/timacek) 的贡献。
