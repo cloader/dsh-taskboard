@@ -262,6 +262,10 @@ node tests/manual-git-e2e.mjs   # 真 git 端到端手测（worktree 全链路 +
 
 ## 升级日志
 
+### 0.9.9
+
+- **窄屏任务详情**：修复手机和桌面窄面板中，操作按钮挤压任务标题、导致逐字换行的问题。标题区保留合理宽度，空间不足时操作区移到下方，按钮在面板内换行；覆盖中间宽度和较长的俄语文案，宽屏布局保持不变（[#91](https://github.com/cloader/dsh-taskboard/issues/91)、[#92](https://github.com/cloader/dsh-taskboard/pull/92)，感谢 [@reysonk](https://github.com/reysonk) 的报告与排查；修复由 [@cloader](https://github.com/cloader) 完成）。
+
 ### 0.9.8
 
 - **完整导出**：JSON 备份和 CSV 导出始终获取完整台账，折叠「已完成」列后也不会遗漏任务；读取失败时提示错误，不生成残缺文件（[#89](https://github.com/cloader/dsh-taskboard/pull/89)）。
