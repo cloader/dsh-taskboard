@@ -340,11 +340,12 @@ body[data-ds-dark-theme] .dsh-atb-modal-body select option {
 
 /* Narrow panels (mobile viewport, split view): topbtns is flex:none and can be
    ~640px wide with long labels, which squeezes the title to one glyph per line
-   (issue #91). The title's flex-basis is 0, so only the button group ever
-   overflows the line — the wrap drops it below the title instead. A viewport
-   media query would miss narrow panels inside a wide window. */
+   (issue #91). Reserve a 240px flex basis for the title so the button group
+   wraps before leaving the title an unreadable sliver. min-width:0 still lets
+   the title fit panels narrower than that basis. A viewport media query would
+   miss narrow panels inside a wide window. */
 .dsh-atb-detail-head { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
-.dsh-atb-detail-titlewrap { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.dsh-atb-detail-titlewrap { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .dsh-atb-detail-titlebar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .dsh-atb-detail-titlebar h3 { margin: 0; font-size: 15.5px; line-height: 1.35; word-break: break-word; }
 .dsh-atb-detail-close {
