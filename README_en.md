@@ -258,6 +258,10 @@ Real-deployment validation on 2026-10-16 read 4 Bugs, 4 linked Stories and 8 Tas
 
 ## Changelog
 
+### 0.9.9
+
+- **Task details on narrow panels**: fix action buttons squeezing task titles into one character per line on phones and narrow desktop panels. Reserve readable title space, move actions below the title when needed, and wrap buttons within the panel. Handles intermediate widths and longer Russian labels while preserving the wide desktop layout ([#91](https://github.com/cloader/dsh-taskboard/issues/91), [#92](https://github.com/cloader/dsh-taskboard/pull/92)). Thanks to [@reysonk](https://github.com/reysonk) for the report and investigation; implemented by [@cloader](https://github.com/cloader).
+
 ### 0.9.8
 
 - **Complete exports**: JSON backups and CSV exports always fetch the full ledger, including completed tasks when the Done column is collapsed. Fetch failures show an error instead of producing an incomplete file ([#89](https://github.com/cloader/dsh-taskboard/pull/89)).
