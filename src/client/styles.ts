@@ -338,8 +338,14 @@ body[data-ds-dark-theme] .dsh-atb-modal-body select option {
 .dsh-atb-detail[data-urgency="normal"]::before { background: linear-gradient(90deg, #8e4ec6, rgba(142,78,198,.15)); }
 .dsh-atb-detail[data-urgency="relaxed"]::before { background: linear-gradient(90deg, #3e63dd, rgba(62,99,221,.15)); }
 
-.dsh-atb-detail-head { display: flex; align-items: flex-start; gap: 10px; }
-.dsh-atb-detail-titlewrap { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+/* Narrow panels (mobile viewport, split view): topbtns is flex:none and can be
+   ~640px wide with long labels, which squeezes the title to one glyph per line
+   (issue #91). Reserve a 240px flex basis for the title so the button group
+   wraps before leaving the title an unreadable sliver. min-width:0 still lets
+   the title fit panels narrower than that basis. A viewport media query would
+   miss narrow panels inside a wide window. */
+.dsh-atb-detail-head { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.dsh-atb-detail-titlewrap { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .dsh-atb-detail-titlebar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .dsh-atb-detail-titlebar h3 { margin: 0; font-size: 15.5px; line-height: 1.35; word-break: break-word; }
 .dsh-atb-detail-close {
@@ -347,7 +353,7 @@ body[data-ds-dark-theme] .dsh-atb-modal-body select option {
   background: transparent; color: var(--dsw-text-secondary, gray); font-size: 13px; line-height: 1;
 }
 .dsh-atb-detail-close:hover { background: var(--dsw-hover, rgba(128,128,128,.18)); color: inherit; }
-.dsh-atb-detail-topbtns { display: flex; align-items: center; gap: 6px; flex: none; }
+.dsh-atb-detail-topbtns { display: flex; align-items: center; gap: 6px; flex: none; max-width: 100%; flex-wrap: wrap; }
 .dsh-atb-detail-edit {
   font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 7px; cursor: pointer;
   border: 1px solid var(--dsw-border, rgba(128,128,128,.32));
