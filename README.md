@@ -262,6 +262,13 @@ node tests/manual-git-e2e.mjs   # 真 git 端到端手测（worktree 全链路 +
 
 ## 升级日志
 
+### 0.9.10
+
+- **周期任务隔离**：修复「完成后新建待办」的周期任务从第二轮起因继承分支而降级为原目录执行的问题。后继卡使用独立分支；旧卡遇到分支占用时改用备用分支，并正确保存分支、采集执行证据、续跑和合并，支持多仓库镜像（[#94](https://github.com/cloader/dsh-taskboard/issues/94)）。
+- **一次性定时任务编辑**：任务执行结算、错过触发窗口或被清出队列后恢复为认领模式，旧数据也可正常保存编辑；未消费的到期任务及排队、派发中的任务保留原调度状态，普通编辑不会取消或重新定时。明确修改触发时间时仍要求未来时间，并隐藏已失效的定时标识（[#95](https://github.com/cloader/dsh-taskboard/issues/95)）。
+
+感谢 [@timacek](https://github.com/timacek) 的报告与复现分析。
+
 ### 0.9.9
 
 - **窄屏任务详情**：修复手机和桌面窄面板中，操作按钮挤压任务标题、导致逐字换行的问题。标题区保留合理宽度，空间不足时操作区移到下方，按钮在面板内换行；覆盖中间宽度和较长的俄语文案，宽屏布局保持不变（[#91](https://github.com/cloader/dsh-taskboard/issues/91)、[#92](https://github.com/cloader/dsh-taskboard/pull/92)，感谢 [@reysonk](https://github.com/reysonk) 的报告与排查；修复由 [@cloader](https://github.com/cloader) 完成）。

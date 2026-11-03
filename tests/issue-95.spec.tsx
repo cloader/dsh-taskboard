@@ -76,14 +76,54 @@ describe('TaskFormModal spent one-shot (#95)', () => {
     expect(view.updated[0]).toMatchObject({ execution: { mode: 'claim' } })
   })
 
-  it('a queued one-shot still edits as 定时一次 seeded with its dispatch window', async () => {
-    const future = Date.now() + 10 * 60_000
-    const view = await setup(taskOf({ mode: 'scheduled', queuedRunAt: future, queuedAt: Date.now() }, 'todo'))
+  it.each(['runAt', 'queuedRunAt', 'dispatchingRunAt'] as const)('preserves an overdue %s during ordinary edits', async field => {
+    const due = Date.now() - (field === 'runAt' ? 10_000 : 10 * 60_000)
+    const view = await setup(taskOf({ mode: 'scheduled', [field]: due, ...(field === 'runAt' ? { nextRunAt: due } : { queuedAt: due }) }, 'todo'))
     await waitFor(() => view.datetime() !== null && view.datetime()!.value !== '')
     await waitFor(() => !view.saveButton()!.disabled)
     view.saveButton()!.click()
     await waitFor(() => view.updated.length === 1)
-    expect(view.updated[0]).toMatchObject({ execution: { mode: 'scheduled' } })
-    expect((view.updated[0]!.execution as { runAt?: string }).runAt).toBeDefined()
+    // Omitting execution preserves the host's exact timestamp and queue
+    // markers. Re-submitting runAt would reject the past time or re-arm it.
+    expect(view.updated[0]!.execution).toBeUndefined()
+  })
+
+  it('preserves an unchanged future trigger, including its seconds and milliseconds', async () => {
+    const view = await setup(taskOf({ mode: 'scheduled', runAt: Date.now() + 600_123 }, 'todo'))
+    await waitFor(() => view.saveButton() !== null && !view.saveButton()!.disabled)
+    view.saveButton()!.click()
+    await waitFor(() => view.updated.length === 1)
+    expect(view.updated[0]!.execution).toBeUndefined()
+  })
+
+  it('requires a future time for explicit rescheduling and submits the new trigger', async () => {
+    const view = await setup(taskOf({ mode: 'scheduled', queuedRunAt: Date.now() - 600_000, queuedAt: Date.now() - 600_000 }, 'todo'))
+    await waitFor(() => view.datetime() !== null && !view.saveButton()!.disabled)
+    const input = view.datetime()!
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    const change = (value: string) => {
+      setValue.call(input, value)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    change('2000-01-01T10:00')
+    await waitFor(() => view.saveButton()!.disabled)
+    const future = new Date(Date.now() + 600_000)
+    const local = new Date(future.getTime() - future.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
+    change(local)
+    await waitFor(() => !view.saveButton()!.disabled)
+    view.saveButton()!.click()
+    await waitFor(() => view.updated.length === 1)
+    expect(view.updated[0]!.execution).toMatchObject({ mode: 'scheduled', runAt: new Date(local).toISOString() })
+  })
+
+  it('allows explicitly switching a queued task to claim', async () => {
+    const view = await setup(taskOf({ mode: 'scheduled', queuedRunAt: Date.now() - 600_000 }, 'todo'))
+    await waitFor(() => view.datetime() !== null)
+    const claim = Array.from(view.host.querySelectorAll<HTMLButtonElement>('button.dsh-atb-mode-opt')).find(b => b.textContent?.includes('认领'))!
+    claim.click()
+    await waitFor(() => view.datetime() === null && !view.saveButton()!.disabled)
+    view.saveButton()!.click()
+    await waitFor(() => view.updated.length === 1)
+    expect(view.updated[0]!.execution).toEqual({ mode: 'claim' })
   })
 })

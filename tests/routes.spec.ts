@@ -260,6 +260,21 @@ async function post(path: string, body: unknown): Promise<{ status: number; json
 }
 
 describe('taskboard routes', () => {
+  it.each(['runAt', 'queuedRunAt', 'dispatchingRunAt'] as const)('keeps a one-shot %s intact when saving content without execution', async field => {
+    const created = await post('/dsh-taskboard/tasks', { title: 'One-shot', workspaceId: 'ws-a', urgency: 'normal' })
+    const id = created.json.value.id as string
+    const execution: TaskRecord['execution'] = { mode: 'scheduled', [field]: 1_000, ...(field === 'runAt' ? { nextRunAt: 1_000 } : { queuedAt: 1_000 }) }
+    await store.mutate('task-updated', ledger => {
+      const task = ledger.tasks.find(t => t.id === id)!
+      task.execution = execution
+      return [task]
+    })
+    const updated = await post(`/dsh-taskboard/tasks/${id}/update`, { ifVersion: store.get(id)!.version, title: 'Corrected title' })
+    expect(updated.status).toBe(200)
+    expect(store.get(id)!.title).toBe('Corrected title')
+    expect(store.get(id)!.execution).toEqual(execution)
+  })
+
   it('exposes storage status, path checks, and migration', async () => {
     const status = await (await fetch(`${base}/dsh-taskboard/storage`)).json()
     expect(status.value.currentDirectory).toBe(dir)

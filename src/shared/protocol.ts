@@ -410,18 +410,16 @@ export interface ExecutionConfig {
  * with its {@link ExecutionConfig.runAt} consumed — fired and settled, missed
  * while the host was down, or dropped from the dispatch queue — or a cron
  * whose expression died (cron cleared, nothing queued/dispatching). A runAt
- * still present but not in the future counts as spent too: the window is
- * gone and only the queue fields (cleared atomically by the dispatch path)
- * could still make it live. Such a card can never fire again; the host
+ * still present, even in the past, remains eligible for the scheduler's
+ * next tick and must not be mistaken for a consumed trigger. The host
  * normalizes `mode` back to `'claim'` so it stays manually runnable and the
  * edit form never renders an unsaveable one-shot demanding a new future
  * time (issue #95).
  * @param exec - the execution config to inspect.
- * @param now - current epoch ms; a future runAt keeps the card live.
  */
-export function isSpentOneShot(exec: ExecutionConfig, now: number): boolean {
+export function isSpentOneShot(exec: ExecutionConfig): boolean {
   return exec.mode === 'scheduled' && exec.cron === undefined
-    && (exec.runAt === undefined || exec.runAt <= now)
+    && exec.runAt === undefined
     && exec.queuedRunAt === undefined
     && exec.dispatchingRunAt === undefined
 }
@@ -764,6 +762,8 @@ export type TaskRecord = {
   /**
    * The task branch fixed at the FIRST worktree creation (`task/<标题>+<taskId>`).
    * Renaming the task afterwards never changes it (history preservation).
+   * If preparation must use a fallback because another worktree holds this
+   * branch, the actual fallback replaces the pin for merge and continuation.
    * Multi-repo mirror runs (0.6.3): this stays the WORKSPACE ROOT repo's
    * branch; every nested repo pins its own under {@link branches}.
    */
@@ -772,7 +772,7 @@ export type TaskRecord = {
    * Per-repo task branches of a multi-repo mirror task (0.6.3): repo path
    * relative to the workspace (never `''` — the root uses {@link branch})
    * → branch name. Pinned at the repo's FIRST successful worktree creation,
-   * same rename-proof semantics as {@link branch}.
+   * same rename-proof and collision-fallback semantics as {@link branch}.
    */
   branches?: Record<string, string>
   /**

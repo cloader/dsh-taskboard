@@ -71,6 +71,7 @@ describe('spawnNextCycle', () => {
       urgency: 'urgent',
       checklist: [{ id: 'k1', text: 'done?', checked: true, checkedBy: 'user', checkedAt: T0, note: 'x' }],
       branch: 'task/t-src+abc',
+      branches: { child: 'task/t-src+abc' },
     })
     const next = spawnNextCycle(source, 'e-1', T0)
     expect(next.id).not.toBe(source.id)

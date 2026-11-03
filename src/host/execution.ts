@@ -653,16 +653,17 @@ export class ExecutionService {
             { git: this.deps.git, scanner: this.deps.scanner ?? createRepoScanner() },
             // Comment wake NEVER resets the mirror: the comments review the
             // PREVIOUS run's work, so a fresh checkout would destroy it.
-            { workspacePath: workspace.path, taskId: task.id, branch, reuse: options?.reuseWorktree === true || trigger === 'comment' },
+            { workspacePath: workspace.path, taskId: task.id, branch, branches: task.branches, reuse: options?.reuseWorktree === true || trigger === 'comment' },
           )
           if ('mirror' in outcome) {
             prepared = outcome.mirror
             await this.pinBranches(task, prepared)
-            // Persist the isolation facts of the run (branch is already on the
-            // record from the gate mutation). The root repo keeps the legacy
-            // flat fields; non-legacy mirrors also record per-repo entries.
+            // Persist the actual branch too: preparation may have selected a
+            // fallback when the pinned branch is occupied. The root keeps
+            // the legacy flat fields; other mirrors also record each repo.
             const root = prepared.repos[0]
             await this.patchExecution(executionId, {
+              branch: root?.branch,
               worktreePath: root?.worktreePath,
               baseCommit: root?.baseCommit,
               ...(!isLegacySingle(prepared)
@@ -932,9 +933,9 @@ export class ExecutionService {
           // the schedule to a successor — a one-shot has neither. Normalize
           // the mode so the card stays a plain claim task (runnable and
           // editable) instead of a scheduled ghost with no trigger (#95).
-          // A re-arm mid-run (edit form setting a fresh future runAt/queue
-          // entry) keeps its fields and is left untouched.
-          if (isSpentOneShot(t.execution, now)) {
+          // A re-arm mid-run keeps its fields even if its new trigger time
+          // passes before this run settles; the scheduler still owns it.
+          if (isSpentOneShot(t.execution)) {
             t.execution.mode = 'claim'
             delete t.execution.runAt
             t.execution.nextRunAt = undefined
@@ -1075,18 +1076,17 @@ export class ExecutionService {
   }
 
   /**
-   * Pin branch names at FIRST successful creation (§9: 改名不改分支) — the
-   * workspace root repo onto the legacy `branch` field, every nested repo
-   * into the `branches` map. Re-checked inside the mutation (the task may
-   * have moved between preparation and commit).
+   * Pin actual prepared branches, including collision fallbacks. A rename
+   * keeps the pinned name; preparation alone can replace it. Compare against
+   * the original snapshot so concurrent edits cannot be overwritten.
    */
   private async pinBranches(task: TaskRecord, mirror: PreparedMirror): Promise<void> {
-    const wanted: Array<{ repo: string; branch: string }> = []
+    const wanted: Array<{ repo: string; branch: string; previous?: string }> = []
     for (const repo of mirror.repos) {
       if (repo.repo === '') {
-        if (task.branch === undefined) wanted.push({ repo: '', branch: repo.branch })
-      } else if (task.branches?.[repo.repo] === undefined) {
-        wanted.push({ repo: repo.repo, branch: repo.branch })
+        if (task.branch !== repo.branch) wanted.push({ repo: '', branch: repo.branch, previous: task.branch })
+      } else if (task.branches?.[repo.repo] !== repo.branch) {
+        wanted.push({ repo: repo.repo, branch: repo.branch, previous: task.branches?.[repo.repo] })
       }
     }
     if (wanted.length === 0) return
@@ -1096,11 +1096,11 @@ export class ExecutionService {
       let touched = false
       for (const w of wanted) {
         if (w.repo === '') {
-          if (target.branch === undefined) {
+          if (target.branch === w.previous) {
             target.branch = w.branch
             touched = true
           }
-        } else if (target.branches?.[w.repo] === undefined) {
+        } else if (target.branches?.[w.repo] === w.previous) {
           target.branches = { ...target.branches, [w.repo]: w.branch }
           touched = true
         }
@@ -1436,7 +1436,7 @@ export class ExecutionService {
     const lines = mirror.repos
       .map(r => `- ${r.repo === '' ? '根仓库' : r.repo} → ${r.worktreePath}（分支 ${r.branch}${r.reused === true ? '，续跑' : ''}）`)
       .join('\n')
-    let text = `\n本任务启用了 Git Worktree 隔离（多仓库镜像模式，本次${mode}）：整个工作区已镜像到任务目录——\n${mirror.root}\n各仓库检出位置与任务分支（每仓库各一个同名任务分支）：\n${lines}\n（全新检出的镜像不含 node_modules/构建产物，构建或测试前可能需要先安装依赖）。\n⚠ 边界纪律：你的会话根目录是整个项目，但本任务的全部改动必须只发生在上述任务目录内对应仓库的镜像里——命令用 workdir 指向它、文件读写用它的绝对路径；不要改动镜像之外的任何文件；改动发生在哪个仓库，就把完成的工作提交（git commit）到那个仓库的任务分支，验收将按仓库合并各分支的提交记录。`
+    let text = `\n本任务启用了 Git Worktree 隔离（多仓库镜像模式，本次${mode}）：整个工作区已镜像到任务目录——\n${mirror.root}\n各仓库检出位置与各自任务分支：\n${lines}\n（全新检出的镜像不含 node_modules/构建产物，构建或测试前可能需要先安装依赖）。\n⚠ 边界纪律：你的会话根目录是整个项目，但本任务的全部改动必须只发生在上述任务目录内对应仓库的镜像里——命令用 workdir 指向它、文件读写用它的绝对路径；不要改动镜像之外的任何文件；改动发生在哪个仓库，就把完成的工作提交（git commit）到那个仓库的任务分支，验收将按仓库合并各分支的提交记录。`
     if (mirror.skipped.length > 0) {
       const skipped = mirror.skipped.map(s => `- ${s.repo}（原因：${s.reason}）`).join('\n')
       text += `\n⚠ 以下仓库未能建立镜像：\n${skipped}\n本次执行严禁改动这些仓库的主目录。`
