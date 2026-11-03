@@ -759,8 +759,9 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
               </Chip>
             )}
             {task.presetId !== undefined && <Chip icon="🎛" >{task.presetId}</Chip>}
-            {task.execution.mode === 'scheduled' && (
-              <Chip icon="⏰">{t('detail.chip.nextRun', { cron: task.execution.cron ?? '', time: fmtTime(task.execution.nextRunAt) })}</Chip>
+            {task.execution.mode === 'scheduled'
+              && (task.execution.nextRunAt ?? task.execution.runAt) !== undefined && (
+              <Chip icon="⏰">{t('detail.chip.nextRun', { cron: task.execution.cron ?? '', time: fmtTime(task.execution.nextRunAt ?? task.execution.runAt) })}</Chip>
             )}
             {task.execution.queuedRunAt !== undefined && <Chip icon="⏳" tone="urgent">{t('detail.chip.queuedRun', { time: fmtTime(task.execution.queuedRunAt) })}</Chip>}
             {needsHuman.needs && <Chip icon="🙋" tone="urgent" title={needsHuman.reason}>{needsHuman.reason ?? t('detail.chip.needsHuman')}</Chip>}

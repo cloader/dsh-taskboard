@@ -71,6 +71,7 @@ describe('spawnNextCycle', () => {
       urgency: 'urgent',
       checklist: [{ id: 'k1', text: 'done?', checked: true, checkedBy: 'user', checkedAt: T0, note: 'x' }],
       branch: 'task/t-src+abc',
+      branches: { child: 'task/t-src+abc' },
     })
     const next = spawnNextCycle(source, 'e-1', T0)
     expect(next.id).not.toBe(source.id)
@@ -79,7 +80,12 @@ describe('spawnNextCycle', () => {
     expect(next.execution).toEqual({ mode: 'scheduled', cron: '0 9 * * *', nextRunAt: expect.any(Number), periodicCompletion: 'spawn' })
     expect(next.execution.nextRunAt!).toBeGreaterThan(T0)
     expect(next.urgency).toBe('urgent')
-    expect(next.branch).toBe('task/t-src+abc')
+    // #94: the successor must NOT inherit the predecessor's branch — the
+    // in_review card's live worktree holds it checked out until acceptance,
+    // so a pinned successor could never prepare its own worktree. It derives
+    // `task/<标题>+<新taskId>` on its first run instead.
+    expect(next.branch).toBeUndefined()
+    expect(next.branches).toBeUndefined()
     expect(next.checklist?.[0]?.checked).toBe(false)
     expect(next.createdBy).toEqual({ kind: 'system' })
     expect(next.executions).toEqual([])
@@ -141,6 +147,9 @@ describe('scheduler periodic vs one-shot', () => {
     expect(runs).toHaveLength(0)
     const task = store.get('t-missed')
     expect(task?.execution.runAt).toBeUndefined()
+    // #95: the spent one-shot normalizes to claim so the edit form never
+    // renders an unsaveable one-shot demanding a new future time.
+    expect(task?.execution.mode).toBe('claim')
     expect(task?.comments.some(c => c.systemKey === 'sys.runAtMissed')).toBe(true)
   })
 })

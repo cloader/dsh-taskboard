@@ -369,6 +369,48 @@ describe('ExecutionService', () => {
     expect(t.comments[0]!.threadId).toBe(result.sessionId)
   })
 
+  // Issue #95: a fired one-shot used to keep mode 'scheduled' with no
+  // runAt/cron, rendering the edit form permanently unsaveable.
+  it('normalizes a fired one-shot to claim at settlement', async () => {
+    const store = await storeWith(task({ execution: { mode: 'scheduled', runAt: 500, nextRunAt: 500 } }))
+    const agents = fakeAgents()
+    const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: () => 1_000 })
+    const scheduler = new SchedulerService({ store, execution: svc, now: () => 1_000 })
+    await scheduler.tick()
+    expect(store.get('t-run')!.execution.runAt).toBeUndefined()
+    expect(store.get('t-run')!.executions[0]!.outcome).toBe('running')
+    agents.idle()
+    await waitFor(() => store.get('t-run')!.executions[0]!.outcome === 'succeeded')
+    const t = store.get('t-run')!
+    expect(t.status).toBe('in_review')
+    // Spent one-shot ⇒ plain claim card: manually runnable and editable.
+    expect(t.execution.mode).toBe('claim')
+    expect(t.execution.runAt).toBeUndefined()
+    expect(t.execution.cron).toBeUndefined()
+    scheduler.dispose()
+    svc.dispose()
+  })
+
+  it.each([1_000, 10_000])('keeps an unconsumed mid-run re-arm scheduled (settles at %s)', async settlesAt => {
+    const store = await storeWith(task({ execution: { mode: 'scheduled', runAt: 500 } }))
+    const agents = fakeAgents()
+    let now = 1_000
+    const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: () => now })
+    const result = await svc.run('t-run', 'scheduled')
+    if (!result.ok) throw new Error('run failed')
+    // The user re-arms the schedule from the edit form while the run is live.
+    await store.mutate('task-updated', ledger => {
+      const t = ledger.tasks[0]!
+      t.execution = { mode: 'scheduled', runAt: 9_000, nextRunAt: 9_000 }
+      return [t]
+    })
+    now = settlesAt
+    agents.idle()
+    await waitFor(() => store.get('t-run')!.executions[0]!.outcome === 'succeeded')
+    expect(store.get('t-run')!.execution).toMatchObject({ mode: 'scheduled', runAt: 9_000 })
+    svc.dispose()
+  })
+
   it('re-arms a periodic task even when its agent already moved it to in_review', async () => {
     const store = await storeWith(task({ execution: { mode: 'scheduled', cron: '* * * * *', nextRunAt: 2_000, periodicCompletion: 'rearm' } }))
     const agents = fakeAgents()

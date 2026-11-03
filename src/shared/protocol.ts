@@ -406,6 +406,25 @@ export interface ExecutionConfig {
 }
 
 /**
+ * True when a scheduled task's trigger is fully spent: one-shot (定时一次)
+ * with its {@link ExecutionConfig.runAt} consumed — fired and settled, missed
+ * while the host was down, or dropped from the dispatch queue — or a cron
+ * whose expression died (cron cleared, nothing queued/dispatching). A runAt
+ * still present, even in the past, remains eligible for the scheduler's
+ * next tick and must not be mistaken for a consumed trigger. The host
+ * normalizes `mode` back to `'claim'` so it stays manually runnable and the
+ * edit form never renders an unsaveable one-shot demanding a new future
+ * time (issue #95).
+ * @param exec - the execution config to inspect.
+ */
+export function isSpentOneShot(exec: ExecutionConfig): boolean {
+  return exec.mode === 'scheduled' && exec.cron === undefined
+    && exec.runAt === undefined
+    && exec.queuedRunAt === undefined
+    && exec.dispatchingRunAt === undefined
+}
+
+/**
  * Parse a five-field cron expression. Supported field syntax: star, star/step
  * (`* / n` without spaces), a single number, an `a-b` range, and comma lists
  * of those. Day-of-week accepts both 0 and 7 as Sunday (normalized to 0).
@@ -743,6 +762,8 @@ export type TaskRecord = {
   /**
    * The task branch fixed at the FIRST worktree creation (`task/<标题>+<taskId>`).
    * Renaming the task afterwards never changes it (history preservation).
+   * If preparation must use a fallback because another worktree holds this
+   * branch, the actual fallback replaces the pin for merge and continuation.
    * Multi-repo mirror runs (0.6.3): this stays the WORKSPACE ROOT repo's
    * branch; every nested repo pins its own under {@link branches}.
    */
@@ -751,7 +772,7 @@ export type TaskRecord = {
    * Per-repo task branches of a multi-repo mirror task (0.6.3): repo path
    * relative to the workspace (never `''` — the root uses {@link branch})
    * → branch name. Pinned at the repo's FIRST successful worktree creation,
-   * same rename-proof semantics as {@link branch}.
+   * same rename-proof and collision-fallback semantics as {@link branch}.
    */
   branches?: Record<string, string>
   /**
@@ -804,6 +825,9 @@ export function pruneExecutions(task: TaskRecord): void {
  * (0.7.x): the finished card goes to in_review for acceptance while this
  * fresh todo card carries the cron onward, keeping the cycle alive. The
  * next run is recomputed from `now` (no compensating catch-up burst).
+ * Task branches are NOT carried over (#94): each cycle pins its own
+ * `task/<标题>+<taskId>` on its first run, because the predecessor's live
+ * in_review worktree holds its branch checked out until acceptance.
  * Pure: the caller pushes the returned record into the ledger.
  * @param source - the finished periodic task (still carrying its cron).
  * @param prevExecutionId - id of the execution that just succeeded.
@@ -837,8 +861,12 @@ export function spawnNextCycle(source: TaskRecord, prevExecutionId: string | und
     ...(source.checklist !== undefined
       ? { checklist: source.checklist.map(item => ({ ...item, checked: false, checkedBy: undefined, checkedAt: undefined, note: undefined })) }
       : {}),
-    ...(source.branch !== undefined ? { branch: source.branch } : {}),
-    ...(source.branches !== undefined ? { branches: { ...source.branches } } : {}),
+    // Issue #94: branch/branches are deliberately NOT inherited. The
+    // predecessor's in_review card keeps its live worktree (holding the
+    // branch checked out) until a human accepts it; a successor pinned to
+    // the same branch could never `git branch -f` it and would silently
+    // degrade to in-place execution from cycle 2 on. The successor derives
+    // its own `task/<标题>+<新taskId>` on its first run instead.
     spawnedFrom: source.id,
     version: 1,
     createdAt: now,

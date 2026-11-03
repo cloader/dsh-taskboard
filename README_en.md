@@ -258,6 +258,13 @@ Real-deployment validation on 2026-10-16 read 4 Bugs, 4 linked Stories and 8 Tas
 
 ## Changelog
 
+### 0.9.10
+
+- **Periodic task isolation**: fix periodic tasks configured to create a successor card falling back to the main checkout from cycle two because they inherited an occupied branch. Successors use independent branches; legacy cards fall back to an available branch and persist its actual name for evidence, continuation and merging, including multi-repo mirrors ([#94](https://github.com/cloader/dsh-taskboard/issues/94)).
+- **One-shot task editing**: return consumed one-shot tasks to claim mode after settlement, a missed trigger window or queue removal, and allow editing legacy consumed cards. Preserve unconsumed due triggers and queued or dispatching windows during ordinary edits without cancelling or rearming them. Explicit rescheduling still requires a future time, and spent schedule badges are hidden ([#95](https://github.com/cloader/dsh-taskboard/issues/95)).
+
+Thanks to [@timacek](https://github.com/timacek) for the reports and reproduction analysis.
+
 ### 0.9.9
 
 - **Task details on narrow panels**: fix action buttons squeezing task titles into one character per line on phones and narrow desktop panels. Reserve readable title space, move actions below the title when needed, and wrap buttons within the panel. Handles intermediate widths and longer Russian labels while preserving the wide desktop layout ([#91](https://github.com/cloader/dsh-taskboard/issues/91), [#92](https://github.com/cloader/dsh-taskboard/pull/92)). Thanks to [@reysonk](https://github.com/reysonk) for the report and investigation; implemented by [@cloader](https://github.com/cloader).

@@ -246,3 +246,54 @@ d('mirror orchestration on real git (0.6.3)', () => {
     }
   }, 30_000)
 })
+
+  // Issue #94 end to end: the predecessor cycle's in_review worktree stays
+  // alive on disk holding its branch checked out. A successor preparing a
+  // fresh worktree on that SAME pinned branch (legacy ledgers that inherited
+  // branch names) must not silently degrade to in-place execution — it falls
+  // back to a per-run branch and keeps the isolation promise.
+  it('cycle 2 keeps worktree isolation even when the pinned branch is held by cycle 1 (#94)', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'dsh-atb-cycle2-'))
+    try {
+      const ws = join(base, 'ws')
+      mkdirSync(ws, { recursive: true })
+      git(ws, 'init', '-q')
+      withIdentity(ws)
+      writeFileSync(join(ws, 'tracked.txt'), 'base\n')
+      git(ws, 'add', '.')
+      git(ws, 'commit', '-qm', 'init')
+      const face = createGitFace()
+      const scanner = createRepoScanner()
+
+      // Cycle 1: worktree prepared, card parked in in_review — worktree alive.
+      const first = await prepareMirror({ git: face, scanner }, {
+        workspacePath: ws, taskId: 't-cycle1', branch: 'task/Nightly-patrol+t-cycle1', reuse: false,
+      })
+      if (!('mirror' in first)) throw new Error('expected cycle-1 mirror')
+      expect(existsSync(first.mirror.repos[0]!.worktreePath)).toBe(true)
+
+      // Cycle 2 with the pinned branch still checked out elsewhere: the old
+      // code path returned { note: 'worktree 准备失败…' } and ran in place.
+      const second = await prepareMirror({ git: face, scanner }, {
+        workspacePath: ws, taskId: 't-cycle2', branch: 'task/Nightly-patrol+t-cycle1', reuse: false,
+      })
+      if (!('mirror' in second)) throw new Error(`cycle 2 degraded: ${'note' in second ? second.note : '?'}`)
+      const repo = second.mirror.repos[0]!
+      expect(repo.worktreePath.replaceAll('\\', '/')).toBe(join(ws, '.dsh-worktrees', 't-cycle2').replaceAll('\\', '/'))
+      expect(repo.branch).not.toBe('task/Nightly-patrol+t-cycle1')
+      expect(repo.branch.startsWith('task/Nightly-patrol+t-cycle1+r')).toBe(true)
+      expect(repo.baseCommit).toBe(first.mirror.repos[0]!.baseCommit)
+      // The fallback worktree is a real checkout of the current HEAD.
+      expect(readFileSync(join(repo.worktreePath, 'tracked.txt'), 'utf-8').replaceAll('\r\n', '\n')).toBe('base\n')
+
+      // Cycle 2 with its OWN derived branch (the post-#94 successor shape):
+      // no collision at all, plain fresh preparation.
+      const third = await prepareMirror({ git: face, scanner }, {
+        workspacePath: ws, taskId: 't-cycle3', branch: 'task/Nightly-patrol+t-cycle3', reuse: false,
+      })
+      if (!('mirror' in third)) throw new Error('expected cycle-3 mirror')
+      expect(third.mirror.repos[0]!.branch).toBe('task/Nightly-patrol+t-cycle3')
+    } finally {
+      rmSync(base, { recursive: true, force: true, maxRetries: 3 })
+    }
+  }, 30_000)

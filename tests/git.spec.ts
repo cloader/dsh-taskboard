@@ -103,6 +103,26 @@ describe('createGitFace (scripted exec)', () => {
     expect(exec.calls.some(a => a[0] === 'branch' && a[1] === '-f' && a[2] === 'task/x+t-1')).toBe(true)
   })
 
+  // Issue #94: `branch -f` fails while ANOTHER live worktree (e.g. a previous
+  // cycle's in_review card) holds the branch checked out — the preparation
+  // must fall back to a per-run branch instead of returning undefined and
+  // degrading the whole run to in-place execution.
+  it('prepareWorktree (branch pinned elsewhere): falls back to a per-run branch', async () => {
+    const exec = scripted([
+      { match: a => a[0] === 'rev-parse' && a[1] === 'HEAD', result: ok('deadbeef\n') },
+      { match: a => a[0] === 'show-ref', result: ok('') },
+      { match: a => a[0] === 'worktree' && a[1] === 'remove', result: ok('') },
+      { match: a => a[0] === 'worktree' && a[1] === 'prune', result: ok('') },
+      { match: a => a[0] === 'branch' && a[1] === '-f', result: bad('fatal: cannot force update the branch task/x+t-1 used by worktree at /r/.dsh-worktrees/t-0') },
+      { match: a => a[0] === 'worktree' && a[1] === 'add', result: ok('') },
+    ])
+    const info = await createGitFace(exec).prepareWorktree('/r', '/r/.dsh-worktrees/t-1', 'task/x+t-1')
+    expect(info).toBeDefined()
+    expect(info!.branch).toMatch(/^task\/x\+t-1\+r[0-9a-f]{8}$/)
+    expect(info!.baseCommit).toBe('deadbeef')
+    expect(exec.calls.some(a => a[0] === 'worktree' && a[1] === 'add' && a.includes('-b') && a.includes(info!.branch))).toBe(true)
+  })
+
   it('prepareWorktree degrades to undefined when HEAD or worktree add fails', async () => {
     const noRepo = createGitFace(scripted([
       { match: a => a[0] === 'rev-parse' && a[1] === 'HEAD', result: bad('not a git repository') },

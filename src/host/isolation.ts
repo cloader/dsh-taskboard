@@ -137,13 +137,13 @@ async function removeEmptyContainers(root: string): Promise<void> {
  *
  * Repo list: the workspace root repo (GitFace.detect decides, whatever its
  * .git shape) leads, nested parallel repos follow in path order. Each repo
- * gets its own worktree on the SAME task branch name; reuse keeps live
+ * gets its own worktree on its pinned branch (or the shared default); reuse keeps live
  * worktrees as-is per repo (续跑), falling back to a fresh preparation per
  * repo — and a stale blocking directory gets one forced-fresh retry.
  */
 export async function prepareMirror(
   deps: { git: GitFace; scanner: RepoScanner },
-  args: { workspacePath: string; taskId: string; branch: string; reuse: boolean },
+  args: { workspacePath: string; taskId: string; branch: string; branches?: Record<string, string>; reuse: boolean },
 ): Promise<MirrorPrepareOutcome> {
   const { git, scanner } = deps
 
@@ -188,15 +188,16 @@ export async function prepareMirror(
   for (let i = 0; i < repos.length; i++) {
     const repo = repos[i]!
     const target = under(mirrorRoot, repo.relPath)
+    const branch = repo.relPath === '' ? args.branch : args.branches?.[repo.relPath] ?? args.branch
     let info
     try {
-      info = await git.prepareWorktree(repo.absPath, target, args.branch, args.reuse ? 'reuse' : 'fresh')
+      info = await git.prepareWorktree(repo.absPath, target, branch, args.reuse ? 'reuse' : 'fresh')
     } catch { /* fail-soft */ }
     if (info === undefined && args.reuse) {
       // A stale non-matching directory can block reuse; force one fresh
       // attempt (fresh mode already drops + prunes the stale worktree).
       try {
-        info = await git.prepareWorktree(repo.absPath, target, args.branch, 'fresh')
+        info = await git.prepareWorktree(repo.absPath, target, branch, 'fresh')
       } catch { /* fail-soft */ }
     }
     if (info === undefined) {
