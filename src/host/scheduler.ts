@@ -6,7 +6,7 @@
  *
  * @module dsh-taskboard/host/scheduler
  */
-import { DEFAULT_DISPATCH_INTERVAL_MS, DEFAULT_MAX_CONCURRENT, newCommentId, nextCronTime, normalizeBody, parseCron, type TaskLedger } from '../shared/protocol.ts'
+import { DEFAULT_DISPATCH_INTERVAL_MS, DEFAULT_MAX_CONCURRENT, isSpentOneShot, newCommentId, nextCronTime, normalizeBody, parseCron, type TaskLedger } from '../shared/protocol.ts'
 import type { ExecutionService } from './execution.ts'
 import type { TaskStore } from './store.ts'
 
@@ -275,6 +275,9 @@ export class SchedulerService {
       if (reason !== 'cleared' && !this.isExpired(task.execution.queuedAt, now)) return undefined
       delete task.execution.queuedRunAt
       delete task.execution.queuedAt
+      // A dropped queue entry spends a one-shot (its runAt was already
+      // consumed at queue time): normalize to claim (#95).
+      if (isSpentOneShot(task.execution)) task.execution.mode = 'claim'
       task.comments.push({
         id: newCommentId(),
         body: normalizeBody(reason === 'cleared'
@@ -300,6 +303,7 @@ export class SchedulerService {
         if (task.execution.queuedRunAt === undefined) continue
         delete task.execution.queuedRunAt
         delete task.execution.queuedAt
+        if (isSpentOneShot(task.execution)) task.execution.mode = 'claim'
         task.comments.push({
           id: newCommentId(),
           body: normalizeBody('[系统] 已被手动清出执行队列，本次不再补跑；可手动执行或修改定时。'),
@@ -368,6 +372,10 @@ export class SchedulerService {
       delete task.execution.runAt
       task.execution.nextRunAt = undefined
       task.execution.lastTriggeredAt = now
+      // Missed window ⇒ the one-shot is spent: fall back to a plain claim
+      // card (manual run / re-schedule via edit) instead of a scheduled
+      // ghost with no trigger (#95).
+      if (isSpentOneShot(task.execution)) task.execution.mode = 'claim'
       if (missedDue !== undefined) {
         task.comments.push({
           id: newCommentId(),
@@ -401,6 +409,9 @@ export class SchedulerService {
         const deadCron = task.execution.cron
         task.execution.cron = undefined
         task.execution.nextRunAt = undefined
+        // Dead cron ⇒ scheduling is over: same spent-card normalization as
+        // a consumed one-shot (#95).
+        if (isSpentOneShot(task.execution)) task.execution.mode = 'claim'
         task.comments.push({
           id: newCommentId(),
           body: normalizeBody(`[系统] 定时表达式 ${deadCron} 在 4 年内没有可触发时间，已停用定时；请修正 cron 后重新开启。`),

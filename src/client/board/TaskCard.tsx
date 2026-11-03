@@ -210,8 +210,11 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
         <span className="dsh-atb-badge">{t(URGENCY_KEYS[task.urgency])}</span>
         {task.blocked && <span className="dsh-atb-badge" data-kind="blocked">{t('shared.blocked')}</span>}
         {stale && <span className="dsh-atb-badge" data-kind="stale">{t('card.badge.stale')}</span>}
-        {task.execution.mode === 'scheduled' && (
-          <span className="dsh-atb-badge" data-kind="scheduled">⏰ {fmtTime(task.execution.nextRunAt)}</span>
+        {task.execution.mode === 'scheduled'
+          && (task.execution.nextRunAt ?? task.execution.queuedRunAt ?? task.execution.runAt) !== undefined && (
+          <span className="dsh-atb-badge" data-kind="scheduled">
+            ⏰ {fmtTime(task.execution.nextRunAt ?? task.execution.queuedRunAt ?? task.execution.runAt)}
+          </span>
         )}
         {task.model !== undefined && (
           <span

@@ -184,8 +184,18 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
   )
   const [urgency, setUrgency] = useState<Urgency>(task?.urgency ?? (prefill?.urgency === 'urgent' || prefill?.urgency === 'relaxed' ? prefill.urgency : 'normal'))
   const initExec = task?.execution ?? prefill?.execution
+  // A scheduled one-shot whose trigger is fully consumed (runAt/queuedRunAt/
+  // dispatchingRunAt all cleared — it already fired, #95) edits as a plain
+  // claim task: rendering it as 'once' would demand a new future time and
+  // permanently disable Save. The host normalizes new data; this also heals
+  // legacy ledgers already carrying the spent state.
+  const liveOneShotAt = initExec?.mode === 'scheduled' && initExec.cron === undefined
+    ? initExec.runAt ?? task?.execution.queuedRunAt ?? task?.execution.dispatchingRunAt
+    : undefined
   const [mode, setMode] = useState<'claim' | 'once' | 'periodic'>(
-    initExec?.mode === 'scheduled' ? (initExec.cron !== undefined ? 'periodic' : 'once') : 'claim',
+    initExec?.mode === 'scheduled'
+      ? (initExec.cron !== undefined ? 'periodic' : liveOneShotAt !== undefined ? 'once' : 'claim')
+      : 'claim',
   )
   const [cron, setCron] = useState(task?.execution.cron ?? prefill?.execution?.cron ?? '0 9 * * *')
   const [periodicCompletion, setPeriodicCompletion] = useState<PeriodicCompletion>(
@@ -202,15 +212,17 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
   const [projectSessions, setProjectSessions] = useState<Array<{ id: string; title?: string }>>([])
   const [sessionsLoading, setSessionsLoading] = useState(false)
   const [sessionsError, setSessionsError] = useState(false)
-  // One-shot trigger (定时执行): datetime-local string; '' = unset.
-  const initRunAt = initExec?.mode === 'scheduled' && initExec.runAt !== undefined ? initExec.runAt : undefined
-  const [runAt, setRunAt] = useState(() => {
+  // One-shot trigger (定时执行): datetime-local string; '' = unset. A card
+  // sitting in the dispatch queue seeds its reserved window (#95).
+  const initRunAt = liveOneShotAt
+  const initialRunAt = (() => {
     if (initRunAt === undefined) return ''
     const d = new Date(initRunAt)
     if (Number.isNaN(d.getTime())) return ''
     const pad = (n: number): string => String(n).padStart(2, '0')
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-  })
+  })()
+  const [runAt, setRunAt] = useState(initialRunAt)
   const [catalog, setCatalog] = useState<CatalogModel[]>([])
 
   // Model & reasoning effort selection:
@@ -294,12 +306,18 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
   const nextRun = cronMatch !== null ? nextCronTime(cronMatch, Date.now()) : null
   const cronBad = mode === 'periodic' && (cronMatch === null || nextRun === null)
   const runAtMs = mode === 'once' && runAt !== '' ? new Date(runAt).getTime() : NaN
-  const runAtBad = mode === 'once' && (runAt === '' || Number.isNaN(runAtMs) || runAtMs <= Date.now())
+  // Ordinary edits must leave the host-owned trigger/queue untouched. A due
+  // runAt can still be waiting for the next scheduler tick; queued windows
+  // are already in the past. Only a changed schedule needs a future time.
+  const preserveOneShot = editing && mode === 'once' && liveOneShotAt !== undefined
+    && runAt === initialRunAt && sessionChoice === initialSessionChoice && workspaceId === task.workspaceId
+  const runAtBad = mode === 'once' && !preserveOneShot && (runAt === '' || Number.isNaN(runAtMs) || runAtMs <= Date.now())
   const valid = title.trim().length > 0 && workspaceId !== '' && !cronBad && !runAtBad
     && (mode === 'claim' || !sessionChoice.startsWith('selected:') || (!sessionsLoading && projectSessions.some(s => s.id === sessionChoice.slice('selected:'.length))))
 
   /** Execution payload for submit: claim | periodic (cron) | one-shot (runAt ISO). */
-  const executionPayload = (): { mode: 'claim' | 'scheduled'; cron?: string; runAt?: string; periodicCompletion?: PeriodicCompletion; reuseSessionId?: string; sessionReuseMode?: 'fresh' | 'reuse' } => {
+  const executionPayload = (): { mode: 'claim' | 'scheduled'; cron?: string; runAt?: string; periodicCompletion?: PeriodicCompletion; reuseSessionId?: string; sessionReuseMode?: 'fresh' | 'reuse' } | undefined => {
+    if (preserveOneShot) return undefined
     const reuse = sessionChoice.startsWith('selected:')
       ? { reuseSessionId: sessionChoice.slice('selected:'.length) }
       : { sessionReuseMode: sessionChoice === 'reuse' ? 'reuse' as const : 'fresh' as const }
