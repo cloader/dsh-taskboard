@@ -322,7 +322,19 @@ export function createGitFace(exec: ExecFn = realExec): GitFace {
         await heavy(['worktree', 'remove', '--force', path], root)
         await heavy(['worktree', 'prune'], root)
         const moved = await heavy(['branch', '-f', branch, 'HEAD'], root)
-        if (!moved.ok) return undefined
+        if (!moved.ok) {
+          // The branch is pinned by ANOTHER live worktree — e.g. a previous
+          // cycle's in_review card still holding it — so it cannot be
+          // force-moved (`fatal: cannot force update the branch ... used by
+          // worktree at ...`). Degrade to a per-run branch instead of
+          // failing the whole preparation and running in the user's main
+          // checkout (#94); pinBranches records the fallback name and later
+          // runs reuse it normally (only our own path holds it then).
+          const fallback = `${branch}+r${crypto.randomUUID().slice(0, 8)}`
+          const added = await heavy(['worktree', 'add', '-b', fallback, path], root)
+          if (!added.ok) return undefined
+          return { path, branch: fallback, baseCommit }
+        }
         const added = await heavy(['worktree', 'add', path, branch], root)
         if (!added.ok) return undefined
       } else {
