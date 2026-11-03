@@ -16,6 +16,7 @@ import {
   effectiveIsolation,
   DEFAULT_MAX_CONCURRENT,
   effectivePrompt,
+  isSpentOneShot,
   newCommentId,
   newExecutionId,
   nextCronTime,
@@ -926,6 +927,18 @@ export class ExecutionService {
           execution.outcome = pending.outcome
           execution.endedAt = now
           this.applyFacts(execution, prepared, evidence)
+          // A settled scheduled run leaves a one-shot (定时一次) spent: its
+          // runAt was consumed at queue time and the cron path below hands
+          // the schedule to a successor — a one-shot has neither. Normalize
+          // the mode so the card stays a plain claim task (runnable and
+          // editable) instead of a scheduled ghost with no trigger (#95).
+          // A re-arm mid-run (edit form setting a fresh future runAt/queue
+          // entry) keeps its fields and is left untouched.
+          if (isSpentOneShot(t.execution, now)) {
+            t.execution.mode = 'claim'
+            delete t.execution.runAt
+            t.execution.nextRunAt = undefined
+          }
           if (pending.outcome !== 'succeeded') {
             if (pending.outcome === 'failed') execution.error = (pending.error ?? 'execution failed').slice(0, 500)
             if (t.status === 'in_progress' && (pending.outcome === 'cancelled' || t.claimedBy === sessionId)) {

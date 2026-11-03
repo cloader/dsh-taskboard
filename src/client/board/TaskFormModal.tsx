@@ -184,8 +184,19 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
   )
   const [urgency, setUrgency] = useState<Urgency>(task?.urgency ?? (prefill?.urgency === 'urgent' || prefill?.urgency === 'relaxed' ? prefill.urgency : 'normal'))
   const initExec = task?.execution ?? prefill?.execution
+  // A scheduled one-shot whose trigger is fully consumed (runAt/queuedRunAt/
+  // dispatchingRunAt all cleared — it already fired, #95) edits as a plain
+  // claim task: rendering it as 'once' would demand a new future time and
+  // permanently disable Save. The host normalizes new data; this also heals
+  // legacy ledgers already carrying the spent state.
+  const liveOneShotAt = initExec?.mode === 'scheduled' && initExec.cron === undefined
+    ? (initExec.runAt !== undefined && new Date(initExec.runAt).getTime() > Date.now() ? initExec.runAt : undefined)
+      ?? task?.execution.queuedRunAt ?? task?.execution.dispatchingRunAt
+    : undefined
   const [mode, setMode] = useState<'claim' | 'once' | 'periodic'>(
-    initExec?.mode === 'scheduled' ? (initExec.cron !== undefined ? 'periodic' : 'once') : 'claim',
+    initExec?.mode === 'scheduled'
+      ? (initExec.cron !== undefined ? 'periodic' : liveOneShotAt !== undefined ? 'once' : 'claim')
+      : 'claim',
   )
   const [cron, setCron] = useState(task?.execution.cron ?? prefill?.execution?.cron ?? '0 9 * * *')
   const [periodicCompletion, setPeriodicCompletion] = useState<PeriodicCompletion>(
@@ -202,8 +213,9 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
   const [projectSessions, setProjectSessions] = useState<Array<{ id: string; title?: string }>>([])
   const [sessionsLoading, setSessionsLoading] = useState(false)
   const [sessionsError, setSessionsError] = useState(false)
-  // One-shot trigger (定时执行): datetime-local string; '' = unset.
-  const initRunAt = initExec?.mode === 'scheduled' && initExec.runAt !== undefined ? initExec.runAt : undefined
+  // One-shot trigger (定时执行): datetime-local string; '' = unset. A card
+  // sitting in the dispatch queue seeds its reserved window (#95).
+  const initRunAt = liveOneShotAt
   const [runAt, setRunAt] = useState(() => {
     if (initRunAt === undefined) return ''
     const d = new Date(initRunAt)
