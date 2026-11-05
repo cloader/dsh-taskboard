@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react'
 import { ExternalSyncPanel } from './ExternalSyncPanel.tsx'
 import type { BoardController } from '../controller.ts'
 import type { CatalogModelItem, CatalogPresetItem } from '../../shared/api.ts'
-import { DEFAULT_COMPLETED_DISPLAY_LIMIT, DEFAULT_DISPATCH_INTERVAL_MS, DEFAULT_ISOLATION, DEFAULT_MAX_CONCURRENT, DEFAULT_QUEUE_MAX_AGE_MINUTES, DEFAULT_SCHEDULE_MISSED_AFTER_MINUTES, MIN_COMPLETED_DISPLAY_LIMIT, MAX_COMPLETED_DISPLAY_LIMIT, allowClaimFromLinkedRootsOf, completedDisplayLimitOf, defaultPermissionOf, defaultSyncExternalSessionsOf, dispatchIntervalMsOf, maxConcurrentOf, queueMaxAgeMinutesOf, scheduleMissedAfterMinutesOf, type IsolationMode, type PermissionMode } from '../../shared/protocol.ts'
+import { BRANCH_NAME_MODES, DEFAULT_BRANCH_NAME_PREFIX, DEFAULT_COMPLETED_DISPLAY_LIMIT, DEFAULT_DISPATCH_INTERVAL_MS, DEFAULT_ISOLATION, DEFAULT_MAX_CONCURRENT, DEFAULT_QUEUE_MAX_AGE_MINUTES, DEFAULT_SCHEDULE_MISSED_AFTER_MINUTES, MIN_COMPLETED_DISPLAY_LIMIT, MAX_COMPLETED_DISPLAY_LIMIT, allowClaimFromLinkedRootsOf, branchNameModeOf, branchNamePrefixOf, buildBranchName, completedDisplayLimitOf, defaultPermissionOf, defaultSyncExternalSessionsOf, dispatchIntervalMsOf, maxConcurrentOf, queueMaxAgeMinutesOf, scheduleMissedAfterMinutesOf, type BranchNameMode, type IsolationMode, type PermissionMode } from '../../shared/protocol.ts'
 import { localeStore, setLocalePreference, useT, type LocalePreference, type Translate } from '../i18n/runtime.ts'
 
 /** The isolation options with one-line hints (mirrors the task form; translated per render). */
@@ -19,6 +19,19 @@ const isolationOptions = (t: Translate): ReadonlyArray<{ value: IsolationMode; n
   { value: 'none', name: t('form.iso.none'), hint: t('set.iso.noneHint') },
   { value: 'worktree', name: t('form.iso.worktree'), hint: t('set.iso.worktreeHint') },
 ]
+
+/** The branch naming presets (issue #98); translated per render. */
+const branchModeOptions = (t: Translate): ReadonlyArray<{ value: BranchNameMode; name: string }> => BRANCH_NAME_MODES.map(value => ({
+  value,
+  name: t(`set.iso.branchMode.${value}`),
+}))
+
+/** Whether the preset needs the prefix input rendered. */
+const isPrefixMode = (m: BranchNameMode): boolean => m === 'prefix-id' || m === 'prefix-title-id'
+
+/** Fixed sample task for the live naming preview (matches the hint copy). */
+const PREVIEW_TITLE = '修复登录'
+const PREVIEW_ID = 't-1a2b'
 
 /**
  * The 看板设置 modal: reads the live ledger settings, stages a local draft,
@@ -55,6 +68,10 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
   const selectedModel = catalog.find(m => m.provider === parsedModel?.provider && m.model === parsedModel?.model)
   const reasoning = selectedModel?.reasoning
   const [draftIso, setDraftIso] = useState<IsolationMode>(currentIso)
+  const currentBranchMode = branchNameModeOf(state.ledger.settings)
+  const currentBranchPrefix = branchNamePrefixOf(state.ledger.settings)
+  const [draftBranchMode, setDraftBranchMode] = useState<BranchNameMode>(currentBranchMode)
+  const [draftBranchPrefix, setDraftBranchPrefix] = useState(currentBranchPrefix)
   const [draftSync, setDraftSync] = useState<boolean>(currentSync)
   const [draftPerm, setDraftPerm] = useState<PermissionMode>(currentPerm)
   const [draftMulti, setDraftMulti] = useState<boolean>(currentMulti)
@@ -79,6 +96,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
   const dirty = draftModel !== currentModelKey || draftEffort !== currentEffort || draftPreset !== currentPreset
     || draftDefaultWorkspace !== currentDefaultWorkspace
     || draftIso !== currentIso || draftSync !== currentSync || draftPerm !== currentPerm || draftMulti !== currentMulti
+    || draftBranchMode !== currentBranchMode || draftBranchPrefix !== currentBranchPrefix
     || draftMaxConcurrent !== String(currentMaxConcurrent) || draftMissedAfterMinutes !== String(currentMissedAfterMinutes)
     || draftQueueMaxAgeMinutes !== String(currentQueueMaxAgeMinutes) || draftDispatchIntervalMs !== String(currentDispatchIntervalMs)
     || draftCompletedLimit !== String(currentCompletedLimit)
@@ -101,6 +119,8 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
   const save = (): void => {
     void controller.updateSettings({
       defaultIsolation: draftIso,
+      branchNameMode: draftBranchMode,
+      branchNamePrefix: draftBranchPrefix.trim().length === 0 ? DEFAULT_BRANCH_NAME_PREFIX : draftBranchPrefix,
       syncExternalSessions: draftSync,
       defaultPermission: draftPerm,
       allowClaimFromLinkedRoots: draftMulti,
@@ -190,6 +210,29 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
             </div>
             <span className="dsh-atb-isolation-note">
               {t('set.iso.current', { current: currentIso === 'worktree' ? t('form.iso.worktree') : t('form.iso.none') })}
+            </span>
+          </section>
+
+          <section className="dsh-atb-diag-sec">
+            <h4>{t('set.iso.branchHeading')}</h4>
+            <p className="dsh-atb-isolation-note">{t('set.iso.branchHint')}</p>
+            <label className="dsh-atb-field dsh-atb-field-inline">
+              <span className="dsh-atb-field-label">{t('set.iso.branchMode.label')}</span>
+              <select className="dsh-atb-input" value={draftBranchMode}
+                onChange={e => setDraftBranchMode(e.target.value as BranchNameMode)}>
+                {branchModeOptions(t).map(o => <option key={o.value} value={o.value}>{o.name}</option>)}
+              </select>
+            </label>
+            {isPrefixMode(draftBranchMode) && (
+              <label className="dsh-atb-field dsh-atb-field-inline">
+                <span className="dsh-atb-field-label">{t('set.iso.branchPrefix')}</span>
+                <input className="dsh-atb-input" value={draftBranchPrefix} maxLength={20} spellCheck={false}
+                  placeholder={DEFAULT_BRANCH_NAME_PREFIX}
+                  onChange={e => setDraftBranchPrefix(e.target.value)} />
+              </label>
+            )}
+            <span className="dsh-atb-isolation-note">
+              {t('set.iso.branchExample', { example: buildBranchName(PREVIEW_TITLE, PREVIEW_ID, draftBranchMode, draftBranchPrefix.trim().length === 0 ? DEFAULT_BRANCH_NAME_PREFIX : draftBranchPrefix) })}
             </span>
           </section>
 

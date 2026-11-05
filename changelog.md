@@ -1,5 +1,17 @@
 # 更新日志 / Changelog
 
+### 0.9.11 — 2026-11-05
+
+- **看板级分支命名预设**：看板设置新增「分支命名」——四预设（`task/标题+ID` 默认 / `task/ID` / `前缀/ID` / `前缀/标题+ID`）+ 条件前缀输入与实时示例预览，中文标题也能生成纯英文分支（[#98](https://github.com/cloader/dsh-taskboard/issues/98)）。
+- **任务级分支名覆盖**：任务表单（Worktree 隔离时）新增可选「分支名」字段，默认显示并跟随看板规则派生的分支名（改标题联动重算）；手动修改即停止跟随，清空恢复跟随；两个态的占位符都是规则的实时预览（创建态以 `ID` 占位）。首次执行后与隔离方式一样锁定（分支已 pin）。`taskboard_create` 工具同步支持 `branch` 参数。
+- **历史数据零迁移**：默认预设逐字节复刻原 `task/<标题>+<任务ID>`；首次执行 pin、分支冲突回退、多仓库镜像逐仓 pin、后继卡不继承分支等既有语义不变；agent 工具与任务模板同步支持。
+
+**English:**
+
+- **Board-level branch naming presets**: new "Branch naming" section in board settings — four presets (`task/标题+ID` default / `task/ID` / `prefix/ID` / `prefix/标题+ID`) with a conditional prefix input and a live example preview, so Chinese titles can yield pure-ASCII branch names ([#98](https://github.com/cloader/dsh-taskboard/issues/98)).
+- **Task-level branch override**: the task form (for worktree isolation) gains an optional branch-name field that defaults to (and follows) the board-rule derivation while the title edits; typing stops the auto-follow, clearing restores it; the placeholder previews the rule in both modes (create mode renders the not-yet-minted id as the literal `ID`). Like isolation, the field locks once execution history exists (the branch is pinned). The `taskboard_create` tool accepts the same `branch` argument.
+- **Zero-migration compatibility**: the default preset reproduces the legacy `task/<标题>+<任务ID>` byte for byte; first-run pinning, collision fallback, multi-repo per-repo pins and successor-card semantics are all unchanged; agent tools and task templates support the field too.
+
 ### 0.9.10 — 2026-11-03
 
 - **周期任务隔离**：修复「完成后新建待办」的周期任务从第二轮起因继承分支而降级为原目录执行的问题。后继卡使用独立分支；旧卡遇到分支占用时改用备用分支，并正确保存分支、采集执行证据、续跑和合并，支持多仓库镜像（[#94](https://github.com/cloader/dsh-taskboard/issues/94)）。

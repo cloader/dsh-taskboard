@@ -23,7 +23,7 @@
  * @module dsh-taskboard/host/git
  */
 import { resolve } from 'node:path'
-import { isValidTaskId, type CommitInfo } from '../shared/protocol.ts'
+import { buildBranchName, DEFAULT_BRANCH_NAME_MODE, DEFAULT_BRANCH_NAME_PREFIX, isValidTaskId, type CommitInfo } from '../shared/protocol.ts'
 
 /** Timeout for quick read-only queries (rev-parse / status / log / diff). */
 const QUICK_TIMEOUT_MS = 2_000
@@ -206,18 +206,16 @@ export interface GitFace {
  * (`~ ^ : ? * [ \ / @ { }` and friends) are stripped; `..` collapses; the
  * segment is trimmed of leading/trailing `.-` and truncated to ~20 code
  * points; an empty result falls back to the bare `task/<taskId>`.
+ *
+ * Since issue #98 this delegates to the shared {@link buildBranchName} under
+ * the factory-default preset, which reproduces the legacy output byte for
+ * byte; the board may pick another preset instead.
  * @param title - the task title (already normalized 1..200 chars).
  * @param taskId - the task id (stable suffix).
  * @returns the branch name.
  */
 export function sanitizeBranchName(title: string, taskId: string): string {
-  const segment = title.trim()
-    .replace(/\s+/g, '-')
-    .replace(/[/\\~^:?*[\]@{}"'<>|#%&;$!`'=,;()]+/g, '')
-    .replace(/\.\.+/g, '.')
-    .replace(/^[-.\s]+|[-.\s]+$/g, '')
-  const head = Array.from(segment).slice(0, 20).join('').replace(/^[-.]+|[-.]+$/g, '')
-  return head.length === 0 ? `task/${taskId}` : `task/${head}+${taskId}`
+  return buildBranchName(title, taskId, DEFAULT_BRANCH_NAME_MODE, DEFAULT_BRANCH_NAME_PREFIX)
 }
 
 /**

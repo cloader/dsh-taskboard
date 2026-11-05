@@ -48,6 +48,7 @@ import {
   normalizeModel,
   normalizePrompt,
   normalizeTitle,
+  sanitizeCustomBranchName,
   summarize,
   syncClaim,
   type Actor,
@@ -557,7 +558,11 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       },
       isolation: {
         type: 'string',
-        description: 'Code isolation for executions: "worktree" (each run gets a fresh git worktree on branch task/<标题>+<taskId>) or "none" (run in the project directory, zero git interaction). Omitted → the board default (看板设置 → 默认执行隔离; factory default "none").',
+        description: 'Code isolation for executions: "worktree" (each run gets a fresh git worktree on a task branch named per the board preset — default task/<标题>+<taskId>) or "none" (run in the project directory, zero git interaction). Omitted → the board default (看板设置 → 默认执行隔离; factory default "none").',
+      },
+      branch: {
+        type: 'string',
+        description: 'Explicit task branch for worktree isolation (issue #98): a full git branch name, multi-level "/" allowed (e.g. "feat/login"). Sanitized by the host; garbage/empty → the board naming preset. The branch is PINNED by the first execution and cannot change afterwards.',
       },
       permission: {
         type: 'string',
@@ -591,6 +596,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       execution?: { mode?: string; cron?: string; runAt?: string | number }
       model?: { provider?: string; model?: string; reasoningEffort?: string }
       isolation?: string
+      branch?: string
       permission?: string
       presetId?: string
       checklist?: string[]
@@ -614,6 +620,9 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
         // (看板设置) at creation, so later setting changes never rewrite
         // existing tasks.
         const isolation = args.isolation === undefined ? defaultIsolationOf(store.snapshot().settings) : asIsolation(args.isolation)
+        // Issue #98: explicit task branch. Fail-soft — garbage/empty input
+        // stores no override (the board naming preset applies at first run).
+        const branchOverride = args.branch === undefined ? undefined : sanitizeCustomBranchName(args.branch)
         // Match the GUI create route: freeze the current board default onto
         // the task so later settings changes do not silently alter a schedule.
         const permission = args.permission === undefined ? defaultPermissionOf(store.snapshot().settings) : asPermission(args.permission)
@@ -635,6 +644,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           execution,
           model,
           isolation,
+          ...(branchOverride !== undefined ? { branch: branchOverride } : {}),
           permission,
           ...(presetId !== undefined ? { presetId } : {}),
           ...(checklist !== undefined ? { checklist } : {}),

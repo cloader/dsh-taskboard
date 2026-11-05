@@ -79,6 +79,12 @@ export type CreateTaskBody = {
   model?: TaskModel | null
   /** Code isolation for executions ('worktree' | 'none'); omitted = default. */
   isolation?: string
+  /**
+   * Explicit task branch (issue #98): a full git branch name (multi-level
+   * `/` allowed); the host sanitizes it. Omitted/empty = generated from the
+   * board naming preset at the first worktree creation.
+   */
+  branch?: string
   /** Omitted = board default; null = follow the deployment default explicitly. */
   presetId?: string | null
   /** Execution permission preset ('workspace-write' | 'read-only' | 'danger-full-access'); omitted = default. */
@@ -104,6 +110,12 @@ export type UpdateTaskBody = {
   model?: TaskModel | null
   /** Change isolation; locked once the task has execution history. */
   isolation?: string
+  /**
+   * Change the explicit task branch (issue #98); null clears the override
+   * (back to the board naming preset). Locked once the task has execution
+   * history — the branch is pinned by the first worktree creation.
+   */
+  branch?: string | null
   /** Change the execution preset (takes effect on the next run). */
   presetId?: string | null
   /** Change the execution permission (0.5.5; 'workspace-write' | 'read-only' | 'danger-full-access'). */
@@ -198,6 +210,8 @@ export type TaskTemplateSpec = {
   execution?: { mode?: string; cron?: string; runAt?: string | number; periodicCompletion?: 'rearm' | 'spawn'; reuseSessionId?: string; sessionReuseMode?: 'fresh' | 'reuse' }
   model?: TaskModel
   isolation?: string
+  /** Explicit task branch (issue #98); sanitized at template save. */
+  branch?: string
   presetId?: string
   /** Execution permission preset (0.5.5). */
   permission?: string
@@ -244,6 +258,10 @@ export type StorageMigrationResult = StorageStatus & { migrated: boolean; warnin
 export type UpdateSettingsBody = {
   /** Default code isolation for NEW tasks ('worktree' | 'none'). */
   defaultIsolation?: string
+  /** Branch naming preset for worktree task branches (issue #98; 'title-id' | 'id' | 'prefix-id' | 'prefix-title-id'). */
+  branchNameMode?: string
+  /** Branch prefix for the `prefix-*` presets (issue #98; sanitized by the host). */
+  branchNamePrefix?: string
   /** Automatically capture external workspace sessions into the taskboard. */
   syncExternalSessions?: boolean
   /** Allow claiming a task through a linked multi-root workspace root. */

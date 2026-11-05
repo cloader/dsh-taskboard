@@ -487,6 +487,8 @@ describe('client half', () => {
     await new Promise(r => setTimeout(r, 20))
     expect(saved).toEqual([{
       defaultIsolation: 'none',
+      branchNameMode: 'title-id',
+      branchNamePrefix: 'task',
       syncExternalSessions: true,
       defaultPermission: 'workspace-write',
       maxConcurrent: 3,

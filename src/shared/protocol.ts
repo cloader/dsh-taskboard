@@ -160,6 +160,113 @@ export function effectiveIsolation(task: Pick<TaskRecord, 'isolation'>): Isolati
 }
 
 /**
+ * Branch naming preset for worktree task branches (issue #98):
+ * - `title-id`: `task/<标题>+<taskId>` — the factory default, byte-identical
+ *   to the pre-#98 format.
+ * - `id`: `task/<taskId>` (pure ASCII).
+ * - `prefix-id`: `<prefix>/<taskId>`.
+ * - `prefix-title-id`: `<prefix>/<标题>+<taskId>`.
+ */
+export type BranchNameMode = 'title-id' | 'id' | 'prefix-id' | 'prefix-title-id'
+
+/** Canonical list of supported branch naming presets. */
+export const BRANCH_NAME_MODES: readonly BranchNameMode[] = ['title-id', 'id', 'prefix-id', 'prefix-title-id']
+
+/** Factory-default branch naming preset: the pre-#98 `task/<标题>+<taskId>`. */
+export const DEFAULT_BRANCH_NAME_MODE: BranchNameMode = 'title-id'
+
+/** Factory-default branch prefix for the `prefix-*` presets. */
+export const DEFAULT_BRANCH_NAME_PREFIX = 'task'
+
+/** Factory-default and hard cap (code points) for a generated branch segment. */
+const BRANCH_SEGMENT_CAP = 20
+
+/**
+ * Sanitize ONE branch name segment (issue #98): whitespace runs collapse to
+ * `-`; git-illegal characters (`~ ^ : ? * [ \ / @ { }` and friends) are
+ * stripped; `..` collapses; the segment is trimmed of leading/trailing `.-`
+ * and truncated to {@link BRANCH_SEGMENT_CAP} code points. Pure — shared by
+ * the board preset builder and prefix validation.
+ * @param segment - the raw segment (a task title or a board prefix).
+ * @returns the sanitized segment; possibly empty (caller falls back).
+ */
+export function sanitizeBranchSegment(segment: string): string {
+  const s = segment.trim()
+    .replace(/\s+/g, '-')
+    .replace(/[/\\~^:?*[\]@{}"'<>|#%&;$!`'=,;()]+/g, '')
+    .replace(/\.\.+/g, '.')
+    .replace(/^[-.\s]+|[-.\s]+$/g, '')
+  return Array.from(s).slice(0, BRANCH_SEGMENT_CAP).join('').replace(/^[-.]+|[-.]+$/g, '')
+}
+
+/**
+ * Build a task branch name under a board naming preset (issue #98). The
+ * `title-id` preset reproduces the legacy `task/<标题>+<taskId>` byte for
+ * byte (empty sanitized title → bare `task/<taskId>`).
+ * @param title - the task title (already normalized 1..200 chars).
+ * @param taskId - the task id (stable suffix).
+ * @param mode - the board naming preset.
+ * @param prefix - the board prefix for `prefix-*` presets (pre-sanitized).
+ * @returns the branch name.
+ */
+export function buildBranchName(title: string, taskId: string,
+  mode: BranchNameMode = DEFAULT_BRANCH_NAME_MODE, prefix: string = DEFAULT_BRANCH_NAME_PREFIX): string {
+  if (mode === 'id') return `task/${taskId}`
+  const head = sanitizeBranchSegment(title)
+  if (mode === 'prefix-id') return `${prefix}/${taskId}`
+  if (mode === 'prefix-title-id') return head.length === 0 ? `${prefix}/${taskId}` : `${prefix}/${head}+${taskId}`
+  return head.length === 0 ? `task/${taskId}` : `task/${head}+${taskId}`
+}
+
+/** Hard cap (code points) for a user-supplied full branch name. */
+const BRANCH_NAME_CAP = 60
+
+/**
+ * Sanitize a user-supplied FULL branch name (issue #98 task-level override).
+ * Unlike {@link sanitizeBranchSegment} the `/` separator is KEPT so users may
+ * express multi-level names (`feat/login`). Git-illegal characters are
+ * stripped, whitespace collapses to `-`, `..` collapses, and every component
+ * must be non-empty, must not start with `.-`, and must not end with
+ * `.-` or `.lock`; the whole name is capped at {@link BRANCH_NAME_CAP} code
+ * points.
+ * @param raw - the raw user input.
+ * @returns the sanitized name, or undefined when nothing legal remains
+ *   (the caller falls back to the board naming preset).
+ */
+export function sanitizeCustomBranchName(raw: string): string | undefined {
+  const cleaned = raw.trim()
+    .replace(/\s+/g, '-')
+    .replace(/[\\~^:?*[\]@{}"'<>|#%&;$!`'=,;()]+/g, '')
+    .replace(/\/{2,}/g, '/')
+    .replace(/\.\.+/g, '.')
+  const parts = cleaned.split('/')
+    .map(p => p.replace(/^[.\s-]+|[.\s-]+$/g, '').replace(/\.lock$/, ''))
+    .filter(p => p.length > 0)
+  if (parts.length === 0) return undefined
+  const capped = Array.from(parts.join('/')).slice(0, BRANCH_NAME_CAP).join('')
+    .replace(/^[-.]+/, '').replace(/[.\s-]+$/, '')
+  return capped.length > 0 ? capped : undefined
+}
+
+/** Validate a board branch naming preset value. */
+export function asBranchNameMode(raw: string): BranchNameMode {
+  if (!(BRANCH_NAME_MODES as readonly string[]).includes(raw)) {
+    throw new Error(`branchNameMode must be one of: ${BRANCH_NAME_MODES.join(', ')}`)
+  }
+  return raw as BranchNameMode
+}
+
+/** The effective branch naming preset (board setting → factory default). */
+export function branchNameModeOf(settings?: BoardSettings): BranchNameMode {
+  return settings?.branchNameMode ?? DEFAULT_BRANCH_NAME_MODE
+}
+
+/** The effective branch prefix for `prefix-*` presets (board setting → factory default). */
+export function branchNamePrefixOf(settings?: BoardSettings): string {
+  return settings?.branchNamePrefix ?? DEFAULT_BRANCH_NAME_PREFIX
+}
+
+/**
  * Execution permission preset (0.5.5). Matches DSH permission presets:
  * - 'workspace-write': 可写入工作区 (factory default)
  * - 'read-only': 仅可查看
@@ -190,6 +297,10 @@ export function asPermission(raw: unknown): PermissionMode {
 export type BoardSettings = {
   /** Default code isolation applied when a NEW task is created without an explicit choice. */
   defaultIsolation?: IsolationMode
+  /** Branch naming preset for worktree task branches (issue #98; default 'title-id' = the pre-#98 format). */
+  branchNameMode?: BranchNameMode
+  /** Branch prefix for the `prefix-*` presets (issue #98; sanitized single segment, default 'task'). */
+  branchNamePrefix?: string
   /** Automatically capture external workspace sessions into the taskboard (default: false). */
   syncExternalSessions?: boolean
   /**
@@ -230,6 +341,19 @@ export function asBoardSettings(raw: unknown): BoardSettings {
       throw new Error("defaultIsolation must be 'worktree' or 'none'")
     }
     out.defaultIsolation = asIsolation(e.defaultIsolation)
+  }
+  if (e.branchNameMode !== undefined) {
+    if (typeof e.branchNameMode !== 'string') {
+      throw new Error(`branchNameMode must be one of: ${BRANCH_NAME_MODES.join(', ')}`)
+    }
+    out.branchNameMode = asBranchNameMode(e.branchNameMode)
+  }
+  if (e.branchNamePrefix !== undefined) {
+    if (typeof e.branchNamePrefix !== 'string') throw new Error('branchNamePrefix must be a string')
+    // Fail-soft: an all-illegal prefix is dropped (the accessor falls back
+    // to 'task') instead of failing the whole settings write.
+    const prefix = sanitizeBranchSegment(e.branchNamePrefix)
+    if (prefix.length > 0) out.branchNamePrefix = prefix
   }
   if (e.syncExternalSessions !== undefined) {
     if (typeof e.syncExternalSessions !== 'boolean') {
@@ -760,7 +884,10 @@ export type TaskRecord = {
    */
   checklist?: ChecklistItem[]
   /**
-   * The task branch fixed at the FIRST worktree creation (`task/<标题>+<taskId>`).
+   * The task branch fixed at the FIRST worktree creation. When the user (or
+   * an agent tool, issue #98) supplied an explicit branch it is used as-is
+   * (sanitized); otherwise it is generated from the board naming preset
+   * (`buildBranchName`, default the legacy `task/<标题>+<taskId>`).
    * Renaming the task afterwards never changes it (history preservation).
    * If preparation must use a fallback because another worktree holds this
    * branch, the actual fallback replaces the pin for merge and continuation.
