@@ -12,6 +12,9 @@
  * @module dsh-taskboard/host/execution
  */
 import {
+  branchNameModeOf,
+  branchNamePrefixOf,
+  buildBranchName,
   DEFAULT_PERMISSION,
   effectiveIsolation,
   DEFAULT_MAX_CONCURRENT,
@@ -31,7 +34,7 @@ import {
   type TaskModel,
   type TaskRecord,
 } from '../shared/protocol.ts'
-import { sanitizeBranchName, type GitFace, type SettlementFacts } from './git.ts'
+import { type GitFace, type SettlementFacts } from './git.ts'
 import { isLegacySingle, prepareMirror, type PreparedMirror, type PreparedMirrorRepo } from './isolation.ts'
 import { createRepoScanner, type RepoScanner } from './repos.ts'
 import { MessageId } from './sdk.ts'
@@ -564,7 +567,11 @@ export class ExecutionService {
     //    'worktree' (also the omitted default) → prepare below, degrading to
     //    the original directory fail-soft on any git problem.
     const isolation: IsolationMode = effectiveIsolation(task)
-    const branch = task.branch ?? sanitizeBranchName(task.title, task.id)
+    // Issue #98: an explicit branch (task-level override, possibly pinned
+    // earlier) wins; otherwise the board naming preset decides. Either way
+    // the FIRST worktree creation pins the result for merge/continuation.
+    const settings = this.deps.store.snapshot().settings
+    const branch = task.branch ?? buildBranchName(task.title, task.id, branchNameModeOf(settings), branchNamePrefixOf(settings))
 
     // 1. Open the execution record, flip the card to in_progress, and record
     //    the executing session as the claim holder — atomically.

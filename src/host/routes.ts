@@ -36,6 +36,7 @@ import {
   normalizeModel,
   normalizePrompt,
   normalizeTitle,
+  sanitizeCustomBranchName,
   summarize,
   syncClaim,
   validateLedgerImport,
@@ -137,6 +138,7 @@ function normalizeTemplateSpec(raw: unknown, now: number): TaskTemplate['task'] 
   const prompt = str('prompt')
   const urgency = str('urgency')
   const isolation = str('isolation')
+  const branch = str('branch')
   const presetId = str('presetId')
   const permission = str('permission')
   if (title !== undefined) spec.title = normalizeTitle(title)
@@ -144,6 +146,9 @@ function normalizeTemplateSpec(raw: unknown, now: number): TaskTemplate['task'] 
   if (prompt !== undefined) spec.prompt = normalizePrompt(prompt)
   if (urgency !== undefined) spec.urgency = asUrgency(urgency)
   if (isolation !== undefined) spec.isolation = asIsolation(isolation)
+  // Issue #98: keep only a legal sanitized branch (garbage silently drops).
+  const sanitizedBranch = branch === undefined ? undefined : sanitizeCustomBranchName(branch)
+  if (sanitizedBranch !== undefined) spec.branch = sanitizedBranch
   if (presetId !== undefined && presetId.trim().length > 0) spec.presetId = presetId.trim()
   if (permission !== undefined && permission.trim().length > 0) spec.permission = asPermission(permission)
   if (e.execution !== undefined) {
@@ -760,6 +765,10 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
           // setting (看板设置) at creation, so later setting changes never
           // rewrite existing tasks.
           const isolation = isolationRaw === null ? defaultIsolationOf(store.snapshot().settings) : asIsolation(isolationRaw)
+          // Issue #98: an explicit task branch. Fail-soft — garbage input
+          // falls back to the board naming preset (no override stored).
+          const branchRaw = str(body, 'branch')
+          const branchOverride = branchRaw === null ? undefined : sanitizeCustomBranchName(branchRaw)
           const presetId = body.presetId === undefined ? settings?.defaultPresetId : normalizePresetId(str(body, 'presetId'))
           const permissionRaw = str(body, 'permission')
           const permission = permissionRaw === null ? defaultPermissionOf(store.snapshot().settings) : asPermission(permissionRaw)
@@ -784,6 +793,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
             execution,
             model,
             isolation,
+            ...(branchOverride !== undefined ? { branch: branchOverride } : {}),
             ...(presetId !== undefined ? { presetId } : {}),
             permission,
             ...(checklist !== undefined ? { checklist } : {}),
@@ -874,6 +884,18 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
                   throw new Error('Error: invalid_input: isolation 已锁定（任务已有执行记录），不可修改')
                 }
                 next.isolation = asIsolation(isolationRaw)
+              }
+              // Issue #98: the explicit task branch may change only before
+              // the first execution (the first worktree creation pins it).
+              // null clears the override (back to the board naming preset);
+              // garbage input fail-softs to clearing it too.
+              if (body.branch !== undefined) {
+                if (task.executions.length > 0 || task.status === 'in_progress') {
+                  throw new Error('Error: invalid_input: branch 已 pin（任务已有执行记录），不可修改')
+                }
+                const branchOverride = sanitizeCustomBranchName(str(body, 'branch') ?? '')
+                if (branchOverride === undefined) delete next.branch
+                else next.branch = branchOverride
               }
               // Preset may change any time: each run composes fresh.
               if (body.presetId === null) delete next.presetId

@@ -783,6 +783,54 @@ describe('taskboard routes', () => {
     expect(locked.json.error.message).toContain('已锁定')
   })
 
+  // ------------------------------------------------------------ issue #98
+  it('issue #98: explicit branch create/update/clear; locked once executions exist; garbage fail-softs', async () => {
+    // Create with an explicit branch (sanitized, multi-level kept).
+    const created = await post('/dsh-taskboard/tasks', { title: 'Branch task', workspaceId: 'ws-a', urgency: 'normal', branch: '  feat/login ' })
+    expect(created.status).toBe(201)
+    const id = created.json.value.id as string
+    const full = await (await fetch(`${base}/dsh-taskboard/tasks/${id}`)).json()
+    expect(full.value.branch).toBe('feat/login')
+
+    // Omitted branch → no override stored (board preset decides at first run).
+    const plain = await post('/dsh-taskboard/tasks', { title: 'Plain task', workspaceId: 'ws-a', urgency: 'normal' })
+    expect(plain.status).toBe(201)
+    const plainFull = await (await fetch(`${base}/dsh-taskboard/tasks/${plain.json.value.id}`)).json()
+    expect(plainFull.value.branch).toBeUndefined()
+
+    // Garbage input fail-softs: no override, no error.
+    const garbage = await post('/dsh-taskboard/tasks', { title: 'Garbage task', workspaceId: 'ws-a', urgency: 'normal', branch: '???' })
+    expect(garbage.status).toBe(201)
+    const garbageFull = await (await fetch(`${base}/dsh-taskboard/tasks/${garbage.json.value.id}`)).json()
+    expect(garbageFull.value.branch).toBeUndefined()
+
+    // Before any execution: swap and clear (null) both work.
+    const swap = await post(`/dsh-taskboard/tasks/${id}/update`, { ifVersion: full.value.version, branch: 'work/fix~bug' })
+    expect(swap.status).toBe(200)
+    const swapFull = await (await fetch(`${base}/dsh-taskboard/tasks/${id}`)).json()
+    expect(swapFull.value.branch).toBe('work/fixbug')
+    const cleared = await post(`/dsh-taskboard/tasks/${id}/update`, { ifVersion: swapFull.value.version, branch: null })
+    expect(cleared.status).toBe(200)
+    const clearedFull = await (await fetch(`${base}/dsh-taskboard/tasks/${id}`)).json()
+    expect(clearedFull.value.branch).toBeUndefined()
+
+    // After an execution record exists: locked (branch is pinned).
+    const reSet = await post(`/dsh-taskboard/tasks/${id}/update`, { ifVersion: clearedFull.value.version, branch: 'feat/again' })
+    expect(reSet.status).toBe(200)
+    const full3 = await (await fetch(`${base}/dsh-taskboard/tasks/${id}`)).json()
+    expect(full3.value.branch).toBe('feat/again')
+    await store.mutate('execution-recorded', ledger => {
+      const target = ledger.tasks.find(t => t.id === id)!
+      target.executions.push({ id: 'e-98', trigger: 'manual', startedAt: 6_000, outcome: 'succeeded', endedAt: 6_100 })
+      target.version += 1
+      return [target]
+    })
+    const full4 = await (await fetch(`${base}/dsh-taskboard/tasks/${id}`)).json()
+    const locked = await post(`/dsh-taskboard/tasks/${id}/update`, { ifVersion: full4.value.version, branch: 'feat/late' })
+    expect(locked.status).toBe(400)
+    expect(locked.json.error.message).toContain('已 pin')
+  })
+
   it('presetId: create stores it (trimmed), update swaps it any time, null clears it', async () => {
     // Create with a preset; empty string = omitted.
     const a = await post('/dsh-taskboard/tasks', { title: 'Preset A', workspaceId: 'ws-a', urgency: 'normal', presetId: '  liangshen  ' })
