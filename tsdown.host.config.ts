@@ -21,7 +21,7 @@ export default defineConfig([
     sourcemap: true,
     external: [/^@deepseek-ai\//, /^schemastery$/],
     unbundle: true,
-    target: 'node20',
+    target: 'node24',
     outExtensions: () => ({ js: '.js' }),
   },
   {
@@ -33,7 +33,7 @@ export default defineConfig([
     sourcemap: true,
     external: [/^@deepseek-ai\//],
     unbundle: true,
-    target: 'node20',
+    target: 'node24',
     outExtensions: () => ({ js: '.js' }),
   },
 ])

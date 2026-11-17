@@ -5,12 +5,14 @@
 - **任务依赖与认领门禁**：任务可指定同项目的前置任务；前置任务全部进入待验收或已完成后，下游任务才满足启动条件。创建、编辑、卡片和任务详情支持依赖，Agent 工具可通过 `blockedBy` 管理依赖并查看等待状态（[#100](https://github.com/cloader/dsh-taskboard/issues/100)）。
 - **可配置拦截范围**：看板设置分别控制 Agent 认领、界面手动启动、定时和周期启动、验收反馈后续跑，默认开启。依赖退回后阻止新的受限启动，不中断已运行的任务；外部会话不受拦截，但会显示依赖状态。
 - **依赖保护与定时行为**：拒绝无效、重复、自引用、跨项目和循环依赖；删除被引用任务前需先处理引用。定时执行因依赖未满足而跳过时记录原因：一次性任务需重新安排，周期任务保留后续调度。旧任务无需迁移。
+- **运行环境与开发依赖**：DSH 开发依赖更新至 `0.2.2-rc.3`，Cordis 更新至 `4.1.0`；插件要求 DSH ≥ `0.2.2-rc.3`、Node.js ≥ `24.9.0`。本地开发和源码构建建议使用 Node.js ≥ `24.12.0`，CI 使用 Node 24 和 26。
 
 **English:**
 
 - **Task dependencies and claim gates**: select same-project prerequisites, satisfied when all reach review or done. Manage them in the board or through the agent tools' `blockedBy` parameter, and see prerequisite status on cards and in task details ([#100](https://github.com/cloader/dsh-taskboard/issues/100)).
 - **Configurable gate scope**: independently gate agent claims, manual starts, scheduled starts and review follow-ups, all enabled by default. A returned prerequisite blocks new gated starts without interrupting ongoing work. External sessions cannot be blocked, but display dependency status.
 - **Dependency protection and scheduling**: reject missing, duplicate, self, cross-project and cyclic dependencies, and protect referenced tasks from deletion. Scheduled runs skipped for unmet dependencies record the reason; one-shot tasks must be rescheduled, while periodic tasks retain later runs. Existing tasks need no migration.
+- **Runtime and development dependencies**: update DSH development dependencies to `0.2.2-rc.3` and Cordis to `4.1.0`. The plugin requires DSH ≥ `0.2.2-rc.3` and Node.js ≥ `24.9.0`; Node.js ≥ `24.12.0` is recommended for local development and source builds. CI uses Node 24 and 26.
 
 ### 0.9.11 — 2026-11-05
 
