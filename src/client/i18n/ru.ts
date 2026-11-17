@@ -8,6 +8,16 @@
 import type { TaskboardDict } from './zh.ts'
 
 export const ru: TaskboardDict = {
+  'dependency.settings': 'Ограничения зависимостей',
+  'dependency.settingsHint': 'Проверяются при запуске. Внешние сеансы не блокируются; запуск по расписанию пропускается, если зависимости не готовы.',
+  'dependency.gate.agent': 'Назначение агенту',
+  'dependency.gate.manual': 'Ручной запуск',
+  'dependency.gate.scheduled': 'Запуск по расписанию',
+  'dependency.gate.review': 'Продолжение после проверки',
+  'dependency.prerequisites': 'Предварительные задачи',
+  'dependency.waiting': 'Ожидает:',
+  'dependency.ready': 'Выполнено',
+  'dependency.referenced': 'От этой задачи зависят другие; отмена или архивирование заблокирует их:',
 
   'ext.requestInterval': 'Минимальный интервал запросов (миллисекунды, 0 — выкл., максимум 10000)',
   'ext.removeMapping': 'Удалить привязку проекта {n}',

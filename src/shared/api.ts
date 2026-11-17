@@ -69,6 +69,7 @@ export type ProjectSessionView = { id: string; title?: string }
 
 /** Create-task request body (actor is always the GUI user). */
 export type CreateTaskBody = {
+  blockedBy?: string[]
   title: string
   workspaceId: string
   urgency: string
@@ -95,6 +96,7 @@ export type CreateTaskBody = {
 
 /** Update-task request body (ifVersion mandatory). */
 export type UpdateTaskBody = {
+  blockedBy?: string[]
   ifVersion: number
   title?: string
   description?: string
@@ -256,6 +258,7 @@ export type StorageMigrationResult = StorageStatus & { migrated: boolean; warnin
 
 /** Update-board-settings request body (0.5.0; whole-object replace semantics). */
 export type UpdateSettingsBody = {
+  dependencyGates?: BoardSettings['dependencyGates']
   /** Default code isolation for NEW tasks ('worktree' | 'none'). */
   defaultIsolation?: string
   /** Branch naming preset for worktree task branches (issue #98; 'title-id' | 'id' | 'prefix-id' | 'prefix-title-id'). */

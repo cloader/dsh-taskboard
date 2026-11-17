@@ -295,6 +295,8 @@ export function asPermission(raw: unknown): PermissionMode {
  * user explicitly set are present; absent fields follow factory defaults.
  */
 export type BoardSettings = {
+  /** Dependency gates default to enabled when omitted. */
+  dependencyGates?: Partial<Record<'agent' | 'manual' | 'scheduled' | 'review', boolean>>
   /** Default code isolation applied when a NEW task is created without an explicit choice. */
   defaultIsolation?: IsolationMode
   /** Branch naming preset for worktree task branches (issue #98; default 'title-id' = the pre-#98 format). */
@@ -336,6 +338,18 @@ export function asBoardSettings(raw: unknown): BoardSettings {
   }
   const e = raw as Record<string, unknown>
   const out: BoardSettings = {}
+  if (e.dependencyGates !== undefined) {
+    if (typeof e.dependencyGates !== 'object' || e.dependencyGates === null || Array.isArray(e.dependencyGates)) throw new Error('dependencyGates must be an object')
+    const gates = e.dependencyGates as Record<string, unknown>
+    const result: NonNullable<BoardSettings['dependencyGates']> = {}
+    for (const key of ['agent', 'manual', 'scheduled', 'review'] as const) {
+      if (gates[key] !== undefined) {
+        if (typeof gates[key] !== 'boolean') throw new Error(`dependencyGates.${key} must be a boolean`)
+        result[key] = gates[key]
+      }
+    }
+    out.dependencyGates = result
+  }
   if (e.defaultIsolation !== undefined) {
     if (typeof e.defaultIsolation !== 'string') {
       throw new Error("defaultIsolation must be 'worktree' or 'none'")
@@ -844,7 +858,15 @@ export type TaskModel = {
 }
 
 /** One task on the board. */
+export function normalizeBlockedBy(value: unknown): string[] {
+  if (!Array.isArray(value) || value.some(id => typeof id !== 'string' || id.length === 0)) throw new Error('blockedBy must be an array of task ids')
+  if (new Set(value).size !== value.length) throw new Error('duplicate dependency')
+  return [...value] as string[]
+}
+
 export type TaskRecord = {
+  /** Same-workspace prerequisite task ids. */
+  blockedBy?: string[]
   /** External tracker provenance; local execution state remains independent. */
   external?: import('./external.ts').ExternalSource
   id: string
@@ -976,6 +998,7 @@ export function spawnNextCycle(source: TaskRecord, prevExecutionId: string | und
     urgency: source.urgency,
     status: 'todo',
     blocked: false,
+    ...(source.blockedBy !== undefined ? { blockedBy: [...source.blockedBy] } : {}),
     execution: { mode: 'scheduled', cron, nextRunAt: next, periodicCompletion: source.execution.periodicCompletion ?? DEFAULT_PERIODIC_COMPLETION,
       ...(source.execution.reuseSessionId !== undefined ? { reuseSessionId: source.execution.reuseSessionId } : {}),
       ...(source.execution.sessionReuseMode !== undefined ? { sessionReuseMode: source.execution.sessionReuseMode } : {}),
@@ -1710,6 +1733,7 @@ export function validateImportedTask(raw: unknown, now: number): { ok: true; tas
       urgency: asUrgency(strOr(e, 'urgency', 'normal')),
       status,
       blocked: e.blocked === true,
+      ...(e.blockedBy !== undefined ? { blockedBy: normalizeBlockedBy(e.blockedBy) } : {}),
       execution,
       ...(typeof e.model === 'object' && e.model !== null ? { model: normalizeModel(e.model) } : {}),
       ...(typeof e.isolation === 'string' && (e.isolation === 'worktree' || e.isolation === 'none') ? { isolation: e.isolation } : {}),
@@ -1748,7 +1772,8 @@ export function validateImportedTask(raw: unknown, now: number): { ok: true; tas
 export function isPlausibleTaskRecord(raw: unknown): boolean {
   if (typeof raw !== 'object' || raw === null) return false
   const t = raw as Record<string, unknown>
-  return typeof t.id === 'string' && isValidTaskId(t.id)
+  return (t.blockedBy === undefined || (Array.isArray(t.blockedBy) && t.blockedBy.every(id => typeof id === 'string')))
+    && typeof t.id === 'string' && isValidTaskId(t.id)
     && typeof t.title === 'string' && t.title.length > 0
     && typeof t.workspaceId === 'string' && (t.workspaceId.length > 0 || normalizeExternalSource(t.external)?.provider === 'zentao')
     && ALL_STATUSES.includes(t.status as TaskStatus)

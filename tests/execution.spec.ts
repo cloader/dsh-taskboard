@@ -114,6 +114,21 @@ const workspaces = {
 }
 
 describe('ExecutionService', () => {
+  it('checks the corresponding gate before opening manual, scheduled, and review executions', async () => {
+    const store = await storeWith(task({ id: 't-prior', title: 'Prior' }), task({ blockedBy: ['t-prior'] }))
+    const agents = fakeAgents()
+    const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: () => 1_000 })
+    for (const trigger of ['manual', 'scheduled', 'comment'] as const) {
+      const result = await svc.run('t-run', trigger)
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error).toContain('dependency_blocked')
+    }
+    expect(agents.created).toHaveLength(0)
+    expect(store.get('t-run')!.executions).toHaveLength(0)
+    await store.mutate('settings-updated', ledger => { ledger.settings = { dependencyGates: { manual: false } }; return [] })
+    expect((await svc.run('t-run', 'manual')).ok).toBe(true)
+    svc.dispose()
+  })
   it.each([
     { provider: 'zentao', isolation: 'none' }, { provider: 'zentao', isolation: 'worktree' },
     { provider: 'tapd', isolation: 'none' }, { provider: 'tapd', isolation: 'worktree' },

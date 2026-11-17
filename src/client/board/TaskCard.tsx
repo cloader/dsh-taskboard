@@ -18,6 +18,7 @@ import { checkNeedsHuman, fmtTime, isStaleClaim } from './format.ts'
 import { OUTCOME_KEYS, URGENCY_KEYS } from './labels.ts'
 import { useT } from '../i18n/runtime.ts'
 import { externalTypeLabel } from '../external-api.ts'
+import { dependencyState } from '../../shared/dependencies.ts'
 
 /** dataTransfer type carrying the dragged task id. */
 export const DRAG_TYPE = 'application/x-dsh-atb-task'
@@ -46,6 +47,7 @@ export const resolveTaskSessionId = taskSessionId
  */
 export function TaskCard({ task, controller, draggable = false, now, onAlert }: { task: TaskRecord; controller: BoardController; draggable?: boolean; now?: number; onAlert?: (msg: string) => void }) {
   const t = useT()
+  const waiting = dependencyState(controller.getSnapshot().ledger.tasks, task).filter(d => !d.satisfied)
   const [rejectOpen, setRejectOpen] = useState(false)
   const [note, setNote] = useState('')
   const last = task.executions.length > 0 ? task.executions[task.executions.length - 1] : undefined
@@ -209,6 +211,7 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
       <div className="dsh-atb-card-meta">
         <span className="dsh-atb-badge">{t(URGENCY_KEYS[task.urgency])}</span>
         {task.blocked && <span className="dsh-atb-badge" data-kind="blocked">{t('shared.blocked')}</span>}
+        {waiting.length > 0 && <span className="dsh-atb-badge" data-kind="blocked" title={waiting.map(d => `${d.title} (${d.id}, ${d.status})`).join(', ')}>{t('dependency.waiting')} {waiting.map(d => d.title).join(', ')}</span>}
         {stale && <span className="dsh-atb-badge" data-kind="stale">{t('card.badge.stale')}</span>}
         {task.execution.mode === 'scheduled'
           && (task.execution.nextRunAt ?? task.execution.queuedRunAt ?? task.execution.runAt) !== undefined && (
