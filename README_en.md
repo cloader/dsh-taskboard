@@ -43,8 +43,8 @@ A **task board plugin for DeepSeek Harness**: humans create cards, agents claim 
 
 | Dependency | Requirement | Notes |
 | --- | --- | --- |
-| DeepSeek Harness | ≥ 0.1.7 | Requires official panel support and the web profile |
-| Node.js | ≥ 22 | For local development and source builds |
+| DeepSeek Harness | ≥ 0.2.2-rc.3 | Requires official panel support and the web profile |
+| Node.js | ≥ 24.9.0 | Plugin runtime; ≥ 24.12.0 recommended for local development and source builds |
 | git | optional | Required for worktree isolation; falls back to running in place when missing |
 
 > **Panel requirement from 0.9.8**: DSH manages the board entry and page through its official panels. Upgrade older DSH installations before updating the plugin.
@@ -264,6 +264,7 @@ Real-deployment validation on 2026-10-16 read 4 Bugs, 4 linked Stories and 8 Tas
 - **Task dependencies and claim gates**: select prerequisites in the same project. They are satisfied when all reach review or done. Create and edit dependencies in the board, see their status on cards and in details, or manage them with the agent tools' `blockedBy` parameter ([#100](https://github.com/cloader/dsh-taskboard/issues/100)).
 - **Configurable gate scope**: independently control agent claims, manual starts, scheduled starts and review follow-ups in board settings; all are enabled by default. A returned prerequisite blocks new gated starts without stopping work already in progress. External sessions cannot be blocked, but show dependency status.
 - **Dependency protection and scheduling**: reject missing, duplicate, self, cross-project and cyclic dependencies, and protect referenced tasks from deletion. A scheduled run skipped because prerequisites are unmet records the reason; one-shot tasks must be rescheduled, while periodic tasks keep later runs. Existing tasks need no migration.
+- **Runtime and development dependencies**: update DSH development dependencies to `0.2.2-rc.3` and Cordis to `4.1.0`. The plugin requires DSH ≥ `0.2.2-rc.3` and Node.js ≥ `24.9.0`; Node.js ≥ `24.12.0` is recommended for local development and source builds. CI uses Node 24 and 26.
 
 ### 0.9.10
 
