@@ -39,6 +39,7 @@ import { isLegacySingle, prepareMirror, type PreparedMirror, type PreparedMirror
 import { createRepoScanner, type RepoScanner } from './repos.ts'
 import { MessageId } from './sdk.ts'
 import type { TaskStore } from './store.ts'
+import { dependencyError, gateEnabled } from '../shared/dependencies.ts'
 
 /**
  * Producer-owned message source kind for the framing line dsh-taskboard injects
@@ -580,6 +581,12 @@ export class ExecutionService {
       const target = ledger.tasks.find(t => t.id === taskId)
       if (target === undefined || target.trashedAt !== undefined) {
         gate = `no task ${taskId}`
+        return undefined
+      }
+      const dependencyGate = trigger === 'scheduled' ? 'scheduled' : trigger === 'comment' || target.status === 'in_review' ? 'review' : 'manual'
+      const blocked = gateEnabled(ledger.settings, dependencyGate) && dependencyError(ledger.tasks, target)
+      if (blocked) {
+        gate = blocked
         return undefined
       }
       // A status may change after the scheduler selected/advanced the task.

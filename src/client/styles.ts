@@ -813,6 +813,10 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
 .dsh-atb-diag-item span { font-size: 10.5px; color: var(--dsw-alias-label-tertiary, gray); }
 .dsh-atb-diag-item[data-bad="true"] b { color: var(--dsw-alias-state-error-primary, #e5484d); }
 .dsh-atb-diag-sec h4 { margin: 0 0 8px; font-size: 12.5px; }
+.dsh-atb-dependency-gates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
+.dsh-atb-dependency-gates label { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+.dsh-atb-dependency-gates input { flex: none; }
+.dsh-atb-dependency-gates span { min-width: 0; overflow-wrap: anywhere; }
 .dsh-atb-diag-orphans { display: flex; flex-direction: column; gap: 6px; }
 .dsh-atb-diag-orphan {
   display: flex; align-items: center; gap: 10px; justify-content: space-between;

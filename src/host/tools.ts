@@ -1,5 +1,6 @@
 import type { SessionArchiveResult } from '../shared/api.ts'
 import { archiveTaskSessions } from './archive-sessions.ts'
+import { assertNotReferenced, dependencyError, dependencyState, gateEnabled, referencingTasks, validateDependencies } from '../shared/dependencies.ts'
 import { applyHumanWaitingPatch, humanWaiting } from '../shared/human-wait.ts'
 /**
  * The ten `taskboard_*` agent tools. All writes require a calling agent
@@ -75,12 +76,14 @@ function taskLine(t: {
   lastExecutionOutcome?: string
   checklist?: { done: number; total: number }
   trashed?: boolean
+  dependencies?: ReturnType<typeof dependencyState>
 }): string {
   const parts = [
     `- ${t.id} [${t.status}] v${t.version} · ${t.urgency} · 项目 ${t.workspaceId}`,
     `「${t.title}」`,
   ]
   if (t.blocked) parts.push('·受阻')
+  if (t.dependencies?.length) parts.push(`·前置 ${t.dependencies.map(d => `${d.title}(${d.id},${d.status}${d.satisfied ? ',已满足' : ',等待中'})`).join(', ')}`)
   if (t.waitingForHuman === true) parts.push(`·待人工${t.waitingReason ? `：${t.waitingReason}` : ''}`)
   if (t.executionMode === 'scheduled') parts.push('·定时')
   if (t.commentCount !== undefined && t.commentCount > 0) parts.push(`·评论${t.commentCount}`)
@@ -91,7 +94,7 @@ function taskLine(t: {
 }
 
 /** Render side: the full task detail block (everything an executor needs). */
-function taskDetail(t: TaskRecord & { effectivePrompt?: string }): string {
+function taskDetail(t: TaskRecord & { effectivePrompt?: string; dependencies?: ReturnType<typeof dependencyState> }): string {
   const lines: string[] = [
     `任务 ${t.id} 「${t.title}」`,
     `状态: ${t.status} (v${t.version}) · 紧急度: ${t.urgency} · 项目: ${t.workspaceId}${t.blocked ? ' · 受阻' : ''}`,
@@ -99,6 +102,7 @@ function taskDetail(t: TaskRecord & { effectivePrompt?: string }): string {
     `隔离: ${t.isolation === 'none' ? '关闭（原目录执行）' : 'Git Worktree'}${t.branch !== undefined ? `（分支 ${t.branch}）` : ''}${t.branches !== undefined ? `（多仓库镜像 ${Object.keys(t.branches).length + (t.branch !== undefined ? 1 : 0)} 个仓库）` : ''}`,
   ]
   const holder = isClaimedBy(t)
+  if (t.dependencies?.length) lines.push(`前置任务: ${t.dependencies.map(d => `${d.title} (${d.id}, ${d.status}, ${d.satisfied ? '已满足' : '等待中'})`).join('; ')}`)
   const waiting = humanWaiting(t)
   if (waiting.needs) lines.push(`人工等待: ${waiting.source === 'inferred' ? '疑似，需确认' : '已标记'}${waiting.reason ? ` · ${waiting.reason}` : ''}`)
   else if (t.waitingForHuman === false) lines.push('人工等待: 已明确解除（不自动识别）')
@@ -490,7 +494,8 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           && (a.status === undefined || t.status === a.status)
           && (a.urgency === undefined || t.urgency === a.urgency)
           && (a.includeTrashed === true || t.trashedAt === undefined))
-        return json({ revision: store.snapshot().revision, tasks: tasks.map(summarize) })
+        const snapshot = store.snapshot()
+        return json({ revision: snapshot.revision, tasks: tasks.map(t => ({ ...summarize(t), dependencies: dependencyState(snapshot.tasks, t) })) })
       } catch (error) { fail(error) }
     },
   })) as () => void)
@@ -507,7 +512,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
     output: {
       schema: JSON_OUT,
       render: (_args, value) => {
-        const v = value as { task?: TaskRecord & { effectivePrompt?: string } }
+        const v = value as { task?: TaskRecord & { effectivePrompt?: string; dependencies?: ReturnType<typeof dependencyState> } }
         return [{ type: 'text', text: v.task === undefined ? '任务不存在。' : taskDetail(v.task) }]
       },
     },
@@ -516,7 +521,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
         const { id } = args
         const task = store.get(id)
         if (task === undefined || task.trashedAt !== undefined) throw new ToolError(ERR.notFound, `no task ${id}`)
-        return json({ task: { ...task, effectivePrompt: effectivePrompt(task) } })
+        return json({ task: { ...task, dependencies: dependencyState(store.snapshot().tasks, task), effectivePrompt: effectivePrompt(task) } })
       } catch (error) { fail(error) }
     },
   })) as () => void)
@@ -535,6 +540,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       urgency: { type: 'string', required: true, description: 'urgent (red) | normal (purple) | relaxed (blue).' },
       description: { type: 'string', description: 'What the task involves (plain text).' },
       prompt: { type: 'string', description: 'Extra execution instructions; the session receives title+description+this prompt.' },
+      blockedBy: { type: 'array', items: { type: 'string' }, description: 'Same-project prerequisite task IDs.' },
       status: { type: 'string', description: 'Initial status; default todo. backlog = not approved for execution.' },
       execution: {
         type: 'object',
@@ -600,6 +606,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       permission?: string
       presetId?: string
       checklist?: string[]
+      blockedBy?: string[]
     }, exec: unknown) {
       try {
         const { actor } = caller(exec as ToolRunContext)
@@ -657,6 +664,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           executions: [],
         }
         await store.mutate('task-created', ledger => {
+          task.blockedBy = validateDependencies(ledger.tasks, task, args.blockedBy ?? [])
           ledger.tasks.push(task)
           return [task]
         })
@@ -679,6 +687,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       prompt: { type: 'string', description: 'New execution prompt.' },
       urgency: { type: 'string', description: 'urgent | normal | relaxed.' },
       blocked: { type: 'boolean', description: 'Blocked marker (work cannot continue right now).' },
+      blockedBy: { type: 'array', items: { type: 'string' }, description: 'Replace same-project prerequisite task IDs.' },
       waitingForHuman: { type: 'boolean', description: 'True to wait for human action; false to explicitly clear the wait and suppress inference. Independent of blocked.' },
       waitingReason: { type: 'string', description: 'Why human input/action is needed (max 500 characters). Never include credentials or secret values. Empty clears the reason.' },
       permission: { type: 'string', description: 'Execution permission: read-only | workspace-write | danger-full-access.' },
@@ -699,6 +708,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
       prompt?: string
       urgency?: string
       blocked?: boolean
+      blockedBy?: string[]
       waitingForHuman?: boolean
       waitingReason?: string
       permission?: string
@@ -719,6 +729,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           if (args.prompt !== undefined) next.prompt = normalizePrompt(args.prompt)
           if (args.urgency !== undefined) next.urgency = asUrgency(args.urgency)
           if (args.blocked !== undefined) next.blocked = args.blocked
+          if (args.blockedBy !== undefined) next.blockedBy = validateDependencies(ledger.tasks, next, args.blockedBy)
           applyHumanWaitingPatch(next, args)
           if (args.permission !== undefined) next.permission = asPermission(args.permission)
           next.version = task.version + 1
@@ -749,9 +760,9 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
     output: {
       schema: JSON_OUT,
       render: (_args, value) => {
-        const v = value as { task?: { id?: string; status?: string; version?: number }; sessionArchive?: SessionArchiveResult }
+        const v = value as { task?: { id?: string; status?: string; version?: number }; sessionArchive?: SessionArchiveResult; affectedDependents?: Array<{ id: string; title: string }> }
         const t = v.task
-        return [{ type: 'text', text: t === undefined ? '移动失败。' : `任务 ${t.id} 已移到 ${t.status}，当前 v${t.version}。${v.sessionArchive === undefined ? '' : ` 会话归档结果：${JSON.stringify(v.sessionArchive)}`}` }]
+        return [{ type: 'text', text: t === undefined ? '移动失败。' : `任务 ${t.id} 已移到 ${t.status}，当前 v${t.version}。${v.affectedDependents?.length ? ` 以下任务的依赖未满足，请调整依赖：${v.affectedDependents.map(d => `${d.title} (${d.id})`).join(', ')}。` : ''}${v.sessionArchive === undefined ? '' : ` 会话归档结果：${JSON.stringify(v.sessionArchive)}`}` }]
       },
     },
     async execute(args: { id: string; status: string; ifVersion: number; archiveSessions?: boolean }, exec: unknown) {
@@ -767,10 +778,12 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
         // R1: every state guard + the write itself run inside the mutation.
         let next: TaskRecord | undefined
         let beforeTask: TaskRecord | undefined
+        let affectedDependents: Array<{ id: string; title: string }> = []
         await store.mutate('task-moved', ledger => {
           const { index, task } = liveTaskAt(ledger, args.id)
           versionGuard(task, args.ifVersion)
           beforeTask = task
+          if (to === 'canceled' || to === 'archived') affectedDependents = referencingTasks(ledger.tasks, task.id).map(({ id, title }) => ({ id, title }))
 
           // Code-level gate: agents never complete a task.
           if (to === 'done') {
@@ -778,6 +791,10 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           }
           if (!canTransition(task.status, to)) {
             throw new ToolError(ERR.invalidTransition, `illegal transition ${task.status} → ${to}`)
+          }
+          if (task.status === 'in_review' && to === 'in_progress' && gateEnabled(ledger.settings, 'review')) {
+            const blocked = dependencyError(ledger.tasks, task)
+            if (blocked) throw new ToolError(ERR.invalidInput, blocked)
           }
           // Exclusive hold: while a task is in_progress under a session
           // (explicit claimedBy — an agent claim or a live execution), no other
@@ -788,6 +805,8 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           // or, when the board enables it, through one of its linked multi-root
           // workspace roots.
           if (isClaim(task.status, to)) {
+            const blocked = gateEnabled(ledger.settings, 'agent') && dependencyError(ledger.tasks, task)
+            if (blocked) throw new ToolError(ERR.invalidInput, blocked)
             const linkedClaim = allowClaimFromLinkedRootsOf(ledger.settings) && claimScope !== undefined
             const reached = claimScope?.wsId === task.workspaceId
               || (linkedClaim && claimScope!.linkedWsIds.has(task.workspaceId))
@@ -814,7 +833,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
         const sessionArchive = to === 'archived' && args.archiveSessions === true
           ? await archiveTaskSessions(beforeTask ?? next!, deps.workspaces.archiveSession)
           : undefined
-        return json({ task: summarize(next!), ...(sessionArchive !== undefined ? { sessionArchive } : {}) })
+        return json({ task: summarize(next!), ...(affectedDependents.length ? { affectedDependents } : {}), ...(sessionArchive !== undefined ? { sessionArchive } : {}) })
       } catch (error) { fail(error) }
     },
   })) as () => void)
@@ -930,6 +949,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
         await store.mutate('task-deleted', ledger => {
           const { index, task } = liveTaskAt(ledger, args.id)
           versionGuard(task, args.ifVersion)
+          assertNotReferenced(ledger, task.id)
           exclusiveHoldGuard(task, actor.sessionId)
           if (task.executions.some(e => e.outcome === 'running')) {
             throw new ToolError(ERR.invalidInput, '任务有正在运行的执行（先在 GUI 取消或等它结束再删除）')

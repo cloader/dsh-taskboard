@@ -176,6 +176,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
   const prefill: TaskTemplateSpec | undefined = state.templatePrefill
   const editing = task !== undefined
   const [title, setTitle] = useState(task?.title ?? prefill?.title ?? '')
+  const [blockedBy, setBlockedBy] = useState<string[]>(task?.blockedBy ?? [])
   const [description, setDescription] = useState(task?.description ?? prefill?.description ?? '')
   const [prompt, setPrompt] = useState(task?.prompt ?? prefill?.prompt ?? '')
   // Project default (#56): board filter → configured default project → first registered.
@@ -416,6 +417,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
         description,
         prompt,
         urgency,
+        blockedBy,
         workspaceId,
         execution: executionPayload(),
         // '' in edit mode clears the pinned model back to the default.
@@ -433,6 +435,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
         title,
         workspaceId,
         urgency,
+        blockedBy,
         description: description.length > 0 ? description : undefined,
         prompt: prompt.length > 0 ? prompt : undefined,
         execution: executionPayload(),
@@ -463,6 +466,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
           description,
           prompt,
           urgency,
+          blockedBy,
           workspaceId,
           execution: executionPayload(),
           model: picked ?? null,
@@ -478,6 +482,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
           title,
           workspaceId,
           urgency,
+          blockedBy,
           description: description.length > 0 ? description : undefined,
           prompt: prompt.length > 0 ? prompt : undefined,
           execution: executionPayload(),
@@ -559,10 +564,18 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
                   }
                 }} />
             </Field>
+            <Field label={t('dependency.prerequisites')} full>
+              <div>{state.ledger.tasks.filter(candidate => candidate.workspaceId === workspaceId && candidate.id !== task?.id && candidate.trashedAt === undefined
+                && (candidate.status === 'todo' || task?.blockedBy?.includes(candidate.id))).map(candidate => (
+                <label key={candidate.id} style={{ display: 'block' }}>
+                  <input type="checkbox" checked={blockedBy.includes(candidate.id)} onChange={e => setBlockedBy(e.target.checked ? [...blockedBy, candidate.id] : blockedBy.filter(id => id !== candidate.id))} /> {candidate.title} ({candidate.id}, {candidate.status})
+                </label>
+              ))}</div>
+            </Field>
 
             <div className="dsh-atb-form-subgrid">
               <Field label={t('form.field.project')} required>
-                <select value={workspaceId} onChange={e => { setWorkspaceId(e.target.value); setSessionChoice('fresh'); setProjectSessions([]) }}>
+                <select value={workspaceId} onChange={e => { setWorkspaceId(e.target.value); setBlockedBy([]); setSessionChoice('fresh'); setProjectSessions([]) }}>
                   {state.workspaces.map(ws => <option key={ws.id} value={ws.id}>{ws.title || ws.path}</option>)}
                 </select>
               </Field>
