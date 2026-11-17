@@ -25,11 +25,11 @@ const workspaces = [
 ]
 
 /** Harness mirroring issue-95.spec.tsx: a REAL controller over a fake transport. */
-async function setupForm(task: TaskRecord | undefined, settings: Record<string, unknown> = {}) {
+async function setupForm(task: TaskRecord | undefined, settings: Record<string, unknown> = {}, otherTasks: TaskRecord[] = []) {
   const updated: UpdateTaskBody[] = []
   const created: CreateTaskBody[] = []
   const controller = new BoardController({
-    state: async () => ({ schemaVersion: 1, revision: 1, tasks: task === undefined ? [] : [task], settings }),
+    state: async () => ({ schemaVersion: 1, revision: 1, tasks: task === undefined ? otherTasks : [task, ...otherTasks], settings }),
     workspaces: async () => workspaces.map(w => ({ ...w })),
     stream: () => () => {},
     create: async (body: CreateTaskBody) => { created.push(body); return { id: 'new-task', version: 1 } },
@@ -74,6 +74,22 @@ function taskOf(overrides: Partial<TaskRecord>): TaskRecord {
 }
 
 describe('TaskFormModal branch override (#98)', () => {
+  it('offers todo prerequisites while preserving previously selected tasks in other states', async () => {
+    const task = taskOf({ blockedBy: ['t-review'] })
+    const form = await setupForm(task, {}, [
+      taskOf({ id: 't-todo', title: '待办候选', status: 'todo' }),
+      taskOf({ id: 't-review', title: '已有前置', status: 'in_review' }),
+      taskOf({ id: 't-doing', title: '执行中候选', status: 'in_progress' }),
+      taskOf({ id: 't-other', title: '其他项目', workspaceId: 'ws-b', status: 'todo' }),
+    ])
+    await waitFor(() => form.host.textContent?.includes('待办候选') === true)
+    expect(form.host.textContent).toContain('待办候选')
+    expect(form.host.textContent).toContain('已有前置')
+    expect(form.host.textContent).not.toContain('执行中候选')
+    expect(form.host.textContent).not.toContain('其他项目')
+    const selected = Array.from(form.host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).find(input => input.parentElement?.textContent?.includes('已有前置'))
+    expect(selected?.checked).toBe(true)
+  })
   it('edit: branch defaults to the board preset derivation, follows title edits until touched', async () => {
     const view = await setupForm(taskOf({})) // no explicit branch
     await waitFor(() => view.branchInput() !== null)

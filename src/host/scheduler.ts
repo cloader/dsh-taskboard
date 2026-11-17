@@ -206,6 +206,7 @@ export class SchedulerService {
         // execution adapters (and test faces) that only report a successful
         // dispatch and do not own the ledger mutation.
         if (result?.ok) await this.markDispatched(task.id, queuedWindow)
+        else if (result?.error.startsWith('dependency_blocked:')) await this.skipDependencyBlocked(task.id, queuedWindow, result.error)
         else await this.restoreQueued(task.id, queuedWindow)
         // A capacity race leaves the durable entry intact for the next pump.
         if (result !== undefined && !result.ok && !result.error.includes('concurrency')) {
@@ -215,6 +216,20 @@ export class SchedulerService {
         this.dispatching.delete(key)
       }
     }
+  }
+
+  /** A blocked window is spent, never automatically awakened by later changes. */
+  private async skipDependencyBlocked(taskId: string, window: number, reason: string): Promise<void> {
+    await this.deps.store.mutate('task-updated', ledger => {
+      const task = ledger.tasks.find(t => t.id === taskId)
+      if (!task || task.execution.dispatchingRunAt !== window) return undefined
+      delete task.execution.dispatchingRunAt
+      delete task.execution.queuedAt
+      if (isSpentOneShot(task.execution)) task.execution.mode = 'claim'
+      task.comments.push({ id: newCommentId(), body: normalizeBody(`[系统] 定时执行因前置任务未满足而跳过；一次性任务需重新安排。${reason}`),
+        threadId: 'sched', version: 1, createdAt: this.deps.now() })
+      return [task]
+    })
   }
 
   private isExpired(queuedAt: number | undefined, now: number): boolean {

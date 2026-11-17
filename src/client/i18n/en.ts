@@ -8,6 +8,16 @@
 import type { TaskboardDict } from './zh.ts'
 
 export const en: TaskboardDict = {
+  'dependency.settings': 'Dependency gates',
+  'dependency.settingsHint': 'Checked on start; dependencies remain visible when disabled. External sessions cannot be blocked; an unready scheduled run is skipped.',
+  'dependency.gate.agent': 'Agent claim',
+  'dependency.gate.manual': 'Manual start',
+  'dependency.gate.scheduled': 'Scheduled start',
+  'dependency.gate.review': 'Resume after review',
+  'dependency.prerequisites': 'Prerequisites',
+  'dependency.waiting': 'Waiting for:',
+  'dependency.ready': 'Satisfied',
+  'dependency.referenced': 'Required by these tasks; canceling or archiving will block them until dependencies are changed:',
   'ext.requestInterval': 'Minimum request interval (milliseconds, 0 off, maximum 10000)',
   'ext.removeMapping': 'Remove project mapping {n}',
   'ext.lastAttempt': 'Last sync attempt',

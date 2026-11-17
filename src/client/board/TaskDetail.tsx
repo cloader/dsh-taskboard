@@ -17,6 +17,7 @@ import { checkNeedsHuman, fmtTime, isStaleClaim } from './format.ts'
 import { MOVE_KEYS, OUTCOME_KEYS, STATUS_KEYS, URGENCY_KEYS } from './labels.ts'
 import { useT, type Translate } from '../i18n/runtime.ts'
 import { IMAGE_ACCEPT, acceptedImageFiles, imageAlt, imageMarkdown, insertImageMarkdown } from '../image-insert.ts'
+import { dependencyState, referencingTasks } from '../../shared/dependencies.ts'
 
 /** Statuses a user may move this task to, per the state machine. */
 function moveTargets(task: TaskRecord): TaskRecord['status'][] {
@@ -658,6 +659,8 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
   const [execOpen, setExecOpen] = useState(false)
   const { alert: showAlert, el: alertEl } = useAlert()
   const ws = controller.getSnapshot().workspaces.find(w => w.id === task.workspaceId)
+  const dependencies = dependencyState(controller.getSnapshot().ledger.tasks, task)
+  const dependents = referencingTasks(controller.getSnapshot().ledger.tasks, task.id)
   const runningExecution = task.executions.find(e => e.outcome === 'running')
   const holder = task.status === 'in_progress' ? task.claimedBy : undefined
   // Run is blocked by work IN FLIGHT, not by the status label. A card the user
@@ -766,6 +769,8 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
             {task.execution.queuedRunAt !== undefined && <Chip icon="⏳" tone="urgent">{t('detail.chip.queuedRun', { time: fmtTime(task.execution.queuedRunAt) })}</Chip>}
             {needsHuman.needs && <Chip icon="🙋" tone="urgent" title={needsHuman.reason}>{needsHuman.reason ?? t('detail.chip.needsHuman')}</Chip>}
             {task.blocked && <Chip icon="⛔" tone="urgent">{t('shared.blocked')}</Chip>}
+            {dependencies.map(d => <Chip key={d.id} icon={d.satisfied ? '✓' : '⏳'} tone={d.satisfied ? undefined : 'urgent'}>{d.satisfied ? t('dependency.ready') : t('dependency.waiting')} {d.title} ({d.id}, {d.status})</Chip>)}
+            {dependents.length > 0 && <Chip icon="ℹ">{t('dependency.referenced')} {dependents.map(d => `${d.title} (${d.id})`).join(', ')}</Chip>}
             {task.checklist !== undefined && task.checklist.length > 0 && (
               <Chip icon="☑" tone={task.status === 'in_review' && task.checklist.some(i => !i.checked) ? 'urgent' : undefined}>
                 {t('detail.chip.checklist', { done: checklistProgress(task).done, total: task.checklist.length })}

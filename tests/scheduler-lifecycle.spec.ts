@@ -135,6 +135,21 @@ afterAll(async () => {
 })
 
 describe('SchedulerService lifecycle', () => {
+  it('spends a dependency-blocked one-shot and records the reason without retrying', async () => {
+    store = await seed([scheduledTask('t-once', { mode: 'scheduled', runAt: T0, nextRunAt: T0 })])
+    let calls = 0
+    scheduler = new SchedulerService({ store, now: () => T0, dispatchIntervalMs: 0, execution: {
+      inFlight: () => 0,
+      run: async () => { calls++; return { ok: false, error: 'dependency_blocked: A' } },
+    } })
+    await scheduler.tick()
+    await scheduler.tick()
+    const task = store.get('t-once')!
+    expect(calls).toBe(1)
+    expect(task.execution.mode).toBe('claim')
+    expect(task.execution.queuedRunAt).toBeUndefined()
+    expect(task.comments.some(c => c.body.includes('dependency_blocked: A'))).toBe(true)
+  })
   it('clearQueue(): drops every durable queue entry with a system comment, without running them', async () => {
     store = await seed(['q1', 'q2'].map(id => scheduledTask(id, {
       mode: 'scheduled', cron: '* * * * *', nextRunAt: T0 + 60_000,

@@ -10,6 +10,16 @@
  * @module dsh-taskboard/client/i18n/zh
  */
 export const zh = {
+  'dependency.settings': '任务依赖门禁',
+  'dependency.settingsHint': '仅在启动时检查；关闭后仍显示依赖。外部会话无法拦截；定时未就绪时跳过本次执行。',
+  'dependency.gate.agent': 'Agent 认领',
+  'dependency.gate.manual': '界面手动启动',
+  'dependency.gate.scheduled': '定时和周期启动',
+  'dependency.gate.review': '验收反馈后续跑',
+  'dependency.prerequisites': '前置任务',
+  'dependency.waiting': '等待前置任务：',
+  'dependency.ready': '已满足',
+  'dependency.referenced': '被以下任务依赖；取消或归档后它们将等待，请调整依赖：',
   'ext.requestInterval': '最小请求间隔（毫秒，0 关闭，最大 10000）',
   'ext.removeMapping': '删除第 {n} 个项目映射',
   'ext.lastAttempt': '最近尝试同步',

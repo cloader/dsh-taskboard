@@ -1,4 +1,5 @@
 import { archiveTaskSessions } from './archive-sessions.ts'
+import { assertNotReferenced, dependencyError, gateEnabled, referencingTasks, validateDependencies } from '../shared/dependencies.ts'
 import { applyHumanWaitingPatch } from '../shared/human-wait.ts'
 /**
  * /dsh-taskboard routes on the shared DSH webserver: a JSON API for the
@@ -470,7 +471,10 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
           const ledger = store.snapshot()
           const excludeDone = url.searchParams.get('excludeDone') === 'true' || url.searchParams.get('excludeDone') === '1'
           const doneCount = ledger.tasks.filter(t => t.status === 'done' && t.trashedAt === undefined).length
-          const tasks = excludeDone ? ledger.tasks.filter(t => t.status !== 'done') : ledger.tasks
+          // Retain completed prerequisites so dependency indicators remain accurate
+          // even while the completed column is collapsed.
+          const referenced = new Set(ledger.tasks.flatMap(t => t.blockedBy ?? []))
+          const tasks = excludeDone ? ledger.tasks.filter(t => t.status !== 'done' || referenced.has(t.id)) : ledger.tasks
           json(res, {
             ok: true,
             value: {
@@ -806,6 +810,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
             executions: [],
           }
           await store.mutate('task-created', ledger => {
+            task.blockedBy = validateDependencies(ledger.tasks, task, body.blockedBy ?? [])
             ledger.tasks.push(task)
             return [task]
           })
@@ -855,8 +860,10 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
               const workspaceId = str(body, 'workspaceId')
               if (workspaceId !== null) {
                 if (workspaces.get(workspaceId) === undefined) throw new Error('Error: not_found: unknown workspace')
+                if (workspaceId !== task.workspaceId && referencingTasks(ledger.tasks, task.id).length) throw new Error('Error: invalid_input: task is referenced by other tasks')
                 next.workspaceId = workspaceId
               }
+              next.blockedBy = validateDependencies(ledger.tasks, next, body.blockedBy ?? next.blockedBy ?? [])
               if (typeof body.blocked === 'boolean') next.blocked = body.blocked
               applyHumanWaitingPatch(next, body)
               // The GUI (task owner surface) may edit model/execution; null clears the model.
@@ -931,6 +938,10 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
               const { index, task } = liveTaskAt(ledger, id)
               if (ifVersion !== task.version) throw new Error(`Error: version_conflict: stale version ${ifVersion} (current ${task.version})`)
               if (!canTransition(task.status, to)) throw new Error(`Error: invalid_transition: illegal transition ${task.status} → ${to}`)
+              if (to === 'in_progress' && gateEnabled(ledger.settings, task.status === 'in_review' ? 'review' : 'manual')) {
+                const blocked = dependencyError(ledger.tasks, task)
+                if (blocked) throw new Error(`Error: invalid_input: ${blocked}`)
+              }
               beforeTask = task
               next = structuredClone(task)
               next.status = to
@@ -1035,6 +1046,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
             const purge = body.purge === true
             if (purge) {
               if (task.trashedAt === undefined) throw new Error('Error: invalid_input: purge requires a trashed task (soft-delete first)')
+              assertNotReferenced(store.snapshot(), id)
               // Worktree safety before purge (plan §3.3, 0.3.1): refuse while
               // uncommitted work remains; otherwise clean the worktree and
               // the task branch along with the ledger entry.
@@ -1079,6 +1091,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
                 }
               }
               await store.mutate('task-deleted', ledger => {
+                assertNotReferenced(ledger, id)
                 ledger.tasks = ledger.tasks.filter(t => t.id !== id)
                 return []
               })
@@ -1090,6 +1103,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
             await store.mutate('task-deleted', ledger => {
               const { index, task } = liveTaskAt(ledger, id)
               if (ifVersion !== task.version) throw new Error(`Error: version_conflict: stale version ${ifVersion} (current ${task.version})`)
+              assertNotReferenced(ledger, id)
               // S5: a running execution keeps writing to the task — refuse the
               // soft-delete until it is cancelled or settled. T8: clear residue.
               if (task.executions.some(e => e.outcome === 'running')) {
@@ -1426,6 +1440,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
               // along when the file carries them; merge keeps the live ones.
               if (plan.settings !== undefined) ledger.settings = structuredClone(plan.settings)
               else delete ledger.settings
+              for (const task of ledger.tasks) validateDependencies(ledger.tasks, task)
               return ledger.tasks
             }
             const byId = new Map(ledger.tasks.map(t => [t.id, t]))
@@ -1447,6 +1462,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
               byId.set(task.id, structuredClone(task))
             }
             ledger.tasks = [...byId.values()]
+            for (const task of ledger.tasks) validateDependencies(ledger.tasks, task)
             return structuredClone(imported)
           })
           json(res, {

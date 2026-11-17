@@ -47,6 +47,9 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
   const currentSync = defaultSyncExternalSessionsOf(state.ledger.settings)
   const currentPerm = defaultPermissionOf(state.ledger.settings)
   const currentMulti = allowClaimFromLinkedRootsOf(state.ledger.settings)
+  const gateKeys = ['agent', 'manual', 'scheduled', 'review'] as const
+  const currentGates = Object.fromEntries(gateKeys.map(key => [key, state.ledger.settings?.dependencyGates?.[key] ?? true])) as Record<typeof gateKeys[number], boolean>
+  const [draftGates, setDraftGates] = useState(currentGates)
   const currentMaxConcurrent = maxConcurrentOf(state.ledger.settings)
   const currentMissedAfterMinutes = scheduleMissedAfterMinutesOf(state.ledger.settings)
   const currentQueueMaxAgeMinutes = queueMaxAgeMinutesOf(state.ledger.settings)
@@ -94,6 +97,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
     && Number.isSafeInteger(dispatchIntervalMs) && dispatchIntervalMs >= 0 && dispatchIntervalMs <= 60000
   const completedLimitValid = Number.isSafeInteger(completedLimit) && completedLimit >= MIN_COMPLETED_DISPLAY_LIMIT && completedLimit <= MAX_COMPLETED_DISPLAY_LIMIT
   const dirty = draftModel !== currentModelKey || draftEffort !== currentEffort || draftPreset !== currentPreset
+    || gateKeys.some(key => draftGates[key] !== currentGates[key])
     || draftDefaultWorkspace !== currentDefaultWorkspace
     || draftIso !== currentIso || draftSync !== currentSync || draftPerm !== currentPerm || draftMulti !== currentMulti
     || draftBranchMode !== currentBranchMode || draftBranchPrefix !== currentBranchPrefix
@@ -124,6 +128,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
       syncExternalSessions: draftSync,
       defaultPermission: draftPerm,
       allowClaimFromLinkedRoots: draftMulti,
+      dependencyGates: draftGates,
       ...(parsedModel !== undefined ? { defaultModel: { ...parsedModel, ...(draftEffort !== '' ? { reasoningEffort: draftEffort } : {}) } } : {}),
       ...(draftPreset !== '' ? { defaultPresetId: draftPreset } : {}),
       ...(draftDefaultWorkspace !== '' ? { defaultWorkspaceId: draftDefaultWorkspace } : {}),
@@ -164,6 +169,15 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
           </nav>
           <div className="dsh-atb-settings-content">
         <div className="dsh-atb-modal-body" id="dsh-atb-settings-panel-general" role="tabpanel" aria-labelledby="dsh-atb-settings-tab-general" hidden={section !== 'general'}>
+          <section className="dsh-atb-diag-sec">
+            <h4>{t('dependency.settings')}</h4>
+            <p className="dsh-atb-isolation-note">{t('dependency.settingsHint')}</p>
+            <div className="dsh-atb-dependency-gates">
+              {gateKeys.map(key => <label key={key}>
+                <input type="checkbox" checked={draftGates[key]} onChange={e => setDraftGates({ ...draftGates, [key]: e.target.checked })} /> <span>{t(`dependency.gate.${key}`)}</span>
+              </label>)}
+            </div>
+          </section>
           <section className="dsh-atb-diag-sec">
             <label className="dsh-atb-field dsh-atb-field-inline">
               <span className="dsh-atb-field-label">{t('set.language.label')}</span>
