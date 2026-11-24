@@ -17,7 +17,7 @@ import { checkNeedsHuman, fmtTime, isStaleClaim } from './format.ts'
 import { MOVE_KEYS, OUTCOME_KEYS, STATUS_KEYS, URGENCY_KEYS } from './labels.ts'
 import { useT, type Translate } from '../i18n/runtime.ts'
 import { IMAGE_ACCEPT, acceptedImageFiles, imageAlt, imageMarkdown, insertImageMarkdown } from '../image-insert.ts'
-import { dependencyState, referencingTasks } from '../../shared/dependencies.ts'
+import { dependenciesEnabled, dependencyState, referencingTasks } from '../../shared/dependencies.ts'
 
 /** Statuses a user may move this task to, per the state machine. */
 function moveTargets(task: TaskRecord): TaskRecord['status'][] {
@@ -659,8 +659,9 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
   const [execOpen, setExecOpen] = useState(false)
   const { alert: showAlert, el: alertEl } = useAlert()
   const ws = controller.getSnapshot().workspaces.find(w => w.id === task.workspaceId)
-  const dependencies = dependencyState(controller.getSnapshot().ledger.tasks, task)
-  const dependents = referencingTasks(controller.getSnapshot().ledger.tasks, task.id)
+  const dependencyLedger = controller.getSnapshot().ledger
+  const dependencies = dependenciesEnabled(dependencyLedger.settings) ? dependencyState(dependencyLedger.tasks, task) : []
+  const dependents = dependenciesEnabled(dependencyLedger.settings) ? referencingTasks(dependencyLedger.tasks, task.id) : []
   const runningExecution = task.executions.find(e => e.outcome === 'running')
   const holder = task.status === 'in_progress' ? task.claimedBy : undefined
   // Run is blocked by work IN FLIGHT, not by the status label. A card the user

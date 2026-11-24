@@ -9,6 +9,9 @@ import type { TaskboardDict } from './zh.ts'
 
 export const ru: TaskboardDict = {
   'dependency.settings': 'Ограничения зависимостей',
+  'dependency.enable': 'Включить зависимости задач',
+  'dependency.enableHint': 'Если отключено, зависимости скрыты и не проверяются. После включения сохранённые зависимости снова действуют; недоступные нужно удалить.',
+  'dependency.unavailable': 'Задача отсутствует или недоступна; удалите зависимость',
   'dependency.settingsHint': 'Проверяются при запуске. Внешние сеансы не блокируются; запуск по расписанию пропускается, если зависимости не готовы.',
   'dependency.gate.agent': 'Назначение агенту',
   'dependency.gate.manual': 'Ручной запуск',

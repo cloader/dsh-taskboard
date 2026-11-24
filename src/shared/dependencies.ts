@@ -1,8 +1,11 @@
 import { normalizeBlockedBy, type BoardSettings, type TaskLedger, type TaskRecord } from './protocol.ts'
 
 export type DependencyGate = 'agent' | 'manual' | 'scheduled' | 'review'
+export function dependenciesEnabled(settings: BoardSettings | undefined): boolean {
+  return settings?.dependenciesEnabled ?? false
+}
 export function gateEnabled(settings: BoardSettings | undefined, gate: DependencyGate): boolean {
-  return settings?.dependencyGates?.[gate] ?? true
+  return dependenciesEnabled(settings) && (settings?.dependencyGates?.[gate] ?? true)
 }
 export function dependencyState(tasks: readonly TaskRecord[], task: TaskRecord) {
   const byId = new Map(tasks.map(t => [t.id, t]))
@@ -42,6 +45,7 @@ export function referencingTasks(tasks: readonly TaskRecord[], id: string): Task
   return tasks.filter(t => t.id !== id && (t.blockedBy ?? []).includes(id))
 }
 export function assertNotReferenced(ledger: TaskLedger, id: string): void {
+  if (!dependenciesEnabled(ledger.settings)) return
   const refs = referencingTasks(ledger.tasks, id)
   if (refs.length) throw new Error(`task is referenced by: ${refs.map(t => `${t.title} (${t.id})`).join(', ')}`)
 }

@@ -12,6 +12,7 @@ import { ExternalSyncPanel } from './ExternalSyncPanel.tsx'
 import type { BoardController } from '../controller.ts'
 import type { CatalogModelItem, CatalogPresetItem } from '../../shared/api.ts'
 import { BRANCH_NAME_MODES, DEFAULT_BRANCH_NAME_PREFIX, DEFAULT_COMPLETED_DISPLAY_LIMIT, DEFAULT_DISPATCH_INTERVAL_MS, DEFAULT_ISOLATION, DEFAULT_MAX_CONCURRENT, DEFAULT_QUEUE_MAX_AGE_MINUTES, DEFAULT_SCHEDULE_MISSED_AFTER_MINUTES, MIN_COMPLETED_DISPLAY_LIMIT, MAX_COMPLETED_DISPLAY_LIMIT, allowClaimFromLinkedRootsOf, branchNameModeOf, branchNamePrefixOf, buildBranchName, completedDisplayLimitOf, defaultPermissionOf, defaultSyncExternalSessionsOf, dispatchIntervalMsOf, maxConcurrentOf, queueMaxAgeMinutesOf, scheduleMissedAfterMinutesOf, type BranchNameMode, type IsolationMode, type PermissionMode } from '../../shared/protocol.ts'
+import { dependenciesEnabled } from '../../shared/dependencies.ts'
 import { localeStore, setLocalePreference, useT, type LocalePreference, type Translate } from '../i18n/runtime.ts'
 
 /** The isolation options with one-line hints (mirrors the task form; translated per render). */
@@ -47,6 +48,8 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
   const currentSync = defaultSyncExternalSessionsOf(state.ledger.settings)
   const currentPerm = defaultPermissionOf(state.ledger.settings)
   const currentMulti = allowClaimFromLinkedRootsOf(state.ledger.settings)
+  const currentDependenciesEnabled = dependenciesEnabled(state.ledger.settings)
+  const [draftDependenciesEnabled, setDraftDependenciesEnabled] = useState(currentDependenciesEnabled)
   const gateKeys = ['agent', 'manual', 'scheduled', 'review'] as const
   const currentGates = Object.fromEntries(gateKeys.map(key => [key, state.ledger.settings?.dependencyGates?.[key] ?? true])) as Record<typeof gateKeys[number], boolean>
   const [draftGates, setDraftGates] = useState(currentGates)
@@ -97,6 +100,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
     && Number.isSafeInteger(dispatchIntervalMs) && dispatchIntervalMs >= 0 && dispatchIntervalMs <= 60000
   const completedLimitValid = Number.isSafeInteger(completedLimit) && completedLimit >= MIN_COMPLETED_DISPLAY_LIMIT && completedLimit <= MAX_COMPLETED_DISPLAY_LIMIT
   const dirty = draftModel !== currentModelKey || draftEffort !== currentEffort || draftPreset !== currentPreset
+    || draftDependenciesEnabled !== currentDependenciesEnabled
     || gateKeys.some(key => draftGates[key] !== currentGates[key])
     || draftDefaultWorkspace !== currentDefaultWorkspace
     || draftIso !== currentIso || draftSync !== currentSync || draftPerm !== currentPerm || draftMulti !== currentMulti
@@ -128,6 +132,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
       syncExternalSessions: draftSync,
       defaultPermission: draftPerm,
       allowClaimFromLinkedRoots: draftMulti,
+      dependenciesEnabled: draftDependenciesEnabled,
       dependencyGates: draftGates,
       ...(parsedModel !== undefined ? { defaultModel: { ...parsedModel, ...(draftEffort !== '' ? { reasoningEffort: draftEffort } : {}) } } : {}),
       ...(draftPreset !== '' ? { defaultPresetId: draftPreset } : {}),
@@ -171,12 +176,14 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
         <div className="dsh-atb-modal-body" id="dsh-atb-settings-panel-general" role="tabpanel" aria-labelledby="dsh-atb-settings-tab-general" hidden={section !== 'general'}>
           <section className="dsh-atb-diag-sec">
             <h4>{t('dependency.settings')}</h4>
-            <p className="dsh-atb-isolation-note">{t('dependency.settingsHint')}</p>
+            <label><input type="checkbox" checked={draftDependenciesEnabled} onChange={e => setDraftDependenciesEnabled(e.target.checked)} /> {t('dependency.enable')}</label>
+            <p className="dsh-atb-isolation-note">{t('dependency.enableHint')}</p>
+            {draftDependenciesEnabled && <><p className="dsh-atb-isolation-note">{t('dependency.settingsHint')}</p>
             <div className="dsh-atb-dependency-gates">
               {gateKeys.map(key => <label key={key}>
                 <input type="checkbox" checked={draftGates[key]} onChange={e => setDraftGates({ ...draftGates, [key]: e.target.checked })} /> <span>{t(`dependency.gate.${key}`)}</span>
               </label>)}
-            </div>
+            </div></>}
           </section>
           <section className="dsh-atb-diag-sec">
             <label className="dsh-atb-field dsh-atb-field-inline">

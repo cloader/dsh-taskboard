@@ -17,6 +17,7 @@ import { fmtTime, initialWorkspaceId } from './format.ts'
 import { useT, type Translate } from '../i18n/runtime.ts'
 import { SlashPromptInput } from './SlashPromptInput.tsx'
 import { useAlert } from './AlertModal.tsx'
+import { dependenciesEnabled } from '../../shared/dependencies.ts'
 
 /** One row of the configured model catalog (from llm.models). */
 export interface CatalogModel {
@@ -172,6 +173,7 @@ function ChecklistEditor({ rows, onChange, editing }: { rows: CheckRow[]; onChan
 export function TaskFormModal({ controller, task }: { controller: BoardController; task?: TaskRecord }) {
   const t = useT()
   const state = controller.getSnapshot()
+  const showDependencies = dependenciesEnabled(state.ledger.settings)
   const { alert: showAlert, el: alertEl } = useAlert()
   const prefill: TaskTemplateSpec | undefined = state.templatePrefill
   const editing = task !== undefined
@@ -417,7 +419,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
         description,
         prompt,
         urgency,
-        blockedBy,
+        ...(showDependencies ? { blockedBy } : {}),
         workspaceId,
         execution: executionPayload(),
         // '' in edit mode clears the pinned model back to the default.
@@ -435,7 +437,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
         title,
         workspaceId,
         urgency,
-        blockedBy,
+        ...(showDependencies ? { blockedBy } : {}),
         description: description.length > 0 ? description : undefined,
         prompt: prompt.length > 0 ? prompt : undefined,
         execution: executionPayload(),
@@ -466,7 +468,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
           description,
           prompt,
           urgency,
-          blockedBy,
+          ...(showDependencies ? { blockedBy } : {}),
           workspaceId,
           execution: executionPayload(),
           model: picked ?? null,
@@ -482,7 +484,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
           title,
           workspaceId,
           urgency,
-          blockedBy,
+          ...(showDependencies ? { blockedBy } : {}),
           description: description.length > 0 ? description : undefined,
           prompt: prompt.length > 0 ? prompt : undefined,
           execution: executionPayload(),
@@ -564,14 +566,18 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
                   }
                 }} />
             </Field>
-            <Field label={t('dependency.prerequisites')} full>
+            {showDependencies && <Field label={t('dependency.prerequisites')} full>
               <div>{state.ledger.tasks.filter(candidate => candidate.workspaceId === workspaceId && candidate.id !== task?.id && candidate.trashedAt === undefined
                 && (candidate.status === 'todo' || task?.blockedBy?.includes(candidate.id))).map(candidate => (
                 <label key={candidate.id} style={{ display: 'block' }}>
                   <input type="checkbox" checked={blockedBy.includes(candidate.id)} onChange={e => setBlockedBy(e.target.checked ? [...blockedBy, candidate.id] : blockedBy.filter(id => id !== candidate.id))} /> {candidate.title} ({candidate.id}, {candidate.status})
                 </label>
+              ))}{blockedBy.filter(id => !state.ledger.tasks.some(candidate => candidate.id === id && candidate.workspaceId === workspaceId && candidate.trashedAt === undefined)).map(id => (
+                <label key={id} style={{ display: 'block' }}>
+                  <input type="checkbox" checked onChange={() => setBlockedBy(blockedBy.filter(value => value !== id))} /> {id} ({t('dependency.unavailable')})
+                </label>
               ))}</div>
-            </Field>
+            </Field>}
 
             <div className="dsh-atb-form-subgrid">
               <Field label={t('form.field.project')} required>
