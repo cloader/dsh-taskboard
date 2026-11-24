@@ -3,12 +3,12 @@
 ### 0.10.1 — 2026-11-24
 
 - **任务依赖总开关**：设置新增「启用任务依赖」，默认关闭；关闭时隐藏前置任务及依赖提示，认领、执行和删除等操作不再检查依赖。已有关系保留，重新启用后恢复检查，失效引用可在编辑界面移除（[#100](https://github.com/cloader/dsh-taskboard/issues/100)）。
-- **DSH 版本范围**：改用 DSH 安装和加载时识别的 `engines.dsh`，声明要求 DSH ≥ `0.2.2-rc.3`；移除旧版兼容元数据。
+- 更新 DSH 兼容版本。
 
 **English:**
 
 - **Task dependency switch**: add a board-wide switch, off by default. Disabling it hides prerequisites and dependency indicators and skips dependency checks for claims, execution and deletion. Existing links are retained; re-enabling restores checks, and unavailable links can be removed in the editor ([#100](https://github.com/cloader/dsh-taskboard/issues/100)).
-- **DSH version range**: require DSH ≥ `0.2.2-rc.3` through `engines.dsh`, which DSH checks during installation and loading, and remove legacy compatibility metadata.
+- Update DSH compatibility.
 
 ### 0.10.0 — 2026-11-17
 

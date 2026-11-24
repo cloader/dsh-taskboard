@@ -262,7 +262,7 @@ Real-deployment validation on 2026-10-16 read 4 Bugs, 4 linked Stories and 8 Tas
 ### 0.10.1
 
 - **Task dependency switch**: add a board-wide switch, off by default. Disabling it hides prerequisites and dependency indicators and skips dependency checks for claims, execution and deletion. Existing links are retained; re-enabling restores checks, and unavailable links can be removed in the editor ([#100](https://github.com/cloader/dsh-taskboard/issues/100)).
-- **DSH version range**: require DSH ≥ `0.2.2-rc.3` through `engines.dsh`, which DSH checks during installation and loading, and remove legacy compatibility metadata.
+- Update DSH compatibility.
 
 ### 0.10.0
 
