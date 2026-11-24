@@ -497,6 +497,7 @@ describe('client half', () => {
       dispatchIntervalMs: 1_000,
       completedDisplayLimit: 50,
       allowClaimFromLinkedRoots: false,
+      dependenciesEnabled: false,
       dependencyGates: { agent: true, manual: true, scheduled: true, review: true },
     }])
 

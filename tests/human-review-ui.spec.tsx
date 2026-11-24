@@ -18,10 +18,10 @@ function task(extra: Partial<TaskRecord> = {}): TaskRecord {
     urgency: 'normal', status: 'todo', blocked: true, execution: { mode: 'claim' }, version: 1,
     createdAt: 1, updatedAt: 1, createdBy: { kind: 'user' }, updatedBy: { kind: 'user' }, comments: [], executions: [], ...extra }
 }
-async function mount(tasks: TaskRecord[], view: 'board' | 'detail' | 'card') {
+async function mount(tasks: TaskRecord[], view: 'board' | 'detail' | 'card', settings: { dependenciesEnabled?: boolean } = {}) {
   const updates: Array<Record<string, unknown>> = []
   const controller = new BoardController({
-    state: async () => ({ schemaVersion: 1, revision: 1, tasks }),
+    state: async () => ({ schemaVersion: 1, revision: 1, tasks, settings }),
     workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
     stream: () => () => {},
     update: async (_id: string, body: Record<string, unknown>) => { updates.push(body); return { id: tasks[0]!.id } },
@@ -40,6 +40,16 @@ async function mount(tasks: TaskRecord[], view: 'board' | 'detail' | 'card') {
 }
 
 describe('human waiting and delivery review UI', () => {
+  it('hides dependency badges on cards and details while disabled', async () => {
+    const tasks = [task({ blockedBy: ['t-prior'] }), task({ id: 't-prior', title: '前置任务 A' })]
+    const enabled = await mount(tasks, 'card', { dependenciesEnabled: true })
+    expect(enabled.host.textContent).toContain('等待前置任务')
+    const card = await mount(tasks, 'card', { dependenciesEnabled: false })
+    const detail = await mount(tasks, 'detail', { dependenciesEnabled: false })
+    expect(card.host.textContent).not.toContain('等待前置任务')
+    expect(detail.host.textContent).not.toContain('等待前置任务')
+    expect(detail.host.textContent).not.toContain('前置任务 A')
+  })
   it('filters out ordinary and explicitly cleared cards while retaining suspected and explicit waits', async () => {
     const { host } = await mount([
       task(), task({ id: 't-explicit', title: 'Explicit', waitingForHuman: true, waitingReason: '确认目标' }),

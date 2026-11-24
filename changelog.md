@@ -1,5 +1,15 @@
 # 更新日志 / Changelog
 
+### 0.10.1 — 2026-11-24
+
+- **任务依赖总开关**：设置新增「启用任务依赖」，默认关闭；关闭时隐藏前置任务及依赖提示，认领、执行和删除等操作不再检查依赖。已有关系保留，重新启用后恢复检查，失效引用可在编辑界面移除（[#100](https://github.com/cloader/dsh-taskboard/issues/100)）。
+- 更新 DSH 兼容版本。
+
+**English:**
+
+- **Task dependency switch**: add a board-wide switch, off by default. Disabling it hides prerequisites and dependency indicators and skips dependency checks for claims, execution and deletion. Existing links are retained; re-enabling restores checks, and unavailable links can be removed in the editor ([#100](https://github.com/cloader/dsh-taskboard/issues/100)).
+- Update DSH compatibility.
+
 ### 0.10.0 — 2026-11-17
 
 - **任务依赖与认领门禁**：任务可指定同项目的前置任务；前置任务全部进入待验收或已完成后，下游任务才满足启动条件。创建、编辑、卡片和任务详情支持依赖，Agent 工具可通过 `blockedBy` 管理依赖并查看等待状态（[#100](https://github.com/cloader/dsh-taskboard/issues/100)）。
