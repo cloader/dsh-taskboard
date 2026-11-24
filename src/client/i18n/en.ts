@@ -9,6 +9,9 @@ import type { TaskboardDict } from './zh.ts'
 
 export const en: TaskboardDict = {
   'dependency.settings': 'Dependency gates',
+  'dependency.enable': 'Enable task dependencies',
+  'dependency.enableHint': 'When disabled, dependencies are hidden and not checked. Existing links apply again when enabled; remove any that are missing or unavailable.',
+  'dependency.unavailable': 'Task missing or unavailable; remove this dependency',
   'dependency.settingsHint': 'Checked on start; dependencies remain visible when disabled. External sessions cannot be blocked; an unready scheduled run is skipped.',
   'dependency.gate.agent': 'Agent claim',
   'dependency.gate.manual': 'Manual start',

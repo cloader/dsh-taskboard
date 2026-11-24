@@ -18,7 +18,7 @@ import { checkNeedsHuman, fmtTime, isStaleClaim } from './format.ts'
 import { OUTCOME_KEYS, URGENCY_KEYS } from './labels.ts'
 import { useT } from '../i18n/runtime.ts'
 import { externalTypeLabel } from '../external-api.ts'
-import { dependencyState } from '../../shared/dependencies.ts'
+import { dependenciesEnabled, dependencyState } from '../../shared/dependencies.ts'
 
 /** dataTransfer type carrying the dragged task id. */
 export const DRAG_TYPE = 'application/x-dsh-atb-task'
@@ -47,7 +47,8 @@ export const resolveTaskSessionId = taskSessionId
  */
 export function TaskCard({ task, controller, draggable = false, now, onAlert }: { task: TaskRecord; controller: BoardController; draggable?: boolean; now?: number; onAlert?: (msg: string) => void }) {
   const t = useT()
-  const waiting = dependencyState(controller.getSnapshot().ledger.tasks, task).filter(d => !d.satisfied)
+  const ledger = controller.getSnapshot().ledger
+  const waiting = dependenciesEnabled(ledger.settings) ? dependencyState(ledger.tasks, task).filter(d => !d.satisfied) : []
   const [rejectOpen, setRejectOpen] = useState(false)
   const [note, setNote] = useState('')
   const last = task.executions.length > 0 ? task.executions[task.executions.length - 1] : undefined

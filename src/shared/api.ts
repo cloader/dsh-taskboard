@@ -258,6 +258,7 @@ export type StorageMigrationResult = StorageStatus & { migrated: boolean; warnin
 
 /** Update-board-settings request body (0.5.0; whole-object replace semantics). */
 export type UpdateSettingsBody = {
+  dependenciesEnabled?: boolean
   dependencyGates?: BoardSettings['dependencyGates']
   /** Default code isolation for NEW tasks ('worktree' | 'none'). */
   defaultIsolation?: string

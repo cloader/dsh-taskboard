@@ -1,6 +1,6 @@
 import type { SessionArchiveResult } from '../shared/api.ts'
 import { archiveTaskSessions } from './archive-sessions.ts'
-import { assertNotReferenced, dependencyError, dependencyState, gateEnabled, referencingTasks, validateDependencies } from '../shared/dependencies.ts'
+import { assertNotReferenced, dependenciesEnabled, dependencyError, dependencyState, gateEnabled, referencingTasks, validateDependencies } from '../shared/dependencies.ts'
 import { applyHumanWaitingPatch, humanWaiting } from '../shared/human-wait.ts'
 /**
  * The ten `taskboard_*` agent tools. All writes require a calling agent
@@ -495,7 +495,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           && (a.urgency === undefined || t.urgency === a.urgency)
           && (a.includeTrashed === true || t.trashedAt === undefined))
         const snapshot = store.snapshot()
-        return json({ revision: snapshot.revision, tasks: tasks.map(t => ({ ...summarize(t), dependencies: dependencyState(snapshot.tasks, t) })) })
+        return json({ revision: snapshot.revision, tasks: tasks.map(t => ({ ...summarize(t), ...(dependenciesEnabled(snapshot.settings) ? { dependencies: dependencyState(snapshot.tasks, t) } : {}) })) })
       } catch (error) { fail(error) }
     },
   })) as () => void)
@@ -521,7 +521,8 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
         const { id } = args
         const task = store.get(id)
         if (task === undefined || task.trashedAt !== undefined) throw new ToolError(ERR.notFound, `no task ${id}`)
-        return json({ task: { ...task, dependencies: dependencyState(store.snapshot().tasks, task), effectivePrompt: effectivePrompt(task) } })
+        const snapshot = store.snapshot()
+        return json({ task: { ...task, ...(dependenciesEnabled(snapshot.settings) ? { dependencies: dependencyState(snapshot.tasks, task) } : {}), effectivePrompt: effectivePrompt(task) } })
       } catch (error) { fail(error) }
     },
   })) as () => void)
@@ -664,7 +665,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           executions: [],
         }
         await store.mutate('task-created', ledger => {
-          task.blockedBy = validateDependencies(ledger.tasks, task, args.blockedBy ?? [])
+          if (dependenciesEnabled(ledger.settings)) task.blockedBy = validateDependencies(ledger.tasks, task, args.blockedBy ?? [])
           ledger.tasks.push(task)
           return [task]
         })
@@ -729,7 +730,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           if (args.prompt !== undefined) next.prompt = normalizePrompt(args.prompt)
           if (args.urgency !== undefined) next.urgency = asUrgency(args.urgency)
           if (args.blocked !== undefined) next.blocked = args.blocked
-          if (args.blockedBy !== undefined) next.blockedBy = validateDependencies(ledger.tasks, next, args.blockedBy)
+          if (dependenciesEnabled(ledger.settings) && args.blockedBy !== undefined) next.blockedBy = validateDependencies(ledger.tasks, next, args.blockedBy)
           applyHumanWaitingPatch(next, args)
           if (args.permission !== undefined) next.permission = asPermission(args.permission)
           next.version = task.version + 1
@@ -783,7 +784,7 @@ export function registerTaskboardTools(ctx: ToolContextFace, deps: ToolDeps): Ar
           const { index, task } = liveTaskAt(ledger, args.id)
           versionGuard(task, args.ifVersion)
           beforeTask = task
-          if (to === 'canceled' || to === 'archived') affectedDependents = referencingTasks(ledger.tasks, task.id).map(({ id, title }) => ({ id, title }))
+          if (dependenciesEnabled(ledger.settings) && (to === 'canceled' || to === 'archived')) affectedDependents = referencingTasks(ledger.tasks, task.id).map(({ id, title }) => ({ id, title }))
 
           // Code-level gate: agents never complete a task.
           if (to === 'done') {

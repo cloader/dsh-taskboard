@@ -114,8 +114,18 @@ const workspaces = {
 }
 
 describe('ExecutionService', () => {
+  it.each(['manual', 'scheduled', 'comment'] as const)('skips the %s dependency gate when dependencies are disabled', async trigger => {
+    const store = await storeWith(task({ id: 't-prior' }), task({ blockedBy: ['t-prior'], ...(trigger === 'comment' ? { status: 'in_review' as const } : {}) }))
+    await store.mutate('settings-updated', ledger => { ledger.settings = { dependenciesEnabled: false }; return [] })
+    const agents = fakeAgents()
+    const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: () => 1_000 })
+    expect((await svc.run('t-run', trigger)).ok).toBe(true)
+    expect(agents.created).toHaveLength(1)
+    svc.dispose()
+  })
   it('checks the corresponding gate before opening manual, scheduled, and review executions', async () => {
     const store = await storeWith(task({ id: 't-prior', title: 'Prior' }), task({ blockedBy: ['t-prior'] }))
+    await store.mutate('settings-updated', ledger => { ledger.settings = { dependenciesEnabled: true }; return [] })
     const agents = fakeAgents()
     const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: () => 1_000 })
     for (const trigger of ['manual', 'scheduled', 'comment'] as const) {
@@ -125,7 +135,7 @@ describe('ExecutionService', () => {
     }
     expect(agents.created).toHaveLength(0)
     expect(store.get('t-run')!.executions).toHaveLength(0)
-    await store.mutate('settings-updated', ledger => { ledger.settings = { dependencyGates: { manual: false } }; return [] })
+    await store.mutate('settings-updated', ledger => { ledger.settings = { dependenciesEnabled: true, dependencyGates: { manual: false } }; return [] })
     expect((await svc.run('t-run', 'manual')).ok).toBe(true)
     svc.dispose()
   })

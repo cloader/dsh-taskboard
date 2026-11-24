@@ -52,8 +52,21 @@ async function setup(deps: { modelProviders?: () => string[] | undefined; ready?
 }
 
 describe('taskboard tool outputs', () => {
+  it('skips dependency checks and hides derived status when disabled', async () => {
+    const { tool, exec, store } = await setup()
+    await store.mutate('settings-updated', ledger => { ledger.settings = { dependenciesEnabled: true }; return [] })
+    const a = (await tool('taskboard_create').execute({ title: 'A', workspaceId: 'ws-a', urgency: 'normal' }, exec) as { task: { id: string } }).task.id
+    const c = (await tool('taskboard_create').execute({ title: 'C', workspaceId: 'ws-a', urgency: 'normal', blockedBy: [a] }, exec) as { task: { id: string } }).task.id
+    await store.mutate('settings-updated', ledger => { ledger.settings = { dependenciesEnabled: false }; return [] })
+    const listed = await tool('taskboard_list').execute({}, exec)
+    expect(tool('taskboard_list').output.render({}, listed)[0]!.text).not.toContain('前置')
+    await tool('taskboard_delete').execute({ id: a, ifVersion: 1 }, exec)
+    await tool('taskboard_move').execute({ id: c, ifVersion: 1, status: 'in_progress' }, exec)
+    expect(store.get(c)?.blockedBy).toEqual([a])
+  })
   it('enforces live dependencies and protects referenced tasks without changing the downstream version', async () => {
     const { tool, exec, store } = await setup()
+    await store.mutate('settings-updated', ledger => { ledger.settings = { dependenciesEnabled: true }; return [] })
     const create = async (title: string, blockedBy?: string[]) => (await tool('taskboard_create').execute({ title, workspaceId: 'ws-a', urgency: 'normal', ...(blockedBy ? { blockedBy } : {}) }, exec) as { task: { id: string } }).task.id
     const a = await create('A')
     const b = await create('B')
@@ -73,6 +86,7 @@ describe('taskboard tool outputs', () => {
   })
   it('serializes concurrent dependency edits and honors the agent gate setting', async () => {
     const { tool, exec, store } = await setup()
+    await store.mutate('settings-updated', ledger => { ledger.settings = { dependenciesEnabled: true }; return [] })
     const make = async (title: string) => (await tool('taskboard_create').execute({ title, workspaceId: 'ws-a', urgency: 'normal' }, exec) as { task: { id: string } }).task.id
     const a = await make('A')
     const b = await make('B')
@@ -83,7 +97,7 @@ describe('taskboard tool outputs', () => {
     expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1)
     const dependent = store.snapshot().tasks.find(t => (t.blockedBy?.length ?? 0) > 0)!
     await expect(tool('taskboard_move').execute({ id: dependent.id, ifVersion: dependent.version, status: 'in_progress' }, exec)).rejects.toThrow('dependency_blocked')
-    await store.mutate('settings-updated', ledger => { ledger.settings = { dependencyGates: { agent: false } }; return [] })
+    await store.mutate('settings-updated', ledger => { ledger.settings = { dependenciesEnabled: true, dependencyGates: { agent: false } }; return [] })
     await tool('taskboard_move').execute({ id: dependent.id, ifVersion: dependent.version, status: 'in_progress' }, exec)
   })
   it('lets agents report and clear a human wait without changing generic blocking', async () => {

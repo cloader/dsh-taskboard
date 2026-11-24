@@ -260,7 +260,25 @@ async function post(path: string, body: unknown): Promise<{ status: number; json
 }
 
 describe('taskboard routes', () => {
+  it('disables dependency checks while preserving links, then fails closed after re-enabling', async () => {
+    await post('/dsh-taskboard/settings/update', { dependenciesEnabled: true })
+    const a = (await post('/dsh-taskboard/tasks', { title: 'A', workspaceId: 'ws-a', urgency: 'normal' })).json.value.id as string
+    const c = (await post('/dsh-taskboard/tasks', { title: 'C', workspaceId: 'ws-a', urgency: 'normal', blockedBy: [a] })).json.value.id as string
+    expect((await post('/dsh-taskboard/settings/update', { dependenciesEnabled: false })).status).toBe(200)
+    expect((await post(`/dsh-taskboard/tasks/${c}/update`, { ifVersion: 1, title: 'C edited', blockedBy: [] })).status).toBe(200)
+    expect(store.get(c)?.blockedBy).toEqual([a])
+    expect((await post(`/dsh-taskboard/tasks/${a}/delete`, { ifVersion: 1 })).status).toBe(200)
+    expect((await post(`/dsh-taskboard/tasks/${c}/move`, { ifVersion: 2, status: 'in_progress' })).status).toBe(200)
+    expect((await post(`/dsh-taskboard/tasks/${c}/move`, { ifVersion: 3, status: 'todo' })).status).toBe(200)
+    expect((await post('/dsh-taskboard/settings/update', { dependenciesEnabled: true })).status).toBe(200)
+    const blocked = await post(`/dsh-taskboard/tasks/${c}/move`, { ifVersion: 4, status: 'in_progress' })
+    expect(blocked.status).toBe(400)
+    expect(blocked.json.error.message).toContain('dependency_blocked')
+    expect((await post(`/dsh-taskboard/tasks/${c}/update`, { ifVersion: 4, blockedBy: [] })).status).toBe(200)
+    expect((await post(`/dsh-taskboard/tasks/${c}/move`, { ifVersion: 5, status: 'in_progress' })).status).toBe(200)
+  })
   it('validates dependencies and applies the configurable manual and review gates', async () => {
+    await post('/dsh-taskboard/settings/update', { dependenciesEnabled: true })
     const a = (await post('/dsh-taskboard/tasks', { title: 'A', workspaceId: 'ws-a', urgency: 'normal' })).json.value.id as string
     const b = (await post('/dsh-taskboard/tasks', { title: 'B', workspaceId: 'ws-b', urgency: 'normal' })).json.value.id as string
     const c = (await post('/dsh-taskboard/tasks', { title: 'C', workspaceId: 'ws-a', urgency: 'normal', blockedBy: [a] })).json.value.id as string
@@ -268,7 +286,7 @@ describe('taskboard routes', () => {
     expect((await post(`/dsh-taskboard/tasks/${a}/update`, { ifVersion: 1, blockedBy: [c] })).status).toBe(400)
     expect((await post(`/dsh-taskboard/tasks/${a}/delete`, { ifVersion: 1 })).json.error.message).toContain('C')
     expect((await post(`/dsh-taskboard/tasks/${c}/move`, { ifVersion: 1, status: 'in_progress' })).status).toBe(400)
-    await store.mutate('settings-updated', ledger => { ledger.settings = { dependencyGates: { manual: false } }; return [] })
+    await store.mutate('settings-updated', ledger => { ledger.settings = { dependenciesEnabled: true, dependencyGates: { manual: false } }; return [] })
     expect((await post(`/dsh-taskboard/tasks/${c}/move`, { ifVersion: 1, status: 'in_progress' })).status).toBe(200)
   })
   it.each(['runAt', 'queuedRunAt', 'dispatchingRunAt'] as const)('keeps a one-shot %s intact when saving content without execution', async field => {

@@ -295,6 +295,8 @@ export function asPermission(raw: unknown): PermissionMode {
  * user explicitly set are present; absent fields follow factory defaults.
  */
 export type BoardSettings = {
+  /** Enable task dependencies (default: false). */
+  dependenciesEnabled?: boolean
   /** Dependency gates default to enabled when omitted. */
   dependencyGates?: Partial<Record<'agent' | 'manual' | 'scheduled' | 'review', boolean>>
   /** Default code isolation applied when a NEW task is created without an explicit choice. */
@@ -338,6 +340,10 @@ export function asBoardSettings(raw: unknown): BoardSettings {
   }
   const e = raw as Record<string, unknown>
   const out: BoardSettings = {}
+  if (e.dependenciesEnabled !== undefined) {
+    if (typeof e.dependenciesEnabled !== 'boolean') throw new Error('dependenciesEnabled must be a boolean')
+    out.dependenciesEnabled = e.dependenciesEnabled
+  }
   if (e.dependencyGates !== undefined) {
     if (typeof e.dependencyGates !== 'object' || e.dependencyGates === null || Array.isArray(e.dependencyGates)) throw new Error('dependencyGates must be an object')
     const gates = e.dependencyGates as Record<string, unknown>

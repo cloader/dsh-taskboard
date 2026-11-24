@@ -1,7 +1,7 @@
 {
   "name": "dsh-taskboard",
   "description": "Agent-first task board for the DSH web GUI: host-authoritative task ledger with taskboard_* agent tools, project (= workspace) claim boundaries, per-task model execution with optional existing-session reuse, optional per-task git-worktree isolation (dedicated task branches, commit evidence, one-click merge), host-side cron scheduling, and a live SSE kanban view. Mounts via the official dsh plugin system — no DSH source changes.",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -19,11 +19,6 @@
         "slots"
       ],
       "platform": "web"
-    },
-    "compatibility": {
-      "dshReleases": {
-        "0.2.0-rc.2": "compatible"
-      }
     }
   },
   "files": [
@@ -35,6 +30,7 @@
   ],
   "license": "Apache-2.0",
   "engines": {
+    "dsh": ">=0.2.2-rc.3",
     "node": ">=24.9.0"
   },
   "author": "cloader",

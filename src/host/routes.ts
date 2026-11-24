@@ -1,5 +1,5 @@
 import { archiveTaskSessions } from './archive-sessions.ts'
-import { assertNotReferenced, dependencyError, gateEnabled, referencingTasks, validateDependencies } from '../shared/dependencies.ts'
+import { assertNotReferenced, dependenciesEnabled, dependencyError, gateEnabled, referencingTasks, validateDependencies } from '../shared/dependencies.ts'
 import { applyHumanWaitingPatch } from '../shared/human-wait.ts'
 /**
  * /dsh-taskboard routes on the shared DSH webserver: a JSON API for the
@@ -473,7 +473,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
           const doneCount = ledger.tasks.filter(t => t.status === 'done' && t.trashedAt === undefined).length
           // Retain completed prerequisites so dependency indicators remain accurate
           // even while the completed column is collapsed.
-          const referenced = new Set(ledger.tasks.flatMap(t => t.blockedBy ?? []))
+          const referenced = dependenciesEnabled(ledger.settings) ? new Set(ledger.tasks.flatMap(t => t.blockedBy ?? [])) : new Set<string>()
           const tasks = excludeDone ? ledger.tasks.filter(t => t.status !== 'done' || referenced.has(t.id)) : ledger.tasks
           json(res, {
             ok: true,
@@ -810,7 +810,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
             executions: [],
           }
           await store.mutate('task-created', ledger => {
-            task.blockedBy = validateDependencies(ledger.tasks, task, body.blockedBy ?? [])
+            if (dependenciesEnabled(ledger.settings)) task.blockedBy = validateDependencies(ledger.tasks, task, body.blockedBy ?? [])
             ledger.tasks.push(task)
             return [task]
           })
@@ -860,10 +860,10 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
               const workspaceId = str(body, 'workspaceId')
               if (workspaceId !== null) {
                 if (workspaces.get(workspaceId) === undefined) throw new Error('Error: not_found: unknown workspace')
-                if (workspaceId !== task.workspaceId && referencingTasks(ledger.tasks, task.id).length) throw new Error('Error: invalid_input: task is referenced by other tasks')
+                if (dependenciesEnabled(ledger.settings) && workspaceId !== task.workspaceId && referencingTasks(ledger.tasks, task.id).length) throw new Error('Error: invalid_input: task is referenced by other tasks')
                 next.workspaceId = workspaceId
               }
-              next.blockedBy = validateDependencies(ledger.tasks, next, body.blockedBy ?? next.blockedBy ?? [])
+              if (dependenciesEnabled(ledger.settings)) next.blockedBy = validateDependencies(ledger.tasks, next, body.blockedBy ?? next.blockedBy ?? [])
               if (typeof body.blocked === 'boolean') next.blocked = body.blocked
               applyHumanWaitingPatch(next, body)
               // The GUI (task owner surface) may edit model/execution; null clears the model.
@@ -1440,7 +1440,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
               // along when the file carries them; merge keeps the live ones.
               if (plan.settings !== undefined) ledger.settings = structuredClone(plan.settings)
               else delete ledger.settings
-              for (const task of ledger.tasks) validateDependencies(ledger.tasks, task)
+              if (dependenciesEnabled(ledger.settings)) for (const task of ledger.tasks) validateDependencies(ledger.tasks, task)
               return ledger.tasks
             }
             const byId = new Map(ledger.tasks.map(t => [t.id, t]))
@@ -1462,7 +1462,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
               byId.set(task.id, structuredClone(task))
             }
             ledger.tasks = [...byId.values()]
-            for (const task of ledger.tasks) validateDependencies(ledger.tasks, task)
+            if (dependenciesEnabled(ledger.settings)) for (const task of ledger.tasks) validateDependencies(ledger.tasks, task)
             return structuredClone(imported)
           })
           json(res, {

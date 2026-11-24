@@ -11,6 +11,9 @@
  */
 export const zh = {
   'dependency.settings': '任务依赖门禁',
+  'dependency.enable': '启用任务依赖',
+  'dependency.enableHint': '关闭后隐藏依赖并停止检查；已有依赖会保留，重新启用后继续生效。若前置任务已删除或不再可用，请先移除失效依赖。',
+  'dependency.unavailable': '任务不存在或不可用，请移除依赖',
   'dependency.settingsHint': '仅在启动时检查；关闭后仍显示依赖。外部会话无法拦截；定时未就绪时跳过本次执行。',
   'dependency.gate.agent': 'Agent 认领',
   'dependency.gate.manual': '界面手动启动',

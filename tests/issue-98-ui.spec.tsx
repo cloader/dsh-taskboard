@@ -74,9 +74,21 @@ function taskOf(overrides: Partial<TaskRecord>): TaskRecord {
 }
 
 describe('TaskFormModal branch override (#98)', () => {
+  it('hides disabled dependencies and allows removing missing ones after re-enabling', async () => {
+    const task = taskOf({ blockedBy: ['t-missing'] })
+    const hidden = await setupForm(task)
+    await waitFor(() => hidden.titleInput() !== null)
+    expect(hidden.host.textContent).not.toContain('前置任务')
+    const visible = await setupForm(task, { dependenciesEnabled: true })
+    await waitFor(() => visible.host.textContent?.includes('t-missing') === true)
+    const missing = Array.from(visible.host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).find(input => input.parentElement?.textContent?.includes('t-missing'))!
+    expect(missing.checked).toBe(true)
+    missing.click()
+    await waitFor(() => !visible.host.textContent?.includes('t-missing'))
+  })
   it('offers todo prerequisites while preserving previously selected tasks in other states', async () => {
     const task = taskOf({ blockedBy: ['t-review'] })
-    const form = await setupForm(task, {}, [
+    const form = await setupForm(task, { dependenciesEnabled: true }, [
       taskOf({ id: 't-todo', title: '待办候选', status: 'todo' }),
       taskOf({ id: 't-review', title: '已有前置', status: 'in_review' }),
       taskOf({ id: 't-doing', title: '执行中候选', status: 'in_progress' }),
@@ -193,6 +205,16 @@ describe('SettingsModal branch naming (#98)', () => {
     root.render(React.createElement(SettingsModal, { controller }))
     await new Promise(r => setTimeout(r, 10))
 
+    const dependencySection = Array.from(host.querySelectorAll('.dsh-atb-diag-sec'))
+      .find(el => el.querySelector('h4')?.textContent === '任务依赖门禁')!
+    const enableDependencies = dependencySection.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    expect(enableDependencies.checked).toBe(false)
+    expect(dependencySection.querySelector('.dsh-atb-dependency-gates')).toBeNull()
+    enableDependencies.click()
+    await waitFor(() => dependencySection.querySelectorAll('.dsh-atb-dependency-gates input').length === 4)
+    enableDependencies.click()
+    await waitFor(() => dependencySection.querySelector('.dsh-atb-dependency-gates') === null)
+
     const section = Array.from(host.querySelectorAll('.dsh-atb-diag-sec'))
       .find(el => el.querySelector('h4')?.textContent === '分支命名')
     expect(section).toBeDefined()
@@ -223,6 +245,6 @@ describe('SettingsModal branch naming (#98)', () => {
     saveBtn.click()
     await new Promise(r => setTimeout(r, 20))
     expect(saved).toHaveLength(1)
-    expect(saved[0]).toMatchObject({ branchNameMode: 'prefix-id', branchNamePrefix: 'task' })
+    expect(saved[0]).toMatchObject({ branchNameMode: 'prefix-id', branchNamePrefix: 'task', dependenciesEnabled: false })
   })
 })

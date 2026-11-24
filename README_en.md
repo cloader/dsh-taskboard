@@ -10,7 +10,7 @@ English | [简体中文](./README.md)
 A **task board plugin for DeepSeek Harness**: humans create cards, agents claim and execute them, humans review and accept. Tasks live on projects (= workspaces), support per-task model & preset selection, and can run manually or on a cron schedule — full two-way collaboration from card to sign-off.
 
 - **Closed loop**: human creates a card → agent claims & executes → structured hand-off report → human accepts (✓ done / ✗ send back with a reason)
-- **Task dependencies**: set same-project prerequisites and choose which start actions require them to reach review or done.
+- **Task dependencies**: enable the board-wide switch (off by default) to set same-project prerequisites and choose which start actions require them to reach review or done. Disabling it hides dependencies and skips their checks while retaining existing links. Re-enabling restores the checks; remove any references that became unavailable while disabled.
 - **10 `taskboard_*` agent tools** plus code-level protocol gates: agents can never move a task to *done*, held tasks cannot be snatched away, cross-project claims are rejected
 - **Execution**: manual, one-shot scheduled, or host-side periodic cron runs (keep running when the browser closes); scheduled tasks can reuse an existing session in the selected project; periodic tasks can return to todo each round or keep a review record while creating the next todo card
 - **Git worktree isolation**: each run works on its own worktree + dedicated task branch, one-click merge at acceptance; parallel multi-repo workspaces are mirrored whole (0.6.3); non-git projects fall back automatically
@@ -43,7 +43,7 @@ A **task board plugin for DeepSeek Harness**: humans create cards, agents claim 
 
 | Dependency | Requirement | Notes |
 | --- | --- | --- |
-| DeepSeek Harness | ≥ 0.2.2-rc.3 | Requires official panel support and the web profile |
+| DeepSeek Harness | ≥ 0.2.2-rc.3 | Compatibility declared through `engines.dsh`; requires official panel support and the web profile |
 | Node.js | ≥ 24.9.0 | Plugin runtime; ≥ 24.12.0 recommended for local development and source builds |
 | git | optional | Required for worktree isolation; falls back to running in place when missing |
 
@@ -258,6 +258,11 @@ Credentials remain in the host-only plaintext `dsh-taskboard-external.json` unde
 Real-deployment validation on 2026-10-16 read 4 Bugs, 4 linked Stories and 8 Tasks in project mode, with corresponding execution results. Each mode imported 2 Bugs and 2 Tasks for admin; repeat scans created or updated nothing. No Stories were assigned to that account, so assigned Story imports remain covered by mock tests. Only temporary local ledgers were written; tracker business data was not changed.
 
 ## Changelog
+
+### 0.10.1
+
+- **Task dependency switch**: add a board-wide switch, off by default. Disabling it hides prerequisites and dependency indicators and skips dependency checks for claims, execution and deletion. Existing links are retained; re-enabling restores checks, and unavailable links can be removed in the editor ([#100](https://github.com/cloader/dsh-taskboard/issues/100)).
+- Update DSH compatibility.
 
 ### 0.10.0
 
